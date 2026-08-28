@@ -536,6 +536,7 @@ describe("Sessions API", () => {
 
       expect(res.status).toBe(200);
       const json = await res.json();
+      expect(json.transcriptSnapshotUpdatedAt).toEqual(expect.any(String));
       expect(
         json.messages.map((message: { uuid?: string }) => message.uuid),
       ).toEqual(["cb2", "u3", "a3", "cb3", "u4"]);

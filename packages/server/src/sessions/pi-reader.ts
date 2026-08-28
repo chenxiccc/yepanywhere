@@ -515,6 +515,7 @@ export class PiSessionReader implements ISessionReader {
 
     return {
       summary: this.summaryFrom(info, parsed, projectId),
+      transcriptSnapshotUpdatedAt: new Date(info.mtime).toISOString(),
       data: {
         provider: "pi",
         session: { messages: filtered },

@@ -113,8 +113,8 @@ export interface UseSessionMessagesOptions {
   codexStreamDurableIdAlignment?: boolean;
   /** Called when initial load completes with session data */
   onLoadComplete?: (result: SessionLoadResult) => void;
-  /** Called after REST transcript state has been applied. */
-  onTranscriptReconciled?: (updatedAt: string) => void;
+  /** Called after versioned REST transcript rows have been applied. */
+  onTranscriptReconciled?: (transcriptSnapshotUpdatedAt: string) => void;
   /** Called on load error */
   onLoadError?: (error: Error) => void;
 }
@@ -498,6 +498,18 @@ export function useSessionMessages(
     [coordinator, projectId, sessionId],
   );
 
+  const notifyTranscriptReconciled = useCallback(
+    (data: GetSessionResult, appliedRowCount: number) => {
+      if (
+        appliedRowCount > 0 &&
+        data.transcriptSnapshotUpdatedAt !== undefined
+      ) {
+        onTranscriptReconciled?.(data.transcriptSnapshotUpdatedAt);
+      }
+    },
+    [onTranscriptReconciled],
+  );
+
   const updateSession = useCallback(
     (update: SessionMetadataUpdate) => {
       const previous = readStoreSession();
@@ -637,11 +649,14 @@ export function useSessionMessages(
       warmSnapshot: warmLoad,
     });
 
-    const notifyLoadComplete = (data: GetSessionResult) => {
+    const notifyLoadComplete = (
+      data: GetSessionResult,
+      appliedRowCount: number,
+    ) => {
       sourceSummary.reportProviderRuntimeStatusSnapshot(
         coordinator.buildProviderRuntimeStatusSnapshot(data),
       );
-      onTranscriptReconciled?.(data.session.updatedAt);
+      notifyTranscriptReconciled(data, appliedRowCount);
       onLoadComplete?.(coordinator.buildLoadCompleteResult(data));
     };
 
@@ -765,7 +780,7 @@ export function useSessionMessages(
         diagnosticBoundary: "warm-catchup-before-hydration",
       });
       writeRevealSnapshotToLoadCache(reveal);
-      notifyLoadComplete(data);
+      notifyLoadComplete(data, applied.sourceMessageCount);
     };
 
     const applyWarmDeltaAfterHydration = (data: GetSessionResult) => {
@@ -797,7 +812,7 @@ export function useSessionMessages(
           messageCount: snapshot.pagination?.returnedMessageCount,
         }),
       );
-      notifyLoadComplete(data);
+      notifyLoadComplete(data, applied.sourceMessageCount);
     };
 
     markReloadPerfPhase("session_initial_load_start", {
@@ -897,7 +912,7 @@ export function useSessionMessages(
 
         writeRevealSnapshotToLoadCache(reveal);
 
-        notifyLoadComplete(data);
+        notifyLoadComplete(data, applied.sourceMessageCount);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -934,7 +949,7 @@ export function useSessionMessages(
     tailFrom,
     detailedLoadingProgress,
     onLoadComplete,
-    onTranscriptReconciled,
+    notifyTranscriptReconciled,
     onLoadError,
     coordinator,
     resetSessionDetailState,
@@ -1119,7 +1134,10 @@ export function useSessionMessages(
           const applied = coordinator.applyIncrementalRefresh(data, {
             afterMessageId,
           });
-          onTranscriptReconciled?.(data.session.updatedAt);
+          notifyTranscriptReconciled(
+            data,
+            applied.applied ? applied.sourceMessageCount : 0,
+          );
           if (applied.applied) {
             reportStoreDivergence("catchup", { session: data.session });
           }
@@ -1182,7 +1200,7 @@ export function useSessionMessages(
               coordinator.buildProviderRuntimeStatusSnapshot(data),
             );
             const applied = coordinator.applyFullTailReconciliation(data);
-            onTranscriptReconciled?.(data.session.updatedAt);
+            notifyTranscriptReconciled(data, applied.sourceMessageCount);
             reportStoreDivergence("incremental-reconciliation", {
               session: data.session,
             });
@@ -1233,7 +1251,7 @@ export function useSessionMessages(
     [
       coordinator,
       effectiveTailTurns,
-      onTranscriptReconciled,
+      notifyTranscriptReconciled,
       projectId,
       sessionId,
       tailFrom,

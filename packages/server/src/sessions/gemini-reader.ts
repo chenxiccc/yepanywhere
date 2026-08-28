@@ -198,6 +198,8 @@ export class GeminiSessionReader implements ISessionReader {
 
     return {
       summary,
+      transcriptSnapshotUpdatedAt:
+        sessionFile.lastUpdated ?? new Date(sessionCache.mtime).toISOString(),
       data: {
         provider: "gemini",
         session: {

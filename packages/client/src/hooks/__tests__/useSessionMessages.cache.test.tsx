@@ -127,6 +127,7 @@ function sessionResponse(messageId: string): GetSessionResult {
         message: { role: "assistant", content: messageId },
       },
     ],
+    transcriptSnapshotUpdatedAt: "2026-05-04T00:00:00.000Z",
     ownership,
     pendingInputRequest: null,
     slashCommands: null,
@@ -3018,6 +3019,7 @@ describe("useSessionMessages cache", () => {
           message: { role: "user", content: "hello" },
         },
       ],
+      transcriptSnapshotUpdatedAt: "2026-05-04T00:00:00.000Z",
       ownership: { owner: "self" },
       pendingInputRequest: null,
       slashCommands: null,
@@ -3075,6 +3077,7 @@ describe("useSessionMessages cache", () => {
           message: { role: "assistant", content: "hi" },
         },
       ],
+      transcriptSnapshotUpdatedAt: "2026-05-04T00:00:59.000Z",
       ownership: { owner: "self" },
       pendingInputRequest: null,
       slashCommands: null,
@@ -3096,8 +3099,32 @@ describe("useSessionMessages cache", () => {
     ]);
     expect(readStoreMessageIds()).toEqual(["msg-1", "store-only-msg", "msg-2"]);
     expect(onTranscriptReconciled).toHaveBeenCalledWith(
-      "2026-05-04T00:01:00.000Z",
+      "2026-05-04T00:00:59.000Z",
     );
+  });
+
+  it("does not advance the transcript watermark for an empty delta", async () => {
+    const onTranscriptReconciled = vi.fn();
+    apiMocks.getSession.mockResolvedValueOnce(sessionResponse("msg-1"));
+
+    const { result } = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        onTranscriptReconciled,
+      }),
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    onTranscriptReconciled.mockClear();
+
+    apiMocks.getSession.mockResolvedValueOnce({
+      ...sessionResponse("unused"),
+      messages: [],
+      transcriptSnapshotUpdatedAt: "2026-05-04T00:01:00.000Z",
+    });
+    await act(async () => result.current.fetchNewMessages());
+
+    expect(onTranscriptReconciled).not.toHaveBeenCalled();
   });
 
   it("coalesces concurrent incremental refreshes into one trailing pass", async () => {

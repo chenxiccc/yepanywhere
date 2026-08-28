@@ -1401,6 +1401,28 @@ describe("useSession completion reconciliation", () => {
     expect(fetchNewMessages).toHaveBeenCalledTimes(1);
   });
 
+  it("retries the same heartbeat until transcript rows advance the watermark", () => {
+    renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+    const heartbeat = {
+      eventType: "heartbeat",
+      liveness: mockLiveness({
+        lastProviderMessageAt: "2026-04-24T00:06:00.000Z",
+      }),
+    };
+
+    act(() => sessionStreamHandler?.(heartbeat));
+    expect(fetchNewMessages).toHaveBeenCalledTimes(1);
+
+    act(() => vi.advanceTimersByTime(500));
+    act(() => sessionStreamHandler?.(heartbeat));
+    expect(fetchNewMessages).toHaveBeenCalledTimes(2);
+  });
+
   it("does not let activity metadata suppress transcript catch-up", () => {
     sessionMessagesMock.sessionUpdatedAt = "2026-04-24T00:06:00.000Z";
 

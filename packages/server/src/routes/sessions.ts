@@ -3043,6 +3043,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         // Keep Process history as provider-owned replay state. Presentation fields
         // are computed on a detached client projection, as on file-backed reads.
         const sdkMessages = process.getMessageHistory();
+        const transcriptSnapshotUpdatedAt =
+          process.lastProviderMessageTime?.toISOString() ??
+          process.startedAt.toISOString();
         const processMessages = sdkMessagesToClientMessages(
           structuredClone(sdkMessages),
         );
@@ -3147,6 +3150,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             ...(providerChildren ? { providerChildren } : {}),
           },
           messages: visibleProcessMessages,
+          transcriptSnapshotUpdatedAt,
           ownership,
           providerRuntimeStatus,
           pendingInputRequest,
@@ -3177,6 +3181,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         );
       }
       return c.json({ error: "Session not found" }, 404);
+    }
+    if (!loadedSession) {
+      throw new Error("Normalized session is missing its reader snapshot");
     }
 
     // Get session metadata (custom title, archived, starred)
@@ -3482,6 +3489,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         ...(providerChildren ? { providerChildren } : {}),
       },
       messages: session.messages,
+      transcriptSnapshotUpdatedAt: loadedSession.transcriptSnapshotUpdatedAt,
       ownership,
       providerRuntimeStatus,
       pendingInputRequest,

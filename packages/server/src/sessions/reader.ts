@@ -412,6 +412,7 @@ export class ClaudeSessionReader implements ISessionReader {
 
     return {
       summary,
+      transcriptSnapshotUpdatedAt: snapshot.stats.mtime.toISOString(),
       data: {
         provider: summary.provider as ClaudeProviderName,
         session: {

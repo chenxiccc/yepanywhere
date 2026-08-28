@@ -307,7 +307,8 @@ export class GrokSessionReader implements ISessionReader {
     const summary = await this.getSessionSummary(sessionId, projectId);
     if (!summary) return null;
 
-    const messages = await this.loadUpdatesMessages(info);
+    const transcriptSnapshot = await this.loadUpdatesSnapshot(info);
+    const { messages } = transcriptSnapshot;
     const filteredMessages = afterMessageId
       ? this.messagesAfter(messages, afterMessageId)
       : messages;
@@ -317,6 +318,7 @@ export class GrokSessionReader implements ISessionReader {
         ...summary,
         messageCount: messages.length || summary.messageCount,
       },
+      transcriptSnapshotUpdatedAt: transcriptSnapshot.updatedAt,
       data: {
         provider: "grok",
         session: { messages: filteredMessages },
@@ -334,14 +336,27 @@ export class GrokSessionReader implements ISessionReader {
     );
   }
 
-  private async loadUpdatesMessages(info: GrokSessionInfo): Promise<Message[]> {
+  private async loadUpdatesSnapshot(
+    info: GrokSessionInfo,
+  ): Promise<{ messages: Message[]; updatedAt: string }> {
+    const updatesPath = join(info.dirPath, "updates.jsonl");
     let raw: string;
     try {
-      raw = await readFile(join(info.dirPath, "updates.jsonl"), "utf-8");
+      const stats = await stat(updatesPath);
+      raw = await readFile(updatesPath, "utf-8");
+      return {
+        messages: this.parseUpdatesMessages(raw),
+        updatedAt: stats.mtime.toISOString(),
+      };
     } catch {
-      return [];
+      return {
+        messages: [],
+        updatedAt: new Date(info.mtime).toISOString(),
+      };
     }
+  }
 
+  private parseUpdatesMessages(raw: string): Message[] {
     const messages: Message[] = [];
     const tools = new Map<string, GrokToolState>();
     let textBuffer: GrokTextBuffer | null = null;
@@ -452,6 +467,10 @@ export class GrokSessionReader implements ISessionReader {
 
     flushText();
     return messages;
+  }
+
+  private async loadUpdatesMessages(info: GrokSessionInfo): Promise<Message[]> {
+    return (await this.loadUpdatesSnapshot(info)).messages;
   }
 
   private messagesAfter(

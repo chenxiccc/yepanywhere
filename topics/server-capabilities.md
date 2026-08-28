@@ -85,6 +85,16 @@ capability is version-implied from `0.7.2`, while source-ahead servers advertise
 the positive ID explicitly. Its fallback remains until a separate
 compatibility-floor review approves removal.
 
+The additive top-level `transcriptSnapshotUpdatedAt` field on existing session
+detail responses is a reader snapshot receipt, not a new feature capability.
+The core compatibility corpus `v0.6.0`, `v0.6.1`, `v0.6.2`, and `v0.7.0`
+lacks it. A current client connected to one of those servers sends no new
+request and leaves its heartbeat-reconciliation watermark unchanged, accepting
+bounded extra refreshes rather than letting unrelated `session.updatedAt`
+metadata suppress a needed catch-up. Older clients ignore the additive field.
+No existing capability meaning changes. The Maintainer approved this
+self-gated response-field fallback on 2026-08-28.
+
 `git-working-tree-files` owns the current-content inventory, persistent
 untracked-cache route, and cache-backed status request. Releases `0.6.2` and
 `0.7.0` have none of them. Without the permanent capability, the client retains

@@ -504,6 +504,7 @@ export const api = {
     return fetchJSON<{
       session: SessionMetadata;
       messages: Message[];
+      transcriptSnapshotUpdatedAt?: string;
       ownership: SessionStatus;
       pendingInputRequest?: InputRequest | null;
       providerRuntimeStatus?: ProviderRuntimeStatus;

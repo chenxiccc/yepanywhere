@@ -102,6 +102,8 @@ export interface GetSessionSummaryOptions {
 // Return type that includes both the computed summary and the raw provider data
 export interface LoadedSession {
   summary: SessionSummary;
+  /** Source timestamp captured with the transcript rows in this snapshot. */
+  transcriptSnapshotUpdatedAt: string;
   data: UnifiedSession;
 }
 

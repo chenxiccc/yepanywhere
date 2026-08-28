@@ -308,6 +308,7 @@ export class OpenCodeSessionReader implements ISessionReader {
       );
       return {
         summary: fileSummary,
+        transcriptSnapshotUpdatedAt: fileSummary.updatedAt,
         data: {
           provider: "opencode",
           session: {
@@ -326,6 +327,7 @@ export class OpenCodeSessionReader implements ISessionReader {
 
     return {
       summary,
+      transcriptSnapshotUpdatedAt: summary.updatedAt,
       data: {
         provider: "opencode",
         session: {
@@ -793,6 +795,9 @@ export class OpenCodeSessionReader implements ISessionReader {
 
     return {
       summary,
+      transcriptSnapshotUpdatedAt: this.dateFromMillis(
+        row.timeUpdated ?? undefined,
+      ),
       data: {
         provider: "opencode",
         session: { messages: entries },

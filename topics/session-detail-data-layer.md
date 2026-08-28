@@ -190,15 +190,21 @@ read at watch-open or reconnect only duplicates that work. Once hydration has
 settled, watch-open and reconnect catch-up resume normally. File-change demand
 observed during hydration still reaches the serialized trailing-read path.
 
-A provider-progress heartbeat compares its progress timestamp with the session
-timestamp from the last REST transcript response successfully applied to the
-detail store. Activity-channel metadata patches are not a transcript watermark:
-they can advance `updatedAt` even when the corresponding content-stream events
-did not reach this browser. A successful initial load, incremental catch-up, or
-full-tail reconciliation advances the transcript watermark; a failed read does
-not. An owned session that misses live content must therefore recover on a
-later heartbeat while the turn remains active, without waiting for idle or a
-page reload.
+A provider-progress heartbeat compares its progress timestamp with
+`transcriptSnapshotUpdatedAt` from the last REST transcript response whose rows
+the detail store applied. Each provider reader captures that timestamp with its
+accepted file, database, export, or in-process message snapshot; later summary
+or metadata work cannot advance it. Activity-channel metadata patches are not a
+transcript watermark: they can advance `session.updatedAt` even when the
+corresponding content-stream events did not reach this browser.
+
+A successful initial load, incremental catch-up, or full-tail reconciliation
+advances the watermark only when it applies at least one returned row. An empty
+incremental response, a failed read, or an older server that omits the additive
+snapshot field leaves the watermark unchanged. The same provider heartbeat can
+therefore request another bounded catch-up until a row-bearing snapshot closes
+the gap. An owned session that misses live content recovers while the turn
+remains active, without waiting for idle or a page reload.
 
 ## Store Model
 

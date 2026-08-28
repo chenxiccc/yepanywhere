@@ -141,9 +141,10 @@ Related topic: [reload-safe provider runtimes](reload-safe-provider-runtimes.md)
   still surfacing the interrupt boundary immediately.
 - A transport heartbeat is not provider progress, but a session heartbeat can
   expose provider progress the client failed to render. If its
-  `lastProviderMessageAt` is newer than the loaded session's durable
-  `updatedAt`, the client must catch up from durable transcript state and keep
-  retrying on later heartbeats while that gap remains.
+  `lastProviderMessageAt` is newer than the last applied reader-owned
+  `transcriptSnapshotUpdatedAt`, the client must catch up from durable
+  transcript state. Empty or unversioned reads do not advance that watermark,
+  so later heartbeats keep retrying while the gap remains.
 - A viewer opening a session cancels that process's pending idle teardown.
   When the final viewer of that session leaves, its eligible idle process
   receives a fresh full grace. Other session views, provider traffic, and

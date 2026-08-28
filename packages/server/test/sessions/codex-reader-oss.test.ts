@@ -11,12 +11,14 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as zlib from "node:zlib";
-import type { UrlProjectId } from "@yep-anywhere/shared";
+import type { CodexSessionEntry, UrlProjectId } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { encodeProjectId } from "../../src/projects/paths.js";
 import { CodexSessionReader } from "../../src/sessions/codex-reader.js";
 import { normalizeSession } from "../../src/sessions/normalization.js";
 import type { SummaryParserClient } from "../../src/sessions/summary-parser-worker-client.js";
+import type { SessionSummary } from "../../src/supervisor/types.js";
+import { getCodexRolloutActivityTimeMs } from "../../src/utils/codexRolloutFiles.js";
 import { isZstdJsonlSupported } from "../../src/utils/jsonl.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -34,6 +36,12 @@ const itIfWindows = process.platform === "win32" ? it : it.skip;
 
 interface CodexEntryReadInternals {
   entryReadOwners: Map<string, { joinedCallers: number }>;
+  buildSessionSummaryFromEntries(
+    sessionId: string,
+    projectId: UrlProjectId,
+    entries: CodexSessionEntry[],
+    transcriptSnapshotUpdatedAt: string,
+  ): Promise<SessionSummary | null>;
   readFileRange(
     filePath: string,
     start: number,
@@ -1992,6 +2000,86 @@ describe("CodexSessionReader - OSS Support", () => {
           entry.payload.message === "appended",
       ),
     ).toHaveLength(1);
+  });
+
+  it("binds the transcript version to rows accepted before summary work", async () => {
+    const sessionId = "summary-race-snapshot";
+    const timestamp = "2026-08-28T06:00:00.000Z";
+    const sessionPath = join(testDir, `${sessionId}.jsonl`);
+    await writeFile(
+      sessionPath,
+      `${[
+        JSON.stringify({
+          type: "session_meta",
+          timestamp,
+          payload: {
+            id: sessionId,
+            cwd: "/test/project",
+            timestamp,
+            model_provider: "openai",
+          },
+        }),
+        JSON.stringify({
+          type: "event_msg",
+          timestamp,
+          payload: { type: "user_message", message: "initial" },
+        }),
+      ].join("\n")}\n`,
+    );
+    const firstStats = await stat(sessionPath);
+    const expectedFirstVersion = new Date(
+      getCodexRolloutActivityTimeMs(sessionPath, firstStats),
+    ).toISOString();
+
+    const internals = reader as unknown as CodexEntryReadInternals;
+    const originalBuildSummary =
+      internals.buildSessionSummaryFromEntries.bind(reader);
+    let signalSummaryStarted!: () => void;
+    const summaryStarted = new Promise<void>((resolve) => {
+      signalSummaryStarted = resolve;
+    });
+    let releaseSummary!: () => void;
+    const summaryGate = new Promise<void>((resolve) => {
+      releaseSummary = resolve;
+    });
+    vi.spyOn(internals, "buildSessionSummaryFromEntries").mockImplementation(
+      async (...args) => {
+        signalSummaryStarted();
+        await summaryGate;
+        return originalBuildSummary(...args);
+      },
+    );
+
+    const firstRead = reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    await summaryStarted;
+    await appendFile(
+      sessionPath,
+      `${JSON.stringify({
+        type: "event_msg",
+        timestamp: "2026-08-28T06:01:00.000Z",
+        payload: { type: "agent_message", message: "appended" },
+      })}\n`,
+    );
+    releaseSummary();
+
+    const beforeAppendPass = await firstRead;
+    expect(beforeAppendPass?.data.session.entries).toHaveLength(2);
+    expect(beforeAppendPass?.transcriptSnapshotUpdatedAt).toBe(
+      expectedFirstVersion,
+    );
+    expect(beforeAppendPass?.summary.updatedAt).toBe(expectedFirstVersion);
+
+    const afterAppendPass = await reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    expect(afterAppendPass?.data.session.entries).toHaveLength(3);
+    expect(afterAppendPass?.transcriptSnapshotUpdatedAt).not.toBe(
+      expectedFirstVersion,
+    );
   });
 
   it("does not publish an entry read invalidated while it is in flight", async () => {
