@@ -584,10 +584,13 @@ Source lists support Up/Down selection, Escape return, and `/` to focus search
 when focus is outside an editor. Once desktop commit history has loaded, its
 selected commit or Working tree row owns initial keyboard focus instead of the
 application sidebar. Enter on that revision row enters its file outline at the
-first selectable file once the detail is available. In a commit file outline,
-Enter expands every structural path group when any is collapsed; otherwise it
-collapses every group except the selected file's ancestors, which keeps the
-focused file mounted. It does not activate the file row's pointer action.
+first selectable file once the detail is available. That Enter intent is tied
+to the current revision visit: moving to another revision by any other action
+cancels it, and later returning does not enter the file outline. In a commit
+file outline, Enter expands every structural path group when any is collapsed;
+otherwise it collapses every group except the selected file's ancestors, which
+keeps the focused file mounted. It does not activate the file row's pointer
+action.
 
 In a file outline, Up/Down traverse the visible rows; Right expands a collapsed
 group or enters its first child, while Left collapses an expanded group or

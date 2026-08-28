@@ -223,8 +223,11 @@ export function CommitBrowser({
     return states;
   }, [siteStates]);
 
-  const openRevision = useCallback(
-    (key: string) => {
+  const selectRevision = useCallback(
+    (key: string, enterFileList: boolean) => {
+      setPendingFileListCommit(
+        enterFileList && key !== WORKING_TREE_KEY ? key : null,
+      );
       if (!isWideScreen) {
         const scroller = browserRef.current?.closest<HTMLElement>(
           ".page-scroll-container",
@@ -236,16 +239,25 @@ export function CommitBrowser({
     },
     [isWideScreen, onSelectRevision, setSelectedKey],
   );
+  const openRevision = useCallback(
+    (key: string) => selectRevision(key, false),
+    [selectRevision],
+  );
   const enterRevision = useCallback(
     (key: string) => {
-      openRevision(key);
+      selectRevision(key, true);
       if (key === WORKING_TREE_KEY) {
         setWorkingTreeFileFocusRequest((current) => current + 1);
-      } else {
-        setPendingFileListCommit(key);
       }
     },
-    [openRevision],
+    [selectRevision],
+  );
+  const focusRevision = useCallback(
+    (key: string) => {
+      setPendingFileListCommit(null);
+      setSelectedKey(key);
+    },
+    [setSelectedKey],
   );
 
   const blameRevision =
@@ -467,7 +479,7 @@ export function CommitBrowser({
             revisionHref={(key) =>
               revisionHref(key === WORKING_TREE_KEY ? null : key)
             }
-            onFocusRevision={setSelectedKey}
+            onFocusRevision={focusRevision}
             onLoadMore={() => {
               void loadMore();
             }}

@@ -1486,6 +1486,85 @@ describe("CommitBrowser", () => {
     );
   });
 
+  it("abandons Enter when revision focus leaves before detail loads", async () => {
+    const older = "b".repeat(40);
+    const firstDetail = {
+      hash: SHA,
+      shortHash: "aaaaaaa",
+      subject: "first commit",
+      authorName: "Dev",
+      authorDate: "2026-07-26T00:00:00Z",
+      body: "",
+      files: [
+        {
+          path: "src/x.ts",
+          status: "M",
+          staged: false,
+          linesAdded: 1,
+          linesDeleted: 0,
+        },
+      ],
+    } as const;
+    let resolveFirstDetail!: (detail: typeof firstDetail) => void;
+    const firstDetailRequest = new Promise<typeof firstDetail>((resolve) => {
+      resolveFirstDetail = resolve;
+    });
+    primeApis();
+    getGitCommits.mockResolvedValue({
+      commits: [
+        {
+          hash: SHA,
+          shortHash: "aaaaaaa",
+          subject: "first commit",
+          authorName: "Dev",
+          authorDate: "2026-07-26T00:00:00Z",
+        },
+        {
+          hash: older,
+          shortHash: "bbbbbbb",
+          subject: "older commit",
+          authorName: "Dev",
+          authorDate: "2026-07-25T00:00:00Z",
+        },
+      ],
+      hasMore: false,
+    });
+    getGitCommit.mockImplementation((_projectId: string, sha: string) =>
+      sha === SHA
+        ? firstDetailRequest
+        : Promise.resolve({
+            hash: older,
+            shortHash: "bbbbbbb",
+            subject: "older commit",
+            authorName: "Dev",
+            authorDate: "2026-07-25T00:00:00Z",
+            body: "",
+            files: [],
+          }),
+    );
+    render(
+      <MemoryRouter>
+        <CommitBrowser projectId="p1" isWideScreen={true} t={t} />
+      </MemoryRouter>,
+    );
+
+    const firstRow = (await screen.findByText("first commit")).closest("a")!;
+    const olderRow = screen.getByText("older commit").closest("a")!;
+    await waitFor(() => expect(document.activeElement).toBe(firstRow));
+    fireEvent.keyDown(firstRow, { key: "Enter" });
+    fireEvent.keyDown(firstRow, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(olderRow);
+    fireEvent.keyDown(olderRow, { key: "ArrowUp" });
+    expect(document.activeElement).toBe(firstRow);
+
+    await act(async () => {
+      resolveFirstDetail(firstDetail);
+      await firstDetailRequest;
+    });
+    await findSourcePath("src/x.ts");
+    expect(document.activeElement).toBe(firstRow);
+  });
+
   it("reveals stepped commit files and pages the diff in place", async () => {
     primeApis();
     getGitCommit.mockResolvedValue({
