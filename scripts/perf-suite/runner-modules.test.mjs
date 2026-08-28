@@ -48,6 +48,7 @@ test("core validates scenario shape and creates exact-size fixture text", () => 
         interactionTrace: {
           enabled: true,
           hoverCardDelayMs: 240,
+          scope: "full",
           tooltipDelayMs: 80,
         },
         interactionTraceOnly: true,
@@ -62,6 +63,23 @@ test("core validates scenario shape and creates exact-size fixture text", () => 
         "unit",
       ),
     /browserSettings must be a string-to-string object/,
+  );
+  assert.doesNotThrow(() =>
+    validateScenario(
+      {
+        ...scenario,
+        interactionTrace: {
+          beforeAndAfterAppend: true,
+          enabled: true,
+          hoverCardDelayMs: 240,
+          idleBeforeSecondSwitchMs: 65_000,
+          scope: "sidebar-switch",
+          sidebarSwitchRounds: 3,
+          tooltipDelayMs: 80,
+        },
+      },
+      "sidebar-switch",
+    ),
   );
 });
 
@@ -81,6 +99,7 @@ test("browser interaction trials retain projection-specific distributions", () =
     hoverCard: { workAfterDelayMs: 3 },
     olderHistory: { nextPaintMs: 30 },
     projectionTransition: { nextPaintMs: 20 },
+    sidebarSwitch: { switches: [{ nextPaintMs: typingMs * 3 }] },
     tooltip: { workAfterDelayMs: 2 },
   });
   const aggregate = summarizeInteractionTrials([
@@ -89,6 +108,7 @@ test("browser interaction trials retain projection-specific distributions", () =
   ]);
   assert.equal(aggregate.conversation.typingKeyToFrameP95.p95Ms, 14);
   assert.equal(aggregate.full.scrollMissedFrameFraction.medianMs, 0.2);
+  assert.equal(aggregate.sidebarSwitchNextPaint.p95Ms, 42);
 
   const browserAggregate = aggregateBrowserRuns([
     {

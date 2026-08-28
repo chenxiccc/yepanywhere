@@ -151,10 +151,23 @@ export function validateScenario(scenario, name) {
       !Number.isInteger(scenario.interactionTrace.tooltipDelayMs) ||
       scenario.interactionTrace.tooltipDelayMs < 0 ||
       !Number.isInteger(scenario.interactionTrace.hoverCardDelayMs) ||
-      scenario.interactionTrace.hoverCardDelayMs < 0)
+      scenario.interactionTrace.hoverCardDelayMs < 0 ||
+      !["full", "scale-control", "sidebar-switch"].includes(
+        scenario.interactionTrace.scope,
+      ) ||
+      (scenario.interactionTrace.scope === "sidebar-switch" &&
+        (!Number.isInteger(scenario.interactionTrace.sidebarSwitchRounds) ||
+          scenario.interactionTrace.sidebarSwitchRounds <= 0)) ||
+      (scenario.interactionTrace.beforeAndAfterAppend !== undefined &&
+        (scenario.interactionTrace.scope !== "sidebar-switch" ||
+          scenario.interactionTrace.beforeAndAfterAppend !== true ||
+          !Number.isInteger(
+            scenario.interactionTrace.idleBeforeSecondSwitchMs,
+          ) ||
+          scenario.interactionTrace.idleBeforeSecondSwitchMs < 0)))
   ) {
     throw new Error(
-      `scenarios.${name}.interactionTrace must enable nonnegative integer delays`,
+      `scenarios.${name}.interactionTrace has invalid scope or timing`,
     );
   }
   if (

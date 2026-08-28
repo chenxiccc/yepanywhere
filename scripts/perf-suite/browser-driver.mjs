@@ -44,38 +44,41 @@ function summarizeInteractionMetric(trials, select) {
 }
 
 export function summarizeInteractionTrials(trials) {
+  const sidebarSwitchValues = trials.flatMap((trial) =>
+    (trial.sidebarSwitch?.switches ?? []).map((entry) => entry.nextPaintMs),
+  );
   return {
     conversation: {
       typingKeyToFrameP95: summarizeInteractionMetric(
         trials,
-        (trial) => trial.conversation.typing.keyToFrameP95Ms,
+        (trial) => trial.conversation?.typing.keyToFrameP95Ms,
       ),
       scrollFrameP95: summarizeInteractionMetric(
         trials,
-        (trial) => trial.conversation.scroll.frameP95Ms,
+        (trial) => trial.conversation?.scroll.frameP95Ms,
       ),
       scrollMissedFrameFraction: summarizeInteractionMetric(
         trials,
-        (trial) => trial.conversation.scroll.missedFrameFraction,
+        (trial) => trial.conversation?.scroll.missedFrameFraction,
       ),
     },
     full: {
       typingKeyToFrameP95: summarizeInteractionMetric(
         trials,
-        (trial) => trial.full.typing.keyToFrameP95Ms,
+        (trial) => trial.full?.typing.keyToFrameP95Ms,
       ),
       scrollFrameP95: summarizeInteractionMetric(
         trials,
-        (trial) => trial.full.scroll.frameP95Ms,
+        (trial) => trial.full?.scroll.frameP95Ms,
       ),
       scrollMissedFrameFraction: summarizeInteractionMetric(
         trials,
-        (trial) => trial.full.scroll.missedFrameFraction,
+        (trial) => trial.full?.scroll.missedFrameFraction,
       ),
     },
     hoverCardWorkAfterDelay: summarizeInteractionMetric(
       trials,
-      (trial) => trial.hoverCard.workAfterDelayMs,
+      (trial) => trial.hoverCard?.workAfterDelayMs,
     ),
     olderHistoryNextPaint: summarizeInteractionMetric(
       trials,
@@ -83,11 +86,13 @@ export function summarizeInteractionTrials(trials) {
     ),
     projectionNextPaint: summarizeInteractionMetric(
       trials,
-      (trial) => trial.projectionTransition.nextPaintMs,
+      (trial) => trial.projectionTransition?.nextPaintMs,
     ),
+    sidebarSwitchNextPaint:
+      sidebarSwitchValues.length > 0 ? summarize(sidebarSwitchValues) : null,
     tooltipWorkAfterDelay: summarizeInteractionMetric(
       trials,
-      (trial) => trial.tooltip.workAfterDelayMs,
+      (trial) => trial.tooltip?.workAfterDelayMs,
     ),
   };
 }
@@ -504,17 +509,144 @@ async function measureOlderHistoryDisclosure(page) {
   return result;
 }
 
-async function measureBrowserInteractionTrace(page, trace) {
+async function ensureSidebarSessionLinks(page) {
+  const visibleLinks = page.locator(".session-list-item__link:visible");
+  if ((await visibleLinks.count()) < 2) {
+    const openSidebar = page.getByRole("button", {
+      exact: true,
+      name: "Open sidebar",
+    });
+    if ((await openSidebar.count()) !== 1) {
+      throw new Error("sidebar switch trace could not open the session list");
+    }
+    await openSidebar.click();
+    await page.waitForFunction(
+      () => document.querySelectorAll(".session-list-item__link").length >= 2,
+    );
+  }
+  return visibleLinks;
+}
+
+async function measureSidebarSwitches(
+  page,
+  cdp,
+  trace,
+  expectedAssistantTurnIndex,
+) {
+  const initialLinks = await ensureSidebarSessionLinks(page);
+  const sessionPaths = [
+    ...new Set(
+      await initialLinks.evaluateAll((links) =>
+        links.map((link) => new URL(link.href).pathname),
+      ),
+    ),
+  ];
+  const initialPath = new URL(page.url()).pathname;
+  const alternatePath = sessionPaths.find(
+    (pathName) => pathName !== initialPath,
+  );
+  if (!alternatePath || !sessionPaths.includes(initialPath)) {
+    throw new Error("sidebar switch trace requires two fixture session links");
+  }
+  const targetPaths = Array.from(
+    { length: trace.sidebarSwitchRounds * 2 },
+    (_, index) => (index % 2 === 0 ? alternatePath : initialPath),
+  );
+  const switches = [];
+  for (const targetPath of targetPaths) {
+    const links = await ensureSidebarSessionLinks(page);
+    const targetIndex = await links.evaluateAll(
+      (elements, pathName) =>
+        elements.findIndex(
+          (element) => new URL(element.href).pathname === pathName,
+        ),
+      targetPath,
+    );
+    if (targetIndex < 0) {
+      throw new Error(`sidebar switch target was absent: ${targetPath}`);
+    }
+    const fromPath = new URL(page.url()).pathname;
+    const sessionId = decodeURIComponent(
+      targetPath.split("/sessions/")[1]?.split("/")[0] ?? "",
+    );
+    if (!sessionId)
+      throw new Error(`sidebar target omitted session: ${targetPath}`);
+    const marker = `[${sessionId}:assistant:${expectedAssistantTurnIndex}]`;
+    await resetInteractionProbe(page);
+    const startedAtMs = await page.evaluate(() => performance.now());
+    await links.nth(targetIndex).click();
+    await page.waitForURL((url) => url.pathname === targetPath);
+    await page.waitForFunction(
+      (expectedMarker) => document.body?.innerText.includes(expectedMarker),
+      marker,
+    );
+    await twoAnimationFrames(page);
+    const finishedAtMs = await page.evaluate(() => performance.now());
+    const probe = await interactionProbeResult(page);
+    const nextPaintMs = round(finishedAtMs - startedAtMs);
+    await recordSemanticMeasurement(
+      page,
+      "performance-sprint.sidebar-switch-next-paint",
+      nextPaintMs,
+    );
+    switches.push({
+      cache: (await clientTelemetry(page)).transcriptMemory,
+      fromPath,
+      longTasks: summarizeLongTasks(probe.longTasks),
+      nextPaintMs,
+      state: await collectInteractionState(page, cdp, {
+        collectGarbage: true,
+      }),
+      targetPath,
+    });
+  }
+  return {
+    initialPath,
+    rounds: trace.sidebarSwitchRounds,
+    switches,
+  };
+}
+
+async function measureBrowserInteractionTrace(
+  page,
+  scenario,
+  trace,
+  expectedAssistantTurnIndex = scenario.initialTurns + scenario.newTurns - 1,
+) {
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Performance.enable");
   try {
     const initial = await collectInteractionState(page, cdp, {
       collectGarbage: true,
     });
+    if (trace.scope === "sidebar-switch") {
+      const sidebarSwitch = await measureSidebarSwitches(
+        page,
+        cdp,
+        trace,
+        expectedAssistantTurnIndex,
+      );
+      return {
+        final: await collectInteractionState(page, cdp, {
+          collectGarbage: true,
+        }),
+        initial,
+        sidebarSwitch,
+      };
+    }
     const conversation = {
       typing: await measureComposerTyping(page, "conversation"),
       scroll: await measureTranscriptScroll(page, "conversation"),
     };
+    if (trace.scope === "scale-control") {
+      return {
+        conversation,
+        final: await collectInteractionState(page, cdp, {
+          collectGarbage: true,
+        }),
+        initial,
+      };
+    }
     const tooltip = await measureTooltip(page, trace.tooltipDelayMs);
     const hoverCard = await measureSessionHoverCard(
       page,
@@ -1057,9 +1189,26 @@ export async function measureBrowserMode({
       processMemory,
       async prepareAppend() {
         await Promise.all(
-          livePages.flatMap(({ appendTargets, pages }) =>
-            pages.map((page, index) =>
-              prepareClientAppendProfile(
+          livePages.flatMap(({ appendTargets, mode, pages }) =>
+            pages.map(async (page, index) => {
+              if (scenario.interactionTrace?.beforeAndAfterAppend) {
+                const fresh = await measureBrowserInteractionTrace(
+                  page,
+                  scenario,
+                  scenario.interactionTrace,
+                  scenario.initialTurns - 1,
+                );
+                await wait(scenario.interactionTrace.idleBeforeSecondSwitchMs);
+                const idle = await measureBrowserInteractionTrace(
+                  page,
+                  scenario,
+                  scenario.interactionTrace,
+                  scenario.initialTurns - 1,
+                );
+                mode.interactionTraceBeforeAppend ??= [];
+                mode.interactionTraceBeforeAppend.push({ fresh, idle });
+              }
+              return prepareClientAppendProfile(
                 page,
                 sessionBrowserTarget(
                   server,
@@ -1070,8 +1219,8 @@ export async function measureBrowserMode({
                   glossarySupported,
                   projectPathsSupported: generalizedProjectPathsSupported,
                 },
-              ),
-            ),
+              );
+            }),
           ),
         );
       },
@@ -1135,6 +1284,7 @@ export async function measureBrowserMode({
                 pages.map((page) =>
                   measureBrowserInteractionTrace(
                     page,
+                    scenario,
                     scenario.interactionTrace,
                   ),
                 ),

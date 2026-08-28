@@ -227,6 +227,7 @@ export function aggregateBrowserRuns(runs) {
         "hoverCardWorkAfterDelay.p95Ms",
         "olderHistoryNextPaint.p95Ms",
         "projectionNextPaint.p95Ms",
+        "sidebarSwitchNextPaint.p95Ms",
         "tooltipWorkAfterDelay.p95Ms",
       ]) {
         const values = modes
