@@ -54,8 +54,8 @@ export interface RunManagedStdioRunnerOptions {
   stderr: Writable;
   runtimeId: string;
   createSession: ManagedRunnerSessionFactory;
-  /** Release target ownership only after provider shutdown is complete. */
-  onCooperativeShutdown?: () => void | Promise<void>;
+  /** Release target ownership only when provider shutdown is known complete. */
+  onOwnershipRelease?: () => void | Promise<void>;
   maxInputFrameBytes?: number;
   maxOutputFrameBytes?: number;
   maxQueuedOutputBytes?: number;
@@ -237,6 +237,12 @@ export async function runManagedStdioRunner(
   let controllerId: string | null = null;
   let launched = false;
   let cooperativeShutdown = false;
+  let ownershipReleased = false;
+  const releaseOwnership = async (): Promise<void> => {
+    if (ownershipReleased) return;
+    await options.onOwnershipRelease?.();
+    ownershipReleased = true;
+  };
   const terminalResult: {
     current: { reason: string; exitCode: number } | null;
   } = { current: null };
@@ -341,6 +347,7 @@ export async function runManagedStdioRunner(
             error: "Managed runner requires hello as the first frame",
           });
           await owner.shutdown("missing hello");
+          await releaseOwnership();
           await writer.close();
           return 2;
         }
@@ -352,6 +359,7 @@ export async function runManagedStdioRunner(
             supportedProtocolVersion: MANAGED_RUNNER_PROTOCOL_VERSION,
           });
           await owner.shutdown("incompatible protocol");
+          await releaseOwnership();
           await writer.close();
           return 2;
         }
@@ -362,6 +370,7 @@ export async function runManagedStdioRunner(
             error: "Invalid managed runner lease id",
           });
           await owner.shutdown("invalid lease");
+          await releaseOwnership();
           await writer.close();
           return 2;
         }
@@ -468,6 +477,7 @@ export async function runManagedStdioRunner(
             error: "Invalid managed runner launch request",
           });
           await owner.shutdown("invalid launch");
+          await releaseOwnership();
           await writer.close();
           return 1;
         }
@@ -501,6 +511,7 @@ export async function runManagedStdioRunner(
             error: providerSessionErrorMessage(error),
           });
           await owner.shutdown("provider launch failed");
+          await releaseOwnership();
           await writer.close();
           return 1;
         }
@@ -511,7 +522,7 @@ export async function runManagedStdioRunner(
         cooperativeShutdown = true;
         failPendingAuth(new Error("Managed runner is shutting down"));
         await owner.shutdown("controller requested shutdown");
-        await options.onCooperativeShutdown?.();
+        await releaseOwnership();
         writer.write({ type: "shutdownComplete", leaseId });
         await writer.close();
         return 0;
@@ -542,6 +553,7 @@ export async function runManagedStdioRunner(
     if (!cooperativeShutdown) {
       failPendingAuth(new Error("Managed runner controller stream closed"));
       await owner.shutdown("controller stdin EOF");
+      if (!launched) await releaseOwnership();
       writer.write({
         type: launched ? "controllerLost" : "launchFailed",
         phase: launched ? "active" : "pre-start",
@@ -562,6 +574,13 @@ export async function runManagedStdioRunner(
     );
     diagnostic(providerSessionErrorMessage(error));
     await owner.shutdown("managed runner protocol failure").catch(() => {});
+    if (!launched) {
+      try {
+        await releaseOwnership();
+      } catch (releaseError) {
+        diagnostic(providerSessionErrorMessage(releaseError));
+      }
+    }
     try {
       writer.write({
         type: "runnerFailed",

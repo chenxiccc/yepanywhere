@@ -275,7 +275,7 @@ async function main(): Promise<number> {
       process.env.YEP_MANAGED_RUNNER_RUNTIME_ID ??
       `managed-runner-${randomUUID()}`,
     createSession,
-    onCooperativeShutdown: releaseManagedRunnerLease,
+    onOwnershipRelease: releaseManagedRunnerLease,
   });
 }
 

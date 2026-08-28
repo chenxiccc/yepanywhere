@@ -340,8 +340,10 @@ environment, and sandbox configuration.
 Exactly one active runner may own a managed workspace. The target atomically
 creates a workspace-local lease before provider start; a conflict fails before
 launch acceptance and cannot start a second Codex writer. Orderly shutdown
-removes the lease. A channel failure after acceptance remains uncertain and
-does not authorize a competing resume.
+removes the lease. Any provider or protocol failure known to precede launch
+acceptance shuts down the partial provider, removes its owned lease, and permits
+a clean retry. A channel failure after acceptance remains uncertain and does
+not authorize a competing resume.
 
 Claude is not part of this baseline. The released Claude SSH executor remains
 intact, and a future managed-runner Claude adapter requires a separate plan and

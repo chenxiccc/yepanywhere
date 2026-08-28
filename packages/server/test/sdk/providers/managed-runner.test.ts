@@ -276,6 +276,7 @@ function stdioHarness(
     maxInputFrameBytes?: number;
     maxOutputFrameBytes?: number;
     maxQueuedOutputBytes?: number;
+    onOwnershipRelease?: () => void | Promise<void>;
   },
   createSession?: Parameters<typeof runManagedStdioRunner>[0]["createSession"],
 ): StdioHarness {
@@ -618,7 +619,12 @@ describe("managed runner stdio protocol", () => {
       expect.objectContaining({ type: "runnerFailed" }),
     );
 
-    const launchFailure = stdioHarness();
+    let ownershipReleases = 0;
+    const launchFailure = stdioHarness({
+      onOwnershipRelease: () => {
+        ownershipReleases += 1;
+      },
+    });
     launchFailure.send({
       type: "hello",
       protocolVersion: 2,
@@ -640,6 +646,7 @@ describe("managed runner stdio protocol", () => {
         error: "Fake provider rejected launch",
       }),
     );
+    expect(ownershipReleases).toBe(1);
 
     const providerFailure = stdioHarness();
     await launchHarness(providerFailure);

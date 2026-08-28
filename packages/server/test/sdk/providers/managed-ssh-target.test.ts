@@ -79,7 +79,16 @@ process.stdin.on("data", (chunk) => {
     if (!line) continue;
     const frame = JSON.parse(line);
     if (frame.type === "hello") send({ type: "helloAck", leaseId: frame.leaseId, protocolVersion: 2 });
-    if (frame.type === "launch") { accepted = true; send({ type: "launchAccepted", leaseId: frame.leaseId }); }
+    if (frame.type === "launch") {
+      if (frame.runtimeConfig?.failOnStart === true) {
+        releaseLease();
+        send({ type: "launchFailed", leaseId: frame.leaseId, error: "fixture provider rejected launch" });
+        process.stdin.destroy();
+        continue;
+      }
+      accepted = true;
+      send({ type: "launchAccepted", leaseId: frame.leaseId });
+    }
     if (frame.type === "shutdown") { releaseLease(); send({ type: "shutdownComplete", leaseId: frame.leaseId }); process.stdin.destroy(); }
   }
 });
@@ -361,6 +370,102 @@ describe.skipIf(process.platform === "win32")("ManagedSshTarget", () => {
         `test ! -e '${workspaceDirectory}/active-runner-lease'`,
       ),
     ).resolves.toBeDefined();
+  });
+
+  it("releases a lease after provider launch fails before acceptance", async () => {
+    const directory = await fixtureDirectory(
+      "managed-ssh-provider-launch-failure-",
+    );
+    const remoteRoot = join(directory, "remote");
+    const workspaceDirectory = join(remoteRoot, "workspaces", "workspace-one");
+    const cwd = join(workspaceDirectory, "worktree");
+    await mkdir(cwd, { recursive: true, mode: 0o700 });
+    const target = new ManagedSshTarget({
+      hostAlias: "fixture-linux",
+      remoteRoot,
+      sshCommand: fakeSshPath,
+      nodeCommand: process.execPath,
+      terminationGraceMs: 100,
+    });
+    const { artifactPath, manifest } = await createArtifact(directory);
+    await target.installRunnerArtifact(artifactPath, manifest, {
+      inspection: await target.inspect(),
+    });
+
+    const failed = target.launchRunner({
+      manifest,
+      cwd,
+      workspaceLease: { workspaceDirectory, leaseId: "failed-provider" },
+    });
+    const failedFrames: Record<string, unknown>[] = [];
+    let failedBuffer = "";
+    failed.output.setEncoding("utf8");
+    failed.output.on("data", (chunk: string) => {
+      failedBuffer += chunk;
+      const lines = failedBuffer.split("\n");
+      failedBuffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (line) failedFrames.push(JSON.parse(line));
+      }
+    });
+    failed.input.write(
+      `${JSON.stringify({ type: "hello", protocolVersion: 2, leaseId: "failed-provider" })}\n`,
+    );
+    await waitForFrame(failedFrames, (frame) => frame.type === "helloAck");
+    failed.input.write(
+      `${JSON.stringify({ type: "launch", leaseId: "failed-provider", runtimeConfig: { failOnStart: true } })}\n`,
+    );
+    await waitForFrame(failedFrames, (frame) => frame.type === "launchFailed");
+    await expect(failed.terminal).resolves.toMatchObject({
+      classification: "pre-launch-failure",
+      code: 1,
+    });
+    await expect(
+      target.runCommand(
+        `test ! -e '${workspaceDirectory}/active-runner-lease'`,
+      ),
+    ).resolves.toBeDefined();
+
+    const retry = target.launchRunner({
+      manifest,
+      cwd,
+      workspaceLease: { workspaceDirectory, leaseId: "provider-retry" },
+    });
+    const retryFrames: Record<string, unknown>[] = [];
+    let retryBuffer = "";
+    retry.output.setEncoding("utf8");
+    retry.output.on("data", (chunk: string) => {
+      retryBuffer += chunk;
+      const lines = retryBuffer.split("\n");
+      retryBuffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line) continue;
+        const frame = JSON.parse(line);
+        retryFrames.push(frame);
+        if (frame.type === "shutdownComplete") {
+          retry.markCooperativeCompletion();
+        }
+      }
+    });
+    retry.input.write(
+      `${JSON.stringify({ type: "hello", protocolVersion: 2, leaseId: "provider-retry" })}\n`,
+    );
+    await waitForFrame(retryFrames, (frame) => frame.type === "helloAck");
+    retry.input.write(
+      `${JSON.stringify({ type: "launch", leaseId: "provider-retry" })}\n`,
+    );
+    await waitForFrame(retryFrames, (frame) => frame.type === "launchAccepted");
+    retry.markLaunchAccepted();
+    retry.input.write(
+      `${JSON.stringify({ type: "shutdown", leaseId: "provider-retry" })}\n`,
+    );
+    await waitForFrame(
+      retryFrames,
+      (frame) => frame.type === "shutdownComplete",
+    );
+    await expect(retry.terminal).resolves.toMatchObject({
+      classification: "clean",
+    });
   });
 
   it("keeps the workspace fenced after an uncertain runner loss", async () => {
