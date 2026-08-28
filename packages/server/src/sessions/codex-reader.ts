@@ -1543,7 +1543,6 @@ export class CodexSessionReader implements ISessionReader {
       cached.partialLine = parsed.partialLine;
       cached.size = stats.size;
       cached.mtimeMs = stats.mtimeMs;
-      cached.normalizationSource = {};
       this.cacheAgentMappingsFromEntries(
         sessionId,
         filePath,

@@ -391,6 +391,29 @@ Regression coverage now pins head-mode propagation for recents, Project Queue
 direct title enrichment, working-project validation, retitle provider
 fallback, and Codex clone title/provider fallback.
 
+### `2026-08-28`: Append-Aware Codex Detail Normalization
+
+Codex entry caching already parsed only a file's appended byte range, but it
+discarded the normalization identity on every append. Incremental detail reads
+therefore converted the complete retained entry array before slicing out a few
+new messages. A live 330 MB session reproduced this at roughly 61,770
+normalized messages and 3.5 seconds of server-event-loop normalization per
+refresh.
+
+The Codex normalized projection now extends the accepted append-only source
+version. It carries positional ids, user-turn pairing, open/closed tool state,
+and compaction evidence forward, while copy-on-write keeps any earlier response
+projection immutable when a later event completes or orphans a tool. A new
+compaction record or non-append source change still rebuilds because it can
+change historical projection semantics.
+
+Focused regressions cover a 1,001-message prefix plus one append, a user
+response/event pair split across appends, and code-mode tool state completed by
+a later append. A three-run synthetic comparison at 60,001 prior messages took
+1.04-1.08 ms for the append path versus 45-77 ms for forced full conversion.
+This closes the incremental-detail normalization defect; full-summary parser
+pressure and reader-retention bounds remain separate work in this tracker.
+
 ## Fix Tracks
 
 ### SPC-001: Worker Client Serialization

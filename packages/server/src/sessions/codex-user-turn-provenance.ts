@@ -193,6 +193,23 @@ export function isCodexVisibleProviderUserResponse(
   );
 }
 
+export function classifyCodexUserResponse(
+  entry: CodexUserResponseEntry,
+  nextEntry: CodexSessionEntry | undefined,
+  hasUserMessageEvents: boolean,
+): CodexUserResponseKind {
+  if (isCodexUserMessageEventEntry(nextEntry)) {
+    return "user-authored";
+  }
+  if (isCodexVisibleProviderUserResponse(entry.payload)) {
+    return "visible-provider-context";
+  }
+  if (hasUserMessageEvents || isCodexContextualUserResponse(entry.payload)) {
+    return "hidden-provider-context";
+  }
+  return "legacy-unknown";
+}
+
 export function buildCodexUserTurnProvenance(
   entries: readonly CodexSessionEntry[],
 ): CodexUserTurnProvenance {
@@ -215,24 +232,16 @@ export function buildCodexUserTurnProvenance(
     }
 
     const nextEntry = entries[index + 1];
-    if (isCodexUserMessageEventEntry(nextEntry)) {
-      responseKinds.set(entry, "user-authored");
+    const kind = classifyCodexUserResponse(
+      entry,
+      nextEntry,
+      hasUserMessageEvents,
+    );
+    responseKinds.set(entry, kind);
+    if (kind === "user-authored" && isCodexUserMessageEventEntry(nextEntry)) {
       pairedEventByResponse.set(entry, nextEntry);
       pairedUserEvents.add(nextEntry);
-      return;
     }
-
-    if (isCodexVisibleProviderUserResponse(entry.payload)) {
-      responseKinds.set(entry, "visible-provider-context");
-      return;
-    }
-
-    if (hasUserMessageEvents || isCodexContextualUserResponse(entry.payload)) {
-      responseKinds.set(entry, "hidden-provider-context");
-      return;
-    }
-
-    responseKinds.set(entry, "legacy-unknown");
   });
 
   return {

@@ -51,8 +51,7 @@ import type { ContentBlock, Message, Session } from "../supervisor/types.js";
 import { collectVisibleClaudeEntries } from "./claude-messages.js";
 import {
   type CodexUserResponseKind,
-  type CodexUserTurnProvenance,
-  buildCodexUserTurnProvenance,
+  classifyCodexUserResponse,
   isCodexUserMessageEventEntry,
   isCodexUserResponseEntry,
 } from "./codex-user-turn-provenance.js";
@@ -100,15 +99,26 @@ function attachCodexProviderForkTurnId(
     writable: false,
   });
 }
-const codexMessageCache = new WeakMap<
-  object,
-  {
-    length: number;
-    firstEntry: CodexSessionEntry | undefined;
-    lastEntry: CodexSessionEntry | undefined;
-    messages: Message[];
-  }
->();
+interface CodexConversionState {
+  messageIndex: number;
+  hasUserMessageEvents: boolean;
+  toolCallContexts: Map<string, CodexToolCallContext>;
+  toolUseMessages: Map<string, Message>;
+  closedToolResultIds: Set<string>;
+  openToolUses: Map<string, Message>;
+  compactedTimestampMs: number[];
+  messagePositions: WeakMap<Message, number>;
+}
+
+interface CodexMessageCacheEntry {
+  length: number;
+  firstEntry: CodexSessionEntry | undefined;
+  lastEntry: CodexSessionEntry | undefined;
+  messages: Message[];
+  state: CodexConversionState;
+}
+
+const codexMessageCache = new WeakMap<object, CodexMessageCacheEntry>();
 
 /**
  * Preserve one normalization identity across defensive copies of an accepted
@@ -365,32 +375,51 @@ function convertCodexEntries(
     return cached.messages;
   }
 
-  const messages: Message[] = [];
-  let messageIndex = 0;
-  const userTurnProvenance = buildCodexUserTurnProvenance(entries);
-  const toolCallContexts = new Map<string, CodexToolCallContext>();
-  const closedToolResultIds = new Set<string>();
-  const openToolUses = new Map<string, Message>();
-  const compactedTimestampMs = collectCodexCompactedTimestampMs(entries);
+  const appendStart = cached ? codexAppendStart(cached, entries) : undefined;
+  const incremental = appendStart !== undefined && cached !== undefined;
+  const appendProjection = incremental
+    ? cloneCodexAppendProjection(cached)
+    : undefined;
+  const messages = appendProjection?.messages ?? [];
+  const state = appendProjection?.state ?? createCodexConversionState(entries);
+  if (incremental && appendStart < cached.length) {
+    state.messageIndex -= 1;
+  }
 
-  for (const entry of entries) {
-    if (isCodexToolLifecycleBoundary(entry, userTurnProvenance)) {
-      markOpenCodexToolUsesOrphaned(openToolUses);
+  for (
+    let entryIndex = appendStart ?? 0;
+    entryIndex < entries.length;
+    entryIndex += 1
+  ) {
+    const entry = entries[entryIndex];
+    if (!entry) continue;
+    const previousEntry = entries[entryIndex - 1];
+    const nextEntry = entries[entryIndex + 1];
+    const userResponseKind = isCodexUserResponseEntry(entry)
+      ? classifyCodexUserResponse(entry, nextEntry, state.hasUserMessageEvents)
+      : undefined;
+    const pairedUserEvent =
+      isCodexUserMessageEventEntry(entry) &&
+      isCodexUserResponseEntry(previousEntry);
+
+    if (
+      isCodexToolLifecycleBoundary(entry, userResponseKind, pairedUserEvent)
+    ) {
+      markOpenCodexToolUsesOrphaned(state.openToolUses);
     }
 
     if (entry.type === "response_item") {
-      const userResponseKind = isCodexUserResponseEntry(entry)
-        ? userTurnProvenance.responseKinds.get(entry)
-        : undefined;
       const clientUserMessageId = isCodexUserResponseEntry(entry)
-        ? (userTurnProvenance.pairedEventByResponse.get(entry)?.payload
-            .client_id ?? undefined)
+        ? isCodexUserMessageEventEntry(nextEntry)
+          ? (nextEntry.payload.client_id ?? undefined)
+          : undefined
         : undefined;
       const msg = convertCodexResponseItem(
         entry,
-        messageIndex++,
-        toolCallContexts,
-        closedToolResultIds,
+        state.messageIndex++,
+        state.toolCallContexts,
+        state.toolUseMessages,
+        state.closedToolResultIds,
         userResponseKind,
         clientUserMessageId,
       );
@@ -413,10 +442,11 @@ function convertCodexEntries(
           });
         }
         messages.push(msg);
-        observeCodexToolLifecycleMessage(msg, openToolUses);
+        state.messagePositions.set(msg, messages.length - 1);
+        observeCodexToolLifecycleMessage(msg, state.openToolUses);
       }
     } else if (entry.type === "compacted") {
-      const msg = convertCodexCompactedEntry(entry, messageIndex++);
+      const msg = convertCodexCompactedEntry(entry, state.messageIndex++);
       if (msg) {
         if (isCodexCorrelationDebugEnabled()) {
           logCodexCorrelationDebug({
@@ -429,19 +459,19 @@ function convertCodexEntries(
           });
         }
         messages.push(msg);
-        observeCodexToolLifecycleMessage(msg, openToolUses);
+        state.messagePositions.set(msg, messages.length - 1);
+        observeCodexToolLifecycleMessage(msg, state.openToolUses);
       }
     } else if (entry.type === "event_msg") {
       if (entry.payload.type === "patch_apply_end") {
-        attachCodexCodeModePatchResult(entry.payload, toolCallContexts);
+        attachCodexCodeModePatchResult(entry.payload, state.toolCallContexts);
       }
       const duplicateContextCompacted = isDuplicateCodexContextCompactedEvent(
         entry,
-        compactedTimestampMs,
+        state.compactedTimestampMs,
       );
       const shouldIncludeUserMessage =
-        isCodexUserMessageEventEntry(entry) &&
-        !userTurnProvenance.pairedUserEvents.has(entry);
+        isCodexUserMessageEventEntry(entry) && !pairedUserEvent;
       const shouldIncludeTaskComplete = entry.payload.type === "task_complete";
       const shouldIncludeTurnAborted = entry.payload.type === "turn_aborted";
       const shouldIncludeSubagentActivity =
@@ -462,16 +492,17 @@ function convertCodexEntries(
         shouldIncludeContextCompacted ||
         shouldIncludeExecCommandEnd
       ) {
-        const eventMessageIndex = messageIndex;
+        const eventMessageIndex = state.messageIndex;
         // The turn-based completion ID must not renumber later positional IDs.
         if (!shouldIncludeTaskComplete) {
-          messageIndex++;
+          state.messageIndex++;
         }
         const msg = convertCodexEventMsg(
           entry,
           eventMessageIndex,
-          toolCallContexts,
-          closedToolResultIds,
+          state.toolCallContexts,
+          state.toolUseMessages,
+          state.closedToolResultIds,
           sessionId,
         );
         if (msg) {
@@ -489,13 +520,14 @@ function convertCodexEntries(
             });
           }
           messages.push(msg);
-          observeCodexToolLifecycleMessage(msg, openToolUses);
+          state.messagePositions.set(msg, messages.length - 1);
+          observeCodexToolLifecycleMessage(msg, state.openToolUses);
         }
       } else if (duplicateContextCompacted) {
         // This event would previously have consumed a normalized message index.
         // Keep that gap so later Codex message IDs remain stable while the
         // duplicate compact boundary stops rendering and paginating.
-        messageIndex++;
+        state.messageIndex++;
       }
     }
   }
@@ -505,8 +537,159 @@ function convertCodexEntries(
     firstEntry,
     lastEntry,
     messages,
+    state,
   });
   return messages;
+}
+
+function createCodexConversionState(
+  entries: readonly CodexSessionEntry[],
+): CodexConversionState {
+  return {
+    messageIndex: 0,
+    hasUserMessageEvents: entries.some((entry) =>
+      isCodexUserMessageEventEntry(entry),
+    ),
+    toolCallContexts: new Map(),
+    toolUseMessages: new Map(),
+    closedToolResultIds: new Set(),
+    openToolUses: new Map(),
+    compactedTimestampMs: collectCodexCompactedTimestampMs(entries),
+    messagePositions: new WeakMap(),
+  };
+}
+
+function codexAppendStart(
+  cached: CodexMessageCacheEntry,
+  entries: readonly CodexSessionEntry[],
+): number | undefined {
+  if (
+    cached.length >= entries.length ||
+    cached.firstEntry !== entries[0] ||
+    cached.lastEntry !== entries[cached.length - 1]
+  ) {
+    return undefined;
+  }
+
+  for (let index = cached.length; index < entries.length; index += 1) {
+    const entry = entries[index];
+    if (!entry) continue;
+    if (entry.type === "compacted") {
+      return undefined;
+    }
+    if (
+      !cached.state.hasUserMessageEvents &&
+      isCodexUserMessageEventEntry(entry)
+    ) {
+      return undefined;
+    }
+  }
+
+  const previousLast = entries[cached.length - 1];
+  const firstAppended = entries[cached.length];
+  if (
+    cached.state.hasUserMessageEvents &&
+    isCodexUserResponseEntry(previousLast) &&
+    isCodexUserMessageEventEntry(firstAppended)
+  ) {
+    return cached.length - 1;
+  }
+  return cached.length;
+}
+
+function cloneCodexAppendProjection(cached: CodexMessageCacheEntry): {
+  messages: Message[];
+  state: CodexConversionState;
+} {
+  const messages = cached.messages.slice();
+  const messagePositions = new WeakMap<Message, number>();
+  const clonedMessages = new Map<Message, Message>();
+
+  const cloneStateMessage = (message: Message): Message => {
+    const existing = clonedMessages.get(message);
+    if (existing) return existing;
+    const position = cached.state.messagePositions.get(message);
+    if (position === undefined) {
+      throw new Error("Missing Codex normalization state message position");
+    }
+    const cloned = cloneCodexStateMessage(message);
+    messages[position] = cloned;
+    messagePositions.set(cloned, position);
+    clonedMessages.set(message, cloned);
+    return cloned;
+  };
+
+  const toolUseMessages = new Map<string, Message>();
+  for (const [callId, message] of cached.state.toolUseMessages) {
+    toolUseMessages.set(callId, cloneStateMessage(message));
+  }
+  const openToolUses = new Map<string, Message>();
+  for (const [callId, message] of cached.state.openToolUses) {
+    openToolUses.set(callId, cloneStateMessage(message));
+  }
+
+  const toolCallContexts = new Map<string, CodexToolCallContext>();
+  for (const [callId, context] of cached.state.toolCallContexts) {
+    const message = toolUseMessages.get(callId);
+    const input = message
+      ? findCodexToolUseInput(message, callId)
+      : cloneCodexToolInput(context.input);
+    toolCallContexts.set(callId, { ...context, input });
+  }
+
+  return {
+    messages,
+    state: {
+      messageIndex: cached.state.messageIndex,
+      hasUserMessageEvents: cached.state.hasUserMessageEvents,
+      toolCallContexts,
+      toolUseMessages,
+      closedToolResultIds: new Set(cached.state.closedToolResultIds),
+      openToolUses,
+      compactedTimestampMs: cached.state.compactedTimestampMs,
+      messagePositions,
+    },
+  };
+}
+
+function cloneCodexStateMessage(message: Message): Message {
+  const content = message.message?.content;
+  const cloned: Message = {
+    ...message,
+    ...(message.orphanedToolUseIds
+      ? { orphanedToolUseIds: [...message.orphanedToolUseIds] }
+      : {}),
+    ...(message.message
+      ? {
+          message: {
+            ...message.message,
+            ...(Array.isArray(content)
+              ? {
+                  content: content.map((block) =>
+                    block.type === "tool_use"
+                      ? { ...block, input: cloneCodexToolInput(block.input) }
+                      : block,
+                  ),
+                }
+              : {}),
+          },
+        }
+      : {}),
+  };
+  attachCodexProviderForkTurnId(cloned, getCodexProviderForkTurnId(message));
+  return cloned;
+}
+
+function cloneCodexToolInput(input: unknown): unknown {
+  return isRecord(input) ? { ...input } : input;
+}
+
+function findCodexToolUseInput(message: Message, callId: string): unknown {
+  const content = message.message?.content;
+  if (!Array.isArray(content)) return undefined;
+  return content.find(
+    (block) => block.type === "tool_use" && block.id === callId,
+  )?.input;
 }
 
 function attachCodexCodeModePatchResult(
@@ -539,11 +722,14 @@ function attachCodexCodeModePatchResult(
 
 function isCodexToolLifecycleBoundary(
   entry: CodexSessionEntry,
-  provenance: CodexUserTurnProvenance,
+  userResponseKind: CodexUserResponseKind | undefined,
+  pairedUserEvent: boolean,
 ): boolean {
   if (isCodexUserResponseEntry(entry)) {
-    const kind = provenance.responseKinds.get(entry);
-    return kind === "user-authored" || kind === "legacy-unknown";
+    return (
+      userResponseKind === "user-authored" ||
+      userResponseKind === "legacy-unknown"
+    );
   }
 
   if (entry.type !== "event_msg") {
@@ -551,8 +737,7 @@ function isCodexToolLifecycleBoundary(
   }
 
   return (
-    (isCodexUserMessageEventEntry(entry) &&
-      !provenance.pairedUserEvents.has(entry)) ||
+    (isCodexUserMessageEventEntry(entry) && !pairedUserEvent) ||
     entry.payload.type === "task_started" ||
     entry.payload.type === "task_complete" ||
     entry.payload.type === "turn_aborted" ||
@@ -561,7 +746,7 @@ function isCodexToolLifecycleBoundary(
 }
 
 function collectCodexCompactedTimestampMs(
-  entries: CodexSessionEntry[],
+  entries: readonly CodexSessionEntry[],
 ): number[] {
   const timestamps: number[] = [];
   for (const entry of entries) {
@@ -742,6 +927,7 @@ function convertCodexResponseItem(
   entry: CodexResponseItemEntry,
   index: number,
   toolCallContexts: Map<string, CodexToolCallContext>,
+  toolUseMessages: Map<string, Message>,
   closedToolResultIds: Set<string>,
   userResponseKind?: CodexUserResponseKind,
   clientUserMessageId?: string,
@@ -787,7 +973,7 @@ function convertCodexResponseItem(
       );
       toolCallContexts.set(converted.callId, converted.context);
       const turnId = getCodexResponseItemTurnId(payload);
-      return turnId
+      const message = turnId
         ? {
             ...converted.message,
             [CODEX_TOOL_CORRELATION_FIELD]: createCodexToolCorrelation(
@@ -797,6 +983,8 @@ function convertCodexResponseItem(
             ),
           }
         : converted.message;
+      toolUseMessages.set(converted.callId, message);
+      return message;
     }
 
     case "function_call_output": {
@@ -821,6 +1009,7 @@ function convertCodexResponseItem(
         !isCodexInterruptedToolOutput(payload.output)
       ) {
         toolCallContexts.delete(payload.call_id);
+        toolUseMessages.delete(payload.call_id);
         closedToolResultIds.add(payload.call_id);
       }
       const turnId = getCodexResponseItemTurnId(payload);
@@ -843,6 +1032,7 @@ function convertCodexResponseItem(
         entry.timestamp,
       );
       toolCallContexts.set(converted.callId, converted.context);
+      toolUseMessages.set(converted.callId, converted.message);
       return converted.message;
     }
 
@@ -863,6 +1053,7 @@ function convertCodexResponseItem(
         !isCodexInterruptedToolOutput(payload.output)
       ) {
         toolCallContexts.delete(customCallId);
+        toolUseMessages.delete(customCallId);
         closedToolResultIds.add(customCallId);
       }
       const turnId = getCodexResponseItemTurnId(payload);
@@ -1394,6 +1585,7 @@ function convertCodexEventMsg(
   entry: CodexEventMsgEntry,
   index: number,
   toolCallContexts: Map<string, CodexToolCallContext>,
+  toolUseMessages: Map<string, Message>,
   closedToolResultIds: Set<string>,
   sessionId: string,
 ): Message | null {
@@ -1413,6 +1605,7 @@ function convertCodexEventMsg(
       context,
     );
     toolCallContexts.delete(payloadUnknown.call_id);
+    toolUseMessages.delete(payloadUnknown.call_id);
     closedToolResultIds.add(payloadUnknown.call_id);
     return message;
   }

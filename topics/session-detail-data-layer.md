@@ -167,6 +167,15 @@ notification. The goal is to make the lifecycle of incoming messages explicit:
 received, normalized, maybe streaming, committed, reconciled with durable data,
 and selected for rendering.
 
+An append-only Codex detail read extends the accepted normalized projection
+rather than converting its complete retained transcript again. It preserves
+the prior message prefix and carries user-turn pairing and tool-lifecycle state
+forward. A previously returned projection remains immutable: an appended event
+that completes or orphans an earlier tool row updates a copy for the new
+projection. A replaced, shortened, or compacted source may rebuild because its
+historical projection can change. These cache rules do not change durable
+message ids or the selected compact-tail/full-history window.
+
 Incremental catch-up serializes reads per mounted session window, but
 serialization must not erase demand. Calls arriving during one in-flight read
 coalesce into one trailing read after it settles; calls during that trailing
