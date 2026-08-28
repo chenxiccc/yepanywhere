@@ -1,4 +1,4 @@
-import { type UrlProjectId } from "@yep-anywhere/shared";
+import type { UrlProjectId } from "@yep-anywhere/shared";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
