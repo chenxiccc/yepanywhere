@@ -5,6 +5,7 @@ import { toUrlProjectId } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ProjectScanner } from "../../src/projects/scanner.js";
 import { createFilesRoutes } from "../../src/routes/files.js";
+import { createMutableFileCacheMetadata } from "../../src/routes/mutable-file-cache.js";
 import { openProjectRelativeFile } from "../../src/utils/projectFileAccess.js";
 
 describe.skipIf(process.platform !== "linux")(
@@ -99,3 +100,44 @@ describe.skipIf(process.platform === "linux")(
     });
   },
 );
+
+describe("mutable project file snapshots", () => {
+  it("derives validators and bytes from one opened file snapshot", async () => {
+    const testDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "project-file-snapshot-test-"),
+    );
+    const projectRoot = path.join(testDir, "project");
+    const filePath = path.join(projectRoot, "note.txt");
+    await fs.mkdir(projectRoot);
+    await fs.writeFile(filePath, "old");
+    const oldMetadata = createMutableFileCacheMetadata(await fs.stat(filePath));
+    const projectId = toUrlProjectId(projectRoot);
+    const routes = createFilesRoutes({
+      scanner: {
+        getProject: async () => ({ path: projectRoot }),
+      } as unknown as ProjectScanner,
+      openFile: async (resolvedPath) => {
+        await fs.rename(filePath, `${filePath}.old`);
+        await fs.writeFile(filePath, "replacement project bytes");
+        return fs.open(resolvedPath, "r");
+      },
+    });
+
+    try {
+      const response = await routes.request(
+        `/${projectId}/files/raw?path=note.txt`,
+      );
+      const replacementMetadata = createMutableFileCacheMetadata(
+        await fs.stat(filePath),
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-length")).toBe("25");
+      expect(response.headers.get("etag")).toBe(replacementMetadata.etag);
+      expect(response.headers.get("etag")).not.toBe(oldMetadata.etag);
+      await expect(response.text()).resolves.toBe("replacement project bytes");
+    } finally {
+      await fs.rm(testDir, { recursive: true, force: true });
+    }
+  });
+});

@@ -1,8 +1,11 @@
 import {
   mkdir,
   mkdtemp,
+  open,
   realpath,
+  rename,
   rm,
+  stat,
   symlink,
   writeFile,
 } from "node:fs/promises";
@@ -10,6 +13,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createLocalFileRoutes } from "../../src/routes/local-file.js";
+import { createMutableFileCacheMetadata } from "../../src/routes/mutable-file-cache.js";
 
 describe("Local file routes", () => {
   let tempDir: string;
@@ -53,6 +57,36 @@ describe("Local file routes", () => {
     );
     expect(unchanged.status).toBe(304);
     expect(unchanged.headers.get("content-length")).toBeNull();
+  });
+
+  it("derives validators and bytes from one opened file snapshot", async () => {
+    const allowedDir = path.join(tempDir, "allowed");
+    await mkdir(allowedDir, { recursive: true });
+    const filePath = path.join(allowedDir, "mutable.txt");
+    await writeFile(filePath, "old");
+    const oldMetadata = createMutableFileCacheMetadata(await stat(filePath));
+
+    const routes = createLocalFileRoutes({
+      allowedPaths: [allowedDir],
+      openFile: async (resolvedPath) => {
+        await rename(filePath, `${filePath}.old`);
+        await writeFile(filePath, "replacement bytes");
+        return open(resolvedPath, "r");
+      },
+    });
+
+    const response = await routes.request(
+      `/?path=${encodeURIComponent(filePath)}`,
+    );
+    const replacementMetadata = createMutableFileCacheMetadata(
+      await stat(filePath),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-length")).toBe("17");
+    expect(response.headers.get("etag")).toBe(replacementMetadata.etag);
+    expect(response.headers.get("etag")).not.toBe(oldMetadata.etag);
+    await expect(response.text()).resolves.toBe("replacement bytes");
   });
 
   it("downloads active HTML and serves PDF inline from allowed directories", async () => {

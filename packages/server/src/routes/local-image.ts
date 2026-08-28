@@ -1,7 +1,7 @@
-import { createReadStream } from "node:fs";
+import type { FileHandle } from "node:fs/promises";
 import * as path from "node:path";
+import { Readable } from "node:stream";
 import { Hono } from "hono";
-import { stream } from "hono/streaming";
 import type { ProjectScanner } from "../projects/scanner.js";
 import {
   createLocalResourcePathPolicy,
@@ -12,6 +12,8 @@ import {
   createNotModifiedResponse,
   isMutableFileNotModified,
   mutableFileCacheHeaders,
+  type MutableFileOpener,
+  openMutableFileSnapshot,
 } from "./mutable-file-cache.js";
 import { createUntrustedFileResponseHeaders } from "./untrusted-file-response.js";
 
@@ -19,6 +21,7 @@ interface LocalImageDeps {
   allowedPaths: string[] | (() => string[]);
   scanner?: Pick<ProjectScanner, "listProjects">;
   includeProjects?: () => boolean;
+  openFile?: MutableFileOpener;
 }
 
 /**
@@ -54,7 +57,16 @@ export function createLocalImageRoutes(deps: LocalImageDeps) {
       if (!resolved.ok) {
         return c.json({ error: resolved.error }, resolved.status);
       }
-      const { resolvedPath, stats } = resolved.file;
+      const { resolvedPath } = resolved.file;
+      const snapshot = await openMutableFileSnapshot(
+        resolvedPath,
+        deps.openFile,
+      );
+      if (!snapshot) {
+        return c.json({ error: "Path is not a file" }, 400);
+      }
+      let fileHandle: FileHandle | undefined = snapshot.handle;
+      const { stats } = snapshot;
       const cacheMetadata = createMutableFileCacheMetadata(stats);
 
       const headers = createUntrustedFileResponseHeaders({
@@ -65,19 +77,21 @@ export function createLocalImageRoutes(deps: LocalImageDeps) {
         contentType,
         filePath: resolvedPath,
       });
-      if (isMutableFileNotModified(c.req.raw.headers, cacheMetadata)) {
-        return createNotModifiedResponse(headers);
-      }
-      headers.forEach((value, name) => {
-        c.header(name, value);
-      });
-
-      return stream(c, async (s) => {
-        const readable = createReadStream(resolvedPath);
-        for await (const chunk of readable) {
-          await s.write(chunk);
+      try {
+        if (isMutableFileNotModified(c.req.raw.headers, cacheMetadata)) {
+          return createNotModifiedResponse(headers);
         }
-      });
+        const stream = fileHandle.createReadStream({
+          autoClose: true,
+          start: 0,
+        });
+        const body = Readable.toWeb(stream) as ReadableStream<Uint8Array>;
+        const response = new Response(body, { headers });
+        fileHandle = undefined;
+        return response;
+      } finally {
+        await fileHandle?.close();
+      }
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         return c.json({ error: "File not found" }, 404);

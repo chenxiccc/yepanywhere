@@ -1,8 +1,33 @@
 import type { Stats } from "node:fs";
+import { open, type FileHandle } from "node:fs/promises";
 
 export const MUTABLE_FILE_CACHE_CONTROL = "private, no-cache";
 
 type MutableFileStats = Pick<Stats, "ctimeMs" | "mtimeMs" | "size">;
+
+export type MutableFileOpener = (filePath: string) => Promise<FileHandle>;
+
+export interface MutableFileSnapshot {
+  handle: FileHandle;
+  stats: Stats;
+}
+
+/** Open and validate the same descriptor that will supply response bytes. */
+export async function openMutableFileSnapshot(
+  filePath: string,
+  openFile: MutableFileOpener = (path) => open(path, "r"),
+): Promise<MutableFileSnapshot | null> {
+  const handle = await openFile(filePath);
+  let retained = false;
+  try {
+    const stats = await handle.stat();
+    if (!stats.isFile()) return null;
+    retained = true;
+    return { handle, stats };
+  } finally {
+    if (!retained) await handle.close();
+  }
+}
 
 export interface MutableFileCacheMetadata {
   etag: string;

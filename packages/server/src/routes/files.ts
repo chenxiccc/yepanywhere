@@ -43,6 +43,8 @@ import {
   createNotModifiedResponse,
   isMutableFileNotModified,
   mutableFileCacheHeaders,
+  type MutableFileOpener,
+  openMutableFileSnapshot,
 } from "./mutable-file-cache.js";
 import { createUntrustedFileResponseHeaders } from "./untrusted-file-response.js";
 
@@ -59,6 +61,8 @@ export interface FilesDeps {
   includeProjects?: () => boolean;
   /** Fail closed unless relative project files can remain descriptor-bound. */
   strictProjectFileAccess?: boolean;
+  /** File opener used to bind mutable response metadata and bytes. */
+  openFile?: MutableFileOpener;
 }
 
 type LocalResourcePathPolicy = ReturnType<typeof createLocalResourcePathPolicy>;
@@ -1209,12 +1213,14 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
       }
       filePath = resolved;
       try {
-        stats = await stat(filePath);
+        const snapshot = await openMutableFileSnapshot(filePath, deps.openFile);
+        if (!snapshot) {
+          return c.json({ error: "Path is not a file" }, 400);
+        }
+        stats = snapshot.stats;
+        fileHandle = snapshot.handle;
       } catch {
         return c.json({ error: "File not found" }, 404);
-      }
-      if (!stats.isFile()) {
-        return c.json({ error: "Path is not a file" }, 400);
       }
     }
 
@@ -1235,9 +1241,7 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
       if (isMutableFileNotModified(c.req.raw.headers, cacheMetadata)) {
         return createNotModifiedResponse(headers);
       }
-      const stream = fileHandle
-        ? fileHandle.createReadStream({ autoClose: true, start: 0 })
-        : createReadStream(filePath);
+      const stream = fileHandle.createReadStream({ autoClose: true, start: 0 });
       const body = Readable.toWeb(stream) as ReadableStream<Uint8Array>;
       const response = new Response(body, { headers });
       fileHandle = undefined;

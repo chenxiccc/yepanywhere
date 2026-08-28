@@ -66,9 +66,11 @@ from `/api/local-image`, `/api/local-file`, and
 weak stat validator (`ETag`) and `Last-Modified`. Every direct-client access
 therefore reaches the server to revalidate the current file: unchanged bytes
 may return `304 Not Modified`, while a changed size, mtime, or ctime returns the
-new body. The localhost transport also requests `cache: "no-cache"` for these
-routes so an older positive-TTL browser entry cannot hide the new policy after
-an upgrade.
+new body. Each response opens the file once, derives its validator and length
+from that descriptor, and streams that same descriptor, so a pathname
+replacement cannot pair metadata for one file with bytes from another. The
+localhost transport also requests `cache: "no-cache"` for these routes so an
+older positive-TTL browser entry cannot hide the new policy after an upgrade.
 
 Rendered `/api/local-file` Markdown documents are `private, no-store` rather
 than stat-validated because their HTML also depends on the running renderer,
