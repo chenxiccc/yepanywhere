@@ -2,7 +2,7 @@
 /**
  * harness-check — report installed agent-harness CLI versions and available
  * updates. A worked example of an acli-shaped tool (~/agents
- * topics/agent-cli.md) used by YA's bang-command tests, and genuinely
+ * topics/acli.md) used by YA's bang-command tests, and genuinely
  * usable: run `!!packages/server/test/bang/fixtures/harness-check` in a YA
  * session to see which agent CLIs on this host have updates.
  *

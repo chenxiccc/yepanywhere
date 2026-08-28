@@ -58,7 +58,7 @@ project directory:
   transcript position where they were run, documenting what the human
   checked and when, interleaved with the agent work it was checking.
 - **Agent-tool synergy.** The same acli-style tools built for agents
-  (`~/agents` `topics/agent-cli.md`; `agentctl` is the flagship) are exactly
+  (`~/agents` `topics/acli.md`; `agentctl` is the flagship) are exactly
   the compact, non-interactive commands a phone-bound supervisor wants.
 
 ## Contracts
@@ -229,7 +229,7 @@ keeps the submitted draft intact so the user can correct or retry it.
   `..` escapes refused).
 - **acli per-tool completion**: the server invokes
   `tool --acli-complete <argv-prefix...>` (protocol defined in `~/agents`
-  `topics/agent-cli.md` § Completion protocol) for the last pipeline
+  `topics/acli.md` § Completion protocol) for the last pipeline
   segment's command — but **only for allowlisted tools**
   (`YA_BANG_ACLI_COMPLETERS` env, comma-separated basenames, plus the
   built-in `harness-check`). Tab must never execute an arbitrary program: a

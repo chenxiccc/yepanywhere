@@ -1,7 +1,7 @@
 /**
  * Render consecutive runs of same-shape JSONL objects as GFM tables.
  *
- * The acli spec (~/agents topics/agent-cli.md) mandates compact JSONL for
+ * The acli spec (~/agents topics/acli.md) mandates compact JSONL for
  * non-TTY callers, so tools like `almanac` emit one flat object per line.
  * A run of >= `minRows` consecutive lines that each parse as a JSON object
  * with an identical key set is a uniform table; we render it via the shared

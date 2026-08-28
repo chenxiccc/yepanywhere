@@ -1,6 +1,6 @@
 /**
  * Tolerant reader for the TOON flat-table subset sanctioned by the acli spec
- * (~/agents topics/agent-cli.md): a `name[N]{c1,c2,...}:` header followed by
+ * (~/agents topics/acli.md): a `name[N]{c1,c2,...}:` header followed by
  * N comma-delimited, optionally double-quoted rows (optionally indented).
  * Read-side only — YA renders TOON it encounters; it never emits TOON.
  */

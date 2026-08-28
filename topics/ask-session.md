@@ -76,8 +76,8 @@ in the environment as `AGENTCTL_SESSION_ID`), a request id, and reply
 instructions.
 
 Reply is the same machinery pointed backwards, in one of the
-`agent-cli` output-channel classes (the channel taxonomy and the stdout
-deferral envelope are owned by `~/agents` `topics/agent-cli.md`):
+`acli` output-channel classes (the channel taxonomy and the stdout
+deferral envelope are owned by `~/agents` `topics/acli.md`):
 
 - **Route unspecified (default)**: `ya-ask` blocks on stdout for 30 seconds by
   default, or an invoker-selected shorter/longer timeout. A reply inside the

@@ -10,7 +10,7 @@ Topic: acli-ui
 
 Status: proposal (2026-07-26). Nothing below is built except what
 § Current state records. The `--acli-complete` JSONL protocol and the
-capability-line grammar are owned by `~/agents` `topics/agent-cli.md`;
+capability-line grammar are owned by `~/agents` `topics/acli.md`;
 this doc owns YA-side detection, the trust registry, and UI
 representation.
 
@@ -39,7 +39,7 @@ default-off).
 
 ## Detection: a testable "is this an ACLI tool" hint
 
-To be added to the protocol spec (`topics/agent-cli.md`); recorded
+To be added to the protocol spec (`topics/acli.md`); recorded
 here because YA is the consumer that needs it testable:
 
 - **Capability line.** A compliant tool's `--help` output contains
