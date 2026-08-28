@@ -1,10 +1,18 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  mkdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import http from "node:http";
 import { createRequire } from "node:module";
 import net from "node:net";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { performance } from "node:perf_hooks";
@@ -758,6 +766,12 @@ export async function startServer({
   const logPath = path.join(root, "server.log");
   const log = createWriteStream(logPath, { flags: "a" });
   const dataDir = path.join(root, "data");
+  const providerHostRuntimeDir = usesDevWrapper
+    ? path.join(tmpdir(), `ya-perf-host-${process.pid}-${port}`)
+    : null;
+  if (providerHostRuntimeDir) {
+    await rm(providerHostRuntimeDir, { force: true, recursive: true });
+  }
   await mkdir(dataDir, { recursive: true });
   await writeFile(
     path.join(dataDir, "install.json"),
@@ -790,11 +804,17 @@ export async function startServer({
     PI_SESSIONS_DIR: path.join(root, "empty-pi"),
     PORT: String(port),
     PERF_RUN_ID: runMarker,
+    VITE_DISABLE_ONBOARDING: "true",
     VITE_PORT: String(port + 2),
     VOICE_INPUT: "false",
     USE_MOCK_SDK: "true",
     YEP_DATA_DIR: dataDir,
     YEP_PROFILE: `perf-${process.pid}`,
+    ...(usesDevWrapper
+      ? {
+          YEP_PROVIDER_HOST_RUNTIME_DIR: providerHostRuntimeDir,
+        }
+      : {}),
     ...(isBuiltClient
       ? {
           CLIENT_DIST_PATH: path.join(checkout, "packages/client/dist"),
@@ -882,6 +902,7 @@ export async function startServer({
       maintenanceUrl,
       processStartedAtMs,
       processManifestPath,
+      providerHostRuntimeDir,
       readyProjects: bodyArray(
         readiness.projectResponse.body,
         "projects",
@@ -891,28 +912,34 @@ export async function startServer({
     };
   } catch (error) {
     log.end();
-    await stopServer(child);
+    await stopServer(child, providerHostRuntimeDir);
     const output = await readFile(logPath, "utf8").catch(() => "");
     throw new Error(`${error.message}\n${output.slice(-4_000)}`);
   }
 }
 
-export async function stopServer(child) {
-  if (child.exitCode !== null) return;
+export async function stopServer(child, providerHostRuntimeDir = null) {
   try {
-    process.kill(-child.pid, "SIGTERM");
-  } catch (error) {
-    if (error.code !== "ESRCH") throw error;
-  }
-  const exited = await Promise.race([
-    new Promise((resolve) => child.once("exit", () => resolve(true))),
-    wait(8_000).then(() => false),
-  ]);
-  if (!exited) {
+    if (child.exitCode !== null) return;
     try {
-      process.kill(-child.pid, "SIGKILL");
+      process.kill(-child.pid, "SIGTERM");
     } catch (error) {
       if (error.code !== "ESRCH") throw error;
+    }
+    const exited = await Promise.race([
+      new Promise((resolve) => child.once("exit", () => resolve(true))),
+      wait(8_000).then(() => false),
+    ]);
+    if (!exited) {
+      try {
+        process.kill(-child.pid, "SIGKILL");
+      } catch (error) {
+        if (error.code !== "ESRCH") throw error;
+      }
+    }
+  } finally {
+    if (providerHostRuntimeDir) {
+      await rm(providerHostRuntimeDir, { force: true, recursive: true });
     }
   }
 }

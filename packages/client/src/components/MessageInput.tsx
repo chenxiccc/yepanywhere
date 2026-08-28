@@ -15,7 +15,6 @@ import {
   type SessionLivenessSnapshot,
   type SlashCommand,
   type ThinkingMode,
-  type UserMessageCompositionMetadata,
   type UserMessageDeliveryIntent,
   type UserMessageSpeechMetadata,
 } from "@yep-anywhere/shared";
@@ -110,6 +109,7 @@ import type {
   PermissionMode,
   ProviderRuntimeStatus,
 } from "../types";
+import type { MessageSubmissionMetadata } from "../types/messageSubmission";
 import { AttachmentChip } from "./AttachmentChip";
 import chipStyles from "./AttachmentChip.module.css";
 import { DeliveryGlyph } from "./DeliveryGlyph";
@@ -151,13 +151,7 @@ export interface FullPaneComposerControls {
   restore: () => void;
 }
 
-export interface MessageSubmissionMetadata {
-  deliveryIntent: UserMessageDeliveryIntent;
-  patienceSeconds?: number;
-  steerNow?: boolean;
-  composition: UserMessageCompositionMetadata;
-  speech?: UserMessageSpeechMetadata;
-}
+export type { MessageSubmissionMetadata } from "../types/messageSubmission";
 
 interface PendingSpeechFinal {
   timer: ReturnType<typeof setTimeout>;

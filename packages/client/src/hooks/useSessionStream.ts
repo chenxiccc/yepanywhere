@@ -9,6 +9,10 @@ import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { isNonRetryableError } from "../lib/connection/types";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import {
+  isSemanticUiActionHarnessEnabled,
+  observeSemanticUiServerEvent,
+} from "../lib/semanticUiActions";
+import {
   createManagedStream,
   type ManagedStream,
   type ManagedStreamEvent,
@@ -97,6 +101,15 @@ export function useSessionStream(
           event.eventType === "heartbeat" ? undefined : event.eventId,
         onEvent: (event: ManagedStreamEvent) => {
           if (event.eventType !== "heartbeat") {
+            if (event.eventId && isSemanticUiActionHarnessEnabled()) {
+              observeSemanticUiServerEvent(
+                runtime.sourceKey,
+                sessionId,
+                event.eventId,
+                event.eventType,
+                event.data,
+              );
+            }
             logSessionUiTrace("session-stream-event", {
               sessionId,
               eventId: event.eventId ?? null,
@@ -156,7 +169,7 @@ export function useSessionStream(
       }
       stream.close();
     };
-  }, [runtime.transport, sessionId, wantsLiveDeltas]);
+  }, [runtime.sourceKey, runtime.transport, sessionId, wantsLiveDeltas]);
 
   return { connected, reconnect };
 }

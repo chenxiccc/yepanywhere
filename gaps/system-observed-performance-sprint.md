@@ -3,9 +3,9 @@
 YA has an end-to-end performance suite and several focused benchmarks, but no
 executable one-sprint contract that asks an agent or person to improve the
 user-visible system by a declared amount and then judges the result across
-client and server costs. This gap is blocked on
-`gaps/semantic-ui-action-stream.md`: begin only after that gap is closed and
-its gather/replay acceptance evidence exists.
+client and server costs. The prerequisite [semantic UI action stream](../topics/semantic-ui-actions.md)
+is implemented with gather/replay acceptance evidence, so this sprint may now
+begin.
 
 Run exactly one improvement-targeting sprint. Do not turn the procedure into
 an automatic generate-measure-retain loop, recurring job, or standing agent
@@ -228,8 +228,8 @@ runs that selected a theory is not confirmation.
 
 Acceptance:
 
-- `gaps/semantic-ui-action-stream.md` has been closed with its disabled-path
-  overhead and causal replay acceptance evidence;
+- the [semantic UI action stream](../topics/semantic-ui-actions.md) retains its
+  disabled-path overhead and causal replay acceptance evidence;
 - the owned harness leaves the live YA server, user browser, and `~/draft`
   untouched and passes process-survivor checks on every path;
 - one frozen trace exercises both Conversation View modes, incremental

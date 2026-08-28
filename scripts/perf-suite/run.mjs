@@ -241,6 +241,8 @@ async function main() {
       } else if (options.driver === "specialized") {
         console.log(
           `  provider enriched ${run.latency.providerFinalEnriched.p95Ms} ms; ` +
+            `semantic replay visible ` +
+            `${run.latency.semanticActionReplayVisible.p95Ms} ms; ` +
             `idle release ${run.latency.idleOwnershipRelease.p95Ms} ms; ` +
             `share herd ${run.latency.publicShareHerd.p95Ms} ms`,
         );

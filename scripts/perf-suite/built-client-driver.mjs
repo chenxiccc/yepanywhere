@@ -228,7 +228,7 @@ export async function measureBuiltClientRepetition({
     serverManifest = await readProcessManifest(serverLeg.processManifestPath);
   } finally {
     serverLeg.log.end();
-    await stopServer(serverLeg.child);
+    await stopServer(serverLeg.child, serverLeg.providerHostRuntimeDir);
   }
 
   const browserLegRoot = path.join(repetitionRoot, "built-client-cold");
@@ -257,7 +257,7 @@ export async function measureBuiltClientRepetition({
     browserManifest = await readProcessManifest(browserLeg.processManifestPath);
   } finally {
     browserLeg.log.end();
-    await stopServer(browserLeg.child);
+    await stopServer(browserLeg.child, browserLeg.providerHostRuntimeDir);
   }
 
   return {

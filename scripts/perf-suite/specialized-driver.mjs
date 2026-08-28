@@ -1,7 +1,8 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
+import { pathToFileURL } from "node:url";
 import {
   SUITE_VERSION,
   assertCount,
@@ -36,6 +37,509 @@ export function renderedAssistantHtml(message) {
       candidate?.type === "text" && typeof candidate._html === "string",
   );
   return block?._html ?? null;
+}
+
+async function installVisibleProviderTurnObserver(page, key) {
+  await page.evaluate((probeKey) => {
+    const countProviderMarkers = () =>
+      document.body?.innerText.match(/\[perf-assistant-[^\]]+\]/g)?.length ?? 0;
+    const probe = {
+      atMs: null,
+      baselineCount: countProviderMarkers(),
+      currentCount: 0,
+      observer: null,
+    };
+    const inspect = () => {
+      probe.currentCount = countProviderMarkers();
+      if (probe.currentCount <= probe.baselineCount) return;
+      probe.atMs ??= performance.now();
+      probe.observer?.disconnect();
+    };
+    probe.observer = new MutationObserver(inspect);
+    probe.observer.observe(document.documentElement, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+    window[probeKey] = probe;
+    inspect();
+  }, key);
+}
+
+async function waitForVisibleMarker(page, key, timeoutMs) {
+  try {
+    await page.waitForFunction(
+      (probeKey) => typeof window[probeKey]?.atMs === "number",
+      key,
+      { timeout: timeoutMs },
+    );
+  } catch (error) {
+    const diagnostic = await page.evaluate((probeKey) => {
+      const harness = window.__YA_SEMANTIC_UI_ACTIONS__;
+      return {
+        bodyTextTail: document.body?.innerText.slice(-4_000),
+        harness:
+          harness?.kind === "semantic-ui-action-harness"
+            ? harness.snapshot()
+            : harness,
+        probe: window[probeKey],
+        renderIds: [...document.querySelectorAll("[data-render-id]")]
+          .slice(-20)
+          .map((element) => element.getAttribute("data-render-id")),
+      };
+    }, key);
+    throw new Error(
+      `visible marker ${key} timed out: ${JSON.stringify(diagnostic)}\n${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  return page.evaluate((probeKey) => window[probeKey].atMs, key);
+}
+
+async function waitForObservedProviderTurn(page, startIndex, timeoutMs) {
+  await page.waitForFunction(
+    (start) => {
+      const harness = window.__YA_SEMANTIC_UI_ACTIONS__;
+      if (harness?.kind !== "semantic-ui-action-harness") return false;
+      const events = harness.snapshot().observedEvents.slice(start);
+      return (
+        events.some((event) => event.dataType === "assistant") &&
+        events.some((event) => event.dataType === "result")
+      );
+    },
+    startIndex,
+    { timeout: timeoutMs },
+  );
+  return page.evaluate(
+    (start) =>
+      window.__YA_SEMANTIC_UI_ACTIONS__.snapshot().observedEvents.slice(start),
+    startIndex,
+  );
+}
+
+async function measureSemanticActionReplay({
+  checkout,
+  config,
+  events,
+  initialAssistantId,
+  projectId,
+  runMarker,
+  server,
+  sessionId,
+}) {
+  const playwrightPath = path.join(
+    checkout,
+    "packages/client/node_modules/@playwright/test/index.mjs",
+  );
+  const { chromium } = await import(pathToFileURL(playwrightPath).href);
+  const browser = await chromium.launch({
+    args: ["--enable-precise-memory-info"],
+    env: { ...process.env, PERF_RUN_ID: runMarker },
+    headless: true,
+  });
+  await appendFile(
+    server.processManifestPath,
+    `${JSON.stringify({
+      recordedAt: new Date().toISOString(),
+      role: "semantic action Playwright Chromium process tree",
+      pid: null,
+      pgid: null,
+      marker: runMarker,
+      tracking: "PERF_RUN_ID environment; perf-sweep is authoritative",
+    })}\n`,
+  );
+  let context = null;
+  try {
+    context = await browser.newContext({
+      viewport: { width: 1000, height: 600 },
+    });
+    await context.addInitScript(() => {
+      window.__YA_SEMANTIC_UI_ACTIONS__ = {
+        schemaVersion: 1,
+        gather: true,
+        replay: true,
+      };
+    });
+    const page = await context.newPage();
+    const browserDiagnostics = [];
+    page.on("console", (message) => {
+      if (message.type() === "warning" || message.type() === "error") {
+        browserDiagnostics.push({
+          kind: `console-${message.type()}`,
+          text: message.text(),
+        });
+      }
+    });
+    page.on("requestfailed", (request) => {
+      browserDiagnostics.push({
+        error: request.failure()?.errorText,
+        kind: "request-failed",
+        method: request.method(),
+        url: request.url(),
+      });
+    });
+    page.on("response", (response) => {
+      if (response.status() >= 400) {
+        browserDiagnostics.push({
+          kind: "response-error",
+          method: response.request().method(),
+          status: response.status(),
+          url: response.url(),
+        });
+      }
+    });
+    const sessionUrl =
+      `${server.baseUrl}/projects/${encodeURIComponent(projectId)}` +
+      `/sessions/${encodeURIComponent(sessionId)}`;
+    await page.goto(sessionUrl, { waitUntil: "domcontentloaded" });
+    await page.waitForFunction(
+      () => {
+        const harness = window.__YA_SEMANTIC_UI_ACTIONS__;
+        return (
+          harness?.kind === "semantic-ui-action-harness" &&
+          document.querySelector("[data-composer-input]") !== null
+        );
+      },
+      undefined,
+      { timeout: config.server.requestTimeoutMs },
+    );
+
+    const anchorEventStart = events.length;
+    await requestJson(
+      `${server.baseUrl}/api/sessions/${encodeURIComponent(sessionId)}/messages`,
+      {
+        json: {
+          message: "Seed the semantic action stream anchor.",
+          provider: "claude",
+          tempId: `perf-semantic-anchor-${sessionId}`,
+        },
+        method: "POST",
+        timeoutMs: config.server.requestTimeoutMs,
+      },
+    );
+    const anchorAssistant = await waitForRecordedEvent(
+      events,
+      (record) =>
+        events.indexOf(record) >= anchorEventStart &&
+        record.message.eventType === "message" &&
+        record.message.data?.type === "assistant",
+      {
+        description: "semantic action anchor provider completion",
+        timeoutMs: config.server.requestTimeoutMs,
+      },
+    );
+    await waitForRecordedEvent(
+      events,
+      (record) =>
+        events.indexOf(record) >= anchorEventStart &&
+        record.message.eventType === "message" &&
+        record.message.data?.type === "result",
+      {
+        description: "semantic action anchor provider result",
+        timeoutMs: config.server.requestTimeoutMs,
+      },
+    );
+    await waitForJson(
+      `${server.baseUrl}/api/sessions/${sessionId}/process`,
+      (body) => body?.process?.state === "idle",
+      {
+        description: "semantic action anchor idle state",
+        timeoutMs: config.server.requestTimeoutMs,
+      },
+    );
+    await page.waitForFunction(
+      () =>
+        window.__YA_SEMANTIC_UI_ACTIONS__?.kind ===
+          "semantic-ui-action-harness" &&
+        window.__YA_SEMANTIC_UI_ACTIONS__.snapshot().observedAnchorCount > 0,
+      undefined,
+      { timeout: config.server.requestTimeoutMs },
+    );
+    await page.waitForFunction(
+      (marker) => document.body?.innerText.includes(marker),
+      `[${anchorAssistant.message.data.uuid}]`,
+      { timeout: config.server.requestTimeoutMs },
+    );
+
+    const humanText = "Semantic action gather and replay fixture.";
+    await installVisibleProviderTurnObserver(page, "__yaSemanticHumanVisible");
+    const composer = page.locator("[data-composer-input]");
+    await composer.fill(humanText);
+    const humanStartedAtMs = await page.evaluate(() => performance.now());
+    const humanObservedEventStart = await page.evaluate(
+      () => window.__YA_SEMANTIC_UI_ACTIONS__.snapshot().observedEvents.length,
+    );
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await page.waitForFunction(
+      () =>
+        window.__YA_SEMANTIC_UI_ACTIONS__?.kind ===
+          "semantic-ui-action-harness" &&
+        window.__YA_SEMANTIC_UI_ACTIONS__.snapshot().actions.length === 1,
+      undefined,
+      { timeout: config.server.requestTimeoutMs },
+    );
+    let humanObservedEvents;
+    try {
+      humanObservedEvents = await waitForObservedProviderTurn(
+        page,
+        humanObservedEventStart,
+        config.server.requestTimeoutMs,
+      );
+    } catch (error) {
+      const pageState = await page.evaluate(() => {
+        const harness = window.__YA_SEMANTIC_UI_ACTIONS__;
+        return {
+          bodyTextTail: document.body?.innerText.slice(-4_000),
+          harness:
+            harness?.kind === "semantic-ui-action-harness"
+              ? harness.snapshot()
+              : harness,
+          modalText: document.querySelector(".modal-overlay")?.textContent,
+        };
+      });
+      throw new Error(
+        `human semantic action did not reach provider: ${JSON.stringify({
+          browserDiagnostics,
+          pageState,
+        })}\n${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    await waitForJson(
+      `${server.baseUrl}/api/sessions/${sessionId}/process`,
+      (body) => body?.process?.state === "idle",
+      {
+        description: "human semantic action idle state",
+        timeoutMs: config.server.requestTimeoutMs,
+      },
+    );
+    const humanVisibleAtMs = await waitForVisibleMarker(
+      page,
+      "__yaSemanticHumanVisible",
+      config.server.requestTimeoutMs,
+    );
+    const action = await page.evaluate(
+      () => window.__YA_SEMANTIC_UI_ACTIONS__.snapshot().actions[0],
+    );
+    await page.evaluate(
+      ({ actionId, valueMs }) =>
+        window.__YA_SEMANTIC_UI_ACTIONS__.recordMeasurement({
+          side: "client",
+          name: "semantic-action.human-visible-outcome",
+          valueMs,
+          actionId,
+        }),
+      {
+        actionId: action.actionId,
+        valueMs: humanVisibleAtMs - humanStartedAtMs,
+      },
+    );
+
+    await installVisibleProviderTurnObserver(page, "__yaSemanticReplayVisible");
+    const messagePath = `/api/sessions/${encodeURIComponent(sessionId)}/messages`;
+    let requestStartedAtMs = null;
+    let responseReceivedAtMs = null;
+    const onRequest = (request) => {
+      if (
+        request.method() === "POST" &&
+        new URL(request.url()).pathname === messagePath
+      ) {
+        requestStartedAtMs ??= performance.now();
+      }
+    };
+    const onResponse = (response) => {
+      if (
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname === messagePath
+      ) {
+        responseReceivedAtMs ??= performance.now();
+      }
+    };
+    page.on("request", onRequest);
+    page.on("response", onResponse);
+    const replayObservedEventStart = await page.evaluate(
+      () => window.__YA_SEMANTIC_UI_ACTIONS__.snapshot().observedEvents.length,
+    );
+    const replay = await page.evaluate(
+      (record) => window.__YA_SEMANTIC_UI_ACTIONS__.replay(record),
+      action,
+    );
+    const replayObservedEvents = await waitForObservedProviderTurn(
+      page,
+      replayObservedEventStart,
+      config.server.requestTimeoutMs,
+    );
+    const replayVisibleAtMs = await waitForVisibleMarker(
+      page,
+      "__yaSemanticReplayVisible",
+      config.server.requestTimeoutMs,
+    );
+    const replayFirstTextDelta = replayObservedEvents.find(
+      (event) => event.deltaType === "text_delta",
+    );
+    if (!replayFirstTextDelta) {
+      throw new Error("semantic action replay omitted its first text delta");
+    }
+    const humanAssistantId = humanObservedEvents.find(
+      (event) => event.dataType === "assistant",
+    )?.messageId;
+    const replayAssistantId = replayObservedEvents.find(
+      (event) => event.dataType === "assistant",
+    )?.messageId;
+    if (!humanAssistantId || !replayAssistantId) {
+      throw new Error("semantic action replay omitted assistant identities");
+    }
+    const priorTurnsRemainOrderedAndVisible = await page.evaluate(
+      (messageIds) => {
+        const rows = [...document.querySelectorAll("[data-render-id]")];
+        const matched = messageIds.map((messageId) => {
+          const row = rows.find((element) =>
+            element.getAttribute("data-render-id")?.startsWith(`${messageId}-`),
+          );
+          return {
+            contentMatches:
+              row?.textContent?.includes(`[${messageId}]`) ?? false,
+            index: row ? rows.indexOf(row) : -1,
+          };
+        });
+        return matched.every(
+          (entry, index) =>
+            entry.contentMatches &&
+            entry.index >= 0 &&
+            (index === 0 || entry.index > matched[index - 1].index),
+        );
+      },
+      [
+        initialAssistantId,
+        anchorAssistant.message.data.uuid,
+        humanAssistantId,
+        replayAssistantId,
+      ],
+    );
+    if (!priorTurnsRemainOrderedAndVisible) {
+      throw new Error("semantic action replay changed prior rendered turns");
+    }
+    page.off("request", onRequest);
+    page.off("response", onResponse);
+    if (requestStartedAtMs === null || responseReceivedAtMs === null) {
+      throw new Error("semantic action replay request timing was not observed");
+    }
+    const replayVisibleOutcomeMs =
+      replayVisibleAtMs - replay.timing.startedAtMonotonicMs;
+    const requestRoundTripMs = responseReceivedAtMs - requestStartedAtMs;
+    const providerFirstTextDeltaMs =
+      replayFirstTextDelta.observedAtMonotonicMs -
+      replay.timing.startedAtMonotonicMs;
+    await page.evaluate(
+      ({
+        actionId,
+        providerFirstTextDeltaMs,
+        replayVisibleOutcomeMs,
+        requestRoundTripMs,
+      }) => {
+        const harness = window.__YA_SEMANTIC_UI_ACTIONS__;
+        harness.recordMeasurement({
+          side: "client",
+          name: "semantic-action.replay-visible-outcome",
+          valueMs: replayVisibleOutcomeMs,
+          actionId,
+        });
+        harness.recordMeasurement({
+          side: "server",
+          name: "semantic-action.message-accept-round-trip",
+          valueMs: requestRoundTripMs,
+          actionId,
+        });
+        harness.recordMeasurement({
+          side: "server",
+          name: "semantic-action.provider-first-text-delta",
+          valueMs: providerFirstTextDeltaMs,
+          actionId,
+        });
+      },
+      {
+        actionId: action.actionId,
+        providerFirstTextDeltaMs,
+        replayVisibleOutcomeMs,
+        requestRoundTripMs,
+      },
+    );
+
+    const dispatchOverhead = await page.evaluate(
+      ({ sessionId, sourceKey }) =>
+        window.__YA_SEMANTIC_UI_ACTIONS__.measureDispatchOverhead({
+          sourceKey,
+          sessionId,
+        }),
+      { sessionId, sourceKey: action.sourceKey },
+    );
+    const unmatchedAction = structuredClone(action);
+    unmatchedAction.anchor.eventId = "semantic-action-unmatched-event";
+    unmatchedAction.anchor.messageId = "semantic-action-unmatched-message";
+    const unmatched = await page.evaluate(
+      (record) =>
+        window.__YA_SEMANTIC_UI_ACTIONS__.replay(record, {
+          anchorTimeoutMs: 10,
+        }),
+      unmatchedAction,
+    );
+    const snapshot = await page.evaluate(() =>
+      window.__YA_SEMANTIC_UI_ACTIONS__.snapshot(),
+    );
+    if (replay.status !== "executed" || !replay.anchorMatched) {
+      throw new Error(
+        `semantic action replay diverged: ${JSON.stringify(replay)}`,
+      );
+    }
+    if (
+      unmatched.status !== "diverged" ||
+      unmatched.divergence?.stage !== "anchor"
+    ) {
+      throw new Error(
+        `unmatched semantic action lacked divergence: ${JSON.stringify(unmatched)}`,
+      );
+    }
+    if (browserDiagnostics.length > 0) {
+      throw new Error(
+        `semantic action browser emitted diagnostics: ${JSON.stringify(browserDiagnostics)}`,
+      );
+    }
+
+    return {
+      action: {
+        schemaVersion: action.schemaVersion,
+        kind: action.kind,
+        anchorKind: action.anchor.kind,
+        anchorHasIdentity: Boolean(
+          action.anchor.eventId || action.anchor.messageId,
+        ),
+      },
+      correctness: {
+        gatheredFromHumanControl: true,
+        replayedWithoutDomInput: true,
+        visibleHumanOutcome: true,
+        visibleReplayOutcome: true,
+        priorTurnsRemainOrderedAndVisible: true,
+        unmatchedAnchorDiverged: true,
+        measurementsRetainedAfterDivergence:
+          snapshot.measurements.length >= 8 &&
+          snapshot.firstDivergence?.stage === "anchor",
+      },
+      dispatchOverhead,
+      measurements: snapshot.measurements,
+      divergence: unmatched.divergence,
+      latency: {
+        humanVisibleOutcomeMs: round(humanVisibleAtMs - humanStartedAtMs),
+        replayTotalMs: replay.timing.totalMs,
+        replayVisibleOutcomeMs: round(replayVisibleOutcomeMs),
+        requestRoundTripMs: round(requestRoundTripMs),
+        providerFirstTextDeltaMs: round(providerFirstTextDeltaMs),
+      },
+    };
+  } finally {
+    await context?.close();
+    await browser.close();
+  }
 }
 
 export async function measureOwnedProviderLifecycle({
@@ -210,6 +714,17 @@ export async function measureOwnedProviderLifecycle({
       throw new Error("simulated provider omitted its thinking block");
     }
 
+    const semanticAction = await measureSemanticActionReplay({
+      checkout,
+      config,
+      events,
+      initialAssistantId: assistantId,
+      projectId: target.detail.projectId,
+      runMarker,
+      server,
+      sessionId,
+    });
+
     await waitForJson(
       `${server.baseUrl}/api/sessions/${sessionId}/process`,
       (body) =>
@@ -246,6 +761,7 @@ export async function measureOwnedProviderLifecycle({
         textDeltaCount: textDeltas.length,
         rawBeforeEnriched: true,
         ownershipReleasedAfterVerifiedIdle: true,
+        semanticAction: semanticAction.correctness,
       },
       latency: {
         firstTextDeltaMs: round(firstTextDelta.receivedAtMs - turnStartedAtMs),
@@ -254,6 +770,13 @@ export async function measureOwnedProviderLifecycle({
           enrichedAssistant.receivedAtMs - turnStartedAtMs,
         ),
         idleOwnershipReleaseMs: round(performance.now() - reapStartedAtMs),
+        semanticAction: semanticAction.latency,
+      },
+      semanticAction: {
+        action: semanticAction.action,
+        dispatchOverhead: semanticAction.dispatchOverhead,
+        divergence: semanticAction.divergence,
+        measurements: semanticAction.measurements,
       },
       throughput: {
         textMiBPerSecond: round(
@@ -267,7 +790,7 @@ export async function measureOwnedProviderLifecycle({
   } finally {
     socket?.terminate();
     server.log.end();
-    await stopServer(server.child);
+    await stopServer(server.child, server.providerHostRuntimeDir);
   }
 }
 
@@ -444,7 +967,7 @@ export async function measurePublicShareHerd({
     for (const agent of agents) agent.destroy();
     if (server) {
       server.log.end();
-      await stopServer(server.child);
+      await stopServer(server.child, server.providerHostRuntimeDir);
     }
     await relay.close();
   }
@@ -532,6 +1055,21 @@ export async function measureSpecializedRepetition({
       ]),
       providerFinalRaw: summarize([ownedProvider.latency.finalRawMs]),
       providerFinalEnriched: summarize([ownedProvider.latency.finalEnrichedMs]),
+      semanticActionHumanVisible: summarize([
+        ownedProvider.latency.semanticAction.humanVisibleOutcomeMs,
+      ]),
+      semanticActionReplayTotal: summarize([
+        ownedProvider.latency.semanticAction.replayTotalMs,
+      ]),
+      semanticActionReplayVisible: summarize([
+        ownedProvider.latency.semanticAction.replayVisibleOutcomeMs,
+      ]),
+      semanticActionMessageAcceptRoundTrip: summarize([
+        ownedProvider.latency.semanticAction.requestRoundTripMs,
+      ]),
+      semanticActionProviderFirstTextDelta: summarize([
+        ownedProvider.latency.semanticAction.providerFirstTextDeltaMs,
+      ]),
       idleOwnershipRelease: summarize([
         ownedProvider.latency.idleOwnershipReleaseMs,
       ]),
@@ -543,6 +1081,7 @@ export async function measureSpecializedRepetition({
     throughput: {
       providerTextMiBPerSecond: ownedProvider.throughput.textMiBPerSecond,
     },
+    semanticAction: ownedProvider.semanticAction,
     responseMiB: {
       publicShareHerd: publicShare.responseMiB,
     },

@@ -500,6 +500,6 @@ export async function measureRepetition({
     await browserMeasurement?.close();
     for (const agent of agents) agent.destroy();
     server.log.end();
-    await stopServer(server.child);
+    await stopServer(server.child, server.providerHostRuntimeDir);
   }
 }

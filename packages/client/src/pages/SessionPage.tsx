@@ -55,7 +55,6 @@ import { PendingToolWarning } from "../components/PendingToolWarning";
 import { ProviderChildSessionControl } from "../components/ProviderChildSessionControl";
 import type {
   FullPaneComposerControls,
-  MessageSubmissionMetadata,
   UploadProgress,
 } from "../components/MessageInput";
 import { MessageInputToolbar } from "../components/MessageInputToolbar";
@@ -152,6 +151,11 @@ import { buildCorrectionText } from "../lib/correctionText";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import { isEffortLevel } from "../lib/effortLevels";
 import {
+  executeSemanticUiComposerAction,
+  isSemanticUiActionHarnessEnabled,
+  registerSemanticUiComposerExecutors,
+} from "../lib/semanticUiActions";
+import {
   liveThinkingSelectionFromProcess,
   thinkingOptionFromProcess,
   thinkingOptionFromSelection,
@@ -161,6 +165,7 @@ import { getCachedWebTranscriptProjection } from "../lib/webTranscriptProjection
 import { createPendingElsewhereDismissKey } from "../lib/sessionUiStorageKeys";
 import { parseCodexConfigAck } from "../lib/sessionCodexConfigAck";
 import { parseThinkingConfig } from "../lib/sourceControlNavigationState";
+import type { MessageSubmissionMetadata } from "../types/messageSubmission";
 import {
   type ComposerAttachment,
   isComposerStagedAttachment,
@@ -2918,6 +2923,59 @@ function SessionPageContent({
     }
   };
 
+  const handleQueueRef = useRef(handleQueue);
+  handleQueueRef.current = handleQueue;
+  const executeComposerSend = useCallback(
+    (text: string, metadata?: MessageSubmissionMetadata) =>
+      handleSendRef.current(text, metadata),
+    [],
+  );
+  const executeComposerDefer = useCallback(
+    (text: string, metadata?: MessageSubmissionMetadata) =>
+      handleQueueRef.current(text, metadata),
+    [],
+  );
+  useEffect(() => {
+    if (!isSemanticUiActionHarnessEnabled()) return undefined;
+    return registerSemanticUiComposerExecutors(
+      clientSummarySourceKey,
+      sessionId,
+      {
+        send: executeComposerSend,
+        defer: executeComposerDefer,
+      },
+    );
+  }, [
+    clientSummarySourceKey,
+    executeComposerDefer,
+    executeComposerSend,
+    sessionId,
+  ]);
+  const handleSemanticComposerSend = useCallback(
+    (text: string, metadata?: MessageSubmissionMetadata) =>
+      executeSemanticUiComposerAction(
+        clientSummarySourceKey,
+        sessionId,
+        "send",
+        text,
+        metadata,
+        executeComposerSend,
+      ),
+    [clientSummarySourceKey, executeComposerSend, sessionId],
+  );
+  const handleSemanticComposerDefer = useCallback(
+    (text: string, metadata?: MessageSubmissionMetadata) =>
+      executeSemanticUiComposerAction(
+        clientSummarySourceKey,
+        sessionId,
+        "defer",
+        text,
+        metadata,
+        executeComposerDefer,
+      ),
+    [clientSummarySourceKey, executeComposerDefer, sessionId],
+  );
+
   const queueComposerForProject = async (
     text: string,
     targetType: "existing-session" | "new-session",
@@ -5668,14 +5726,14 @@ function SessionPageContent({
                   mainComposerForAside
                     ? (text) => handleFocusedBtwSend(text, "main")
                     : primaryComposerAction === "steer"
-                      ? handleSend
+                      ? handleSemanticComposerSend
                       : shouldDeferMessages
-                        ? handleQueue
-                        : handleSend
+                        ? handleSemanticComposerDefer
+                        : handleSemanticComposerSend
                 }
                 onQueue={
                   !mainComposerForAside && shouldDeferMessages
-                    ? handleQueue
+                    ? handleSemanticComposerDefer
                     : undefined
                 }
                 onProjectQueue={

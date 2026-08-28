@@ -33,7 +33,8 @@ if (launchRequest.providerName !== "claude") {
   throw new Error("simulated provider worker only supports claude");
 }
 
-const sessionId = `perf-sim-${runtimeId}`;
+const sessionId =
+  launchRequest.options?.resumeSessionId ?? `perf-sim-${runtimeId}`;
 const sockets = new Set();
 const bufferedEvents = [];
 let attachedSocket = null;
@@ -124,7 +125,7 @@ async function emitTurn(message) {
     });
   }
 
-  const assistantId = `perf-assistant-${turn++}`;
+  const assistantId = `perf-assistant-${runtimeId}-${turn++}`;
   const chunkPrefix = `[${assistantId}] README.md `;
   const chunkText = `${chunkPrefix}${"x".repeat(
     Math.max(0, streamChunkBytes - Buffer.byteLength(chunkPrefix)),
