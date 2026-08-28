@@ -22,6 +22,7 @@ import {
   ndJsonStream,
 } from "@agentclientprotocol/sdk";
 import { getLogger } from "../../../logging/logger.js";
+import { stripYaControlPlaneCredentials } from "../env-filter.js";
 
 /**
  * Configuration for spawning an ACP agent.
@@ -132,10 +133,10 @@ export class ACPClient {
       "Spawning ACP agent",
     );
 
-    const childEnv: Record<string, string | undefined> = {
+    const childEnv = stripYaControlPlaneCredentials({
       ...process.env,
       ...config.env,
-    };
+    });
     for (const key of config.excludeEnv ?? []) {
       delete childEnv[key];
     }

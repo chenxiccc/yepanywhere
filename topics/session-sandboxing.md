@@ -8,15 +8,15 @@
 
 Topic: session-sandboxing
 
-Status: **Linux v1 mechanism implemented, security contract currently
-breached.** Local Claude-family and Codex sessions use trusted Bubblewrap, but
-the shared host network leaves privileged localhost YA routes reachable from
-the confined process. Until
-[`gaps/session-sandbox-localhost-control-plane.md`](../gaps/session-sandbox-localhost-control-plane.md)
-is fixed, **Project writes only** prevents direct outside-project filesystem
-writes but is not an effective boundary against an adversarial agent. Other
-providers, remote executors, and non-Linux hosts still fail an enabled launch
-before provider work begins.
+Status: **Linux v1 mechanism implemented.** Local Claude-family and Codex
+sessions use trusted Bubblewrap. The shared host network leaves YA's localhost
+listener reachable, so availability and launch require enforced password or
+desktop authentication, with localhost-open and auth-disable both off.
+Persisted browser session material is non-bearer verifier data, provider
+environments exclude YA operator credentials, and authentication cannot be
+relaxed while a project-write sandbox is launching or active. Other providers,
+remote executors, and non-Linux hosts still fail an enabled launch before
+provider work begins.
 
 See also:
 
@@ -49,9 +49,10 @@ session creation. Settings > Session Defaults exposes the matching **Sandbox
 new sessions** toggle. Both are off by default.
 
 The toggle appears only when the server advertises an actively available
-session-sandbox backend and the selected execution target is an implemented
-local Claude-family or standard Codex backend. New Session hides it on macOS,
-Windows, Linux hosts whose trusted Bubblewrap preflight fails, and while a
+session-sandbox backend, local operator authentication is enforced, and the
+selected execution target is an implemented local Claude-family or standard
+Codex backend. New Session hides it on macOS, Windows, Linux hosts whose trusted
+Bubblewrap preflight fails, while local auth is open or disabled, and while a
 remote executor is selected. Unsupported hosts, providers, and executors do
 not get explanatory placeholder copy.
 
@@ -126,9 +127,10 @@ actionable error; it never falls back to `none`.
 The setting, launch field, and effective-status fields use the permanent,
 dynamically advertised `session-sandboxing` server capability, introduced in
 0.7.1. A server advertises it only while its local host preflight reports an
-available backend. Without it, a client hides the control, sends no sandbox
-field, and retains existing launch behavior. Existing clients omit the field
-and therefore resolve to `none` on a new server.
+available backend and the local-auth prerequisite is enforced. Without it, a
+client hides the control, sends no sandbox field, and retains existing launch
+behavior. Existing clients omit the field and therefore resolve to `none` on a
+new server.
 
 The separate permanent `session-sandboxing-status` capability gates the
 structured `version.sessionSandboxing` preflight result. A client requires
@@ -485,6 +487,7 @@ normalized host-availability concept before launch:
 interface SessionSandboxAvailability {
   state:
     | "available"
+    | "auth-required"
     | "unsupported-platform"
     | "missing-bubblewrap"
     | "untrusted-bubblewrap"
@@ -496,8 +499,10 @@ interface SessionSandboxAvailability {
 }
 ```
 
-Only `available` permits the `session-sandboxing` capability. Separately, an
-enabled process exposes normalized enforcement evidence:
+Only `available` permits the `session-sandboxing` capability. `auth-required`
+means the host backend passed but local password or desktop authentication is
+absent, localhost-open is on, or auth-disable is on. Separately, an enabled
+process exposes normalized enforcement evidence:
 
 ```ts
 interface SessionSandboxEnforcement {
@@ -513,13 +518,12 @@ interface SessionSandboxEnforcement {
 - YA host enforcement vs. provider-reported policy; and
 - local vs. remote execution host.
 
-The current implementation incorrectly treats the mount/namespace probe as
-sufficient for `available` and `enforced`; it does not probe privileged
-localhost re-entry. While the localhost control-plane gap remains open, agents
-and Process Info must not present that state as an effective adversarial
-boundary. Closing the gap requires the availability probe and enforcement
-evidence to cover the network/IPC restriction as well as the filesystem mount.
-A requested confined session must never launch with only part of the claimed
+The mount/namespace probe establishes the filesystem mechanism. Availability
+then applies the local-auth prerequisite, and every launch rechecks it. A
+launch reserves that prerequisite until the process is registered, and the
+authenticated auth routes return 409 rather than disabling auth or opening
+localhost access while a launch is pending or any such process is active. A
+requested confined session must never launch with only part of the claimed
 boundary.
 
 The server persists the requested level, project-scoped state key, canonical
@@ -639,7 +643,10 @@ agent-controlled transcript-directory symlinks are rejected, and persisted
 metadata reconstructs a replayable private reader after service reload.
 The escape case also verifies no-new-privileges, empty effective and permitted
 capability sets, and refusal to create an outside-file hard link through the
-writable project mount.
+writable project mount. A localhost integration case reads persisted session
+verifier material from inside the real Bubblewrap domain, verifies that YA
+operator credentials are absent from the provider environment, and proves the
+verifier receives 401 rather than operator authority.
 
 ## Linux Backend Evidence
 
@@ -684,8 +691,8 @@ sanitized broker environment variables. The argument set is exercised against
 Rocky 8's Bubblewrap 0.4.0. Each provider launch opens and identity-checks the
 project directory, mounts that descriptor rather than resolving the pathname
 again, and changes to the project only after the mount is installed. It also
-currently shares the host network; that unresolved control-plane escape is why
-the mechanism does not yet satisfy the full contract above.
+shares the host network, so the local-auth prerequisite and non-bearer persisted
+session verifiers are part of the mechanism's filesystem-integrity boundary.
 
 ## Backend Integration Gate
 

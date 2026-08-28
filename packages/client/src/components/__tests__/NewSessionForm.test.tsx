@@ -205,6 +205,7 @@ const {
       sessionSandboxing?: {
         state:
           | "available"
+          | "auth-required"
           | "unsupported-platform"
           | "missing-bubblewrap"
           | "untrusted-bubblewrap"

@@ -538,6 +538,7 @@ export interface SessionSandboxEnforcement {
 
 export type SessionSandboxAvailabilityState =
   | "available"
+  | "auth-required"
   | "unsupported-platform"
   | "missing-bubblewrap"
   | "untrusted-bubblewrap"

@@ -32,6 +32,7 @@ import type {
   SessionSandboxLevel,
 } from "@yep-anywhere/shared";
 import { getDefaultCodexHomeDir } from "./projects/codex-scanner.js";
+import { stripYaControlPlaneCredentials } from "./sdk/providers/env-filter.js";
 
 const BWRAP_CANDIDATES = ["/usr/bin/bwrap", "/bin/bwrap"] as const;
 const BWRAP_PREFLIGHT_ARGS = [
@@ -129,6 +130,8 @@ export interface PrepareSessionSandboxOptions {
   /** Restores the project-private state selected by persisted metadata. */
   stateKey?: string;
   resumeSessionId?: string;
+  /** Whether the local YA control plane requires non-readable credentials. */
+  authEnforced?: boolean;
   /** Test-only override; production intentionally uses trusted system paths. */
   bwrapPath?: string;
   /** Test-only override for keeping fixtures out of the real YA state root. */
@@ -308,6 +311,15 @@ export interface ProbeSessionSandboxAvailabilityOptions {
   platform?: NodeJS.Platform;
   /** Test-only binary override. Production uses fixed trusted system paths. */
   bwrapPath?: string;
+}
+
+export function applySessionSandboxAuthRequirement(
+  availability: SessionSandboxAvailability,
+  authEnforced: boolean,
+): SessionSandboxAvailability {
+  return availability.state === "available" && !authEnforced
+    ? { ...availability, state: "auth-required" }
+    : availability;
 }
 
 /**
@@ -674,6 +686,12 @@ export async function prepareSessionSandbox(
   if (level !== "project-write") {
     throw new Error(`Invalid session sandbox level: ${String(level)}`);
   }
+  if (!options.authEnforced) {
+    throw new SessionSandboxSetupError(
+      "auth-required",
+      "Project-write session sandboxing requires password or desktop authentication, with localhost access and --auth-disable both off.",
+    );
+  }
   if (options.executor) {
     throw new Error(
       "Project-write session sandboxing is not supported for remote executors.",
@@ -798,7 +816,10 @@ export async function prepareSessionSandbox(
         // descriptor-backed bind. Its host-side cwd must not follow a
         // pathname replacement between wrapSpawn() and spawn().
         cwd: "/",
-        env: { ...env, ...sandboxEnv },
+        env: {
+          ...stripYaControlPlaneCredentials(env),
+          ...sandboxEnv,
+        },
         stdio: ["pipe", "pipe", "pipe", projectAnchor.fd],
         release: () => projectAnchor.release(),
       };

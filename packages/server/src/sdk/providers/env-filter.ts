@@ -48,6 +48,23 @@ const EXCLUDED_VARS = new Set([
   "ANTHROPIC_MODEL",
 ]);
 
+const YA_CONTROL_PLANE_CREDENTIALS = new Set([
+  "AUTH_COOKIE_SECRET",
+  "DESKTOP_AUTH_TOKEN",
+  "YEP_PROVIDER_RUNTIME_TOKEN",
+]);
+
+/** Remove credentials that authorize YA itself rather than a provider. */
+export function stripYaControlPlaneCredentials(
+  env: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(env).filter(
+      ([name]) => !YA_CONTROL_PLANE_CREDENTIALS.has(name),
+    ),
+  );
+}
+
 /** Essential variables to always keep (even if they match excluded patterns) */
 const ALWAYS_KEEP = new Set([
   // Core system
@@ -108,6 +125,9 @@ export function filterEnvForChildProcess(
   const filtered: Record<string, string | undefined> = {};
 
   for (const [key, value] of Object.entries(env)) {
+    if (YA_CONTROL_PLANE_CREDENTIALS.has(key)) {
+      continue;
+    }
     // Always keep essential variables
     if (ALWAYS_KEEP.has(key)) {
       filtered[key] = value;

@@ -34,6 +34,7 @@ import { parseOpenCodeSSEEvent } from "@yep-anywhere/shared";
 import { getLogger } from "../../logging/logger.js";
 import { whichCommand } from "../cli-detection.js";
 import { MessageQueue } from "../messageQueue.js";
+import { stripYaControlPlaneCredentials } from "./env-filter.js";
 import { selectOpenCodeBinary } from "./opencode-binary-selection.js";
 import {
   mapOpenCodeQuestionAnswers,
@@ -414,7 +415,7 @@ export class OpenCodeProvider implements AgentProvider {
         {
           cwd: options.cwd,
           stdio: ["pipe", "pipe", "pipe"],
-          env: { ...process.env },
+          env: stripYaControlPlaneCredentials(process.env),
           shell: process.platform === "win32",
         },
       );

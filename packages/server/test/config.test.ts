@@ -395,3 +395,23 @@ describe("loadConfig session wake base URL", () => {
     expect(process.env.YEP_SESSION_WAKE_TOKEN).toBeUndefined();
   });
 });
+
+describe("loadConfig authentication credentials", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it("consumes auth credentials before provider processes can inherit them", async () => {
+    vi.stubEnv("AUTH_COOKIE_SECRET", "cookie-secret");
+    vi.stubEnv("DESKTOP_AUTH_TOKEN", "desktop-token");
+    const { loadConfig } = await import("../src/config.js");
+
+    const config = loadConfig();
+
+    expect(config.authCookieSecret).toBe("cookie-secret");
+    expect(config.desktopAuthToken).toBe("desktop-token");
+    expect(process.env.AUTH_COOKIE_SECRET).toBeUndefined();
+    expect(process.env.DESKTOP_AUTH_TOKEN).toBeUndefined();
+  });
+});

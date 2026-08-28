@@ -10,6 +10,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { isIP, createConnection } from "node:net";
 import { getLogger } from "../../logging/logger.js";
+import { stripYaControlPlaneCredentials } from "./env-filter.js";
 
 const DEFAULT_PROBE_TIMEOUT_MS = 500;
 const DEFAULT_READINESS_TIMEOUT_MS = 10_000;
@@ -156,7 +157,7 @@ function delay(milliseconds: number): Promise<void> {
 function spawnGatewayCommand(command: string): ChildProcess {
   return spawn("bash", ["-c", command], {
     cwd: process.cwd(),
-    env: { ...process.env },
+    env: stripYaControlPlaneCredentials(process.env),
     detached: process.platform !== "win32",
     stdio: ["ignore", "inherit", "inherit"],
   });

@@ -21,6 +21,10 @@ individual YA variables remain in [ya-env-vars.md](ya-env-vars.md).
 - Consume-and-strip YA-private module variables before launching providers.
   Provider-specific child builders may then filter, retain, or inject values
   according to that provider's contract.
+- Consume server operator credentials before launching providers. In
+  particular, children never inherit `AUTH_COOKIE_SECRET`,
+  `DESKTOP_AUTH_TOKEN`, or `YEP_PROVIDER_RUNTIME_TOKEN`; those authorize YA
+  control paths rather than a provider API.
 - An environment overlay such as `{ ...process.env, ...overrides }` can replace
   a value but cannot express removal. A child launcher that must block an
   inherited name needs an explicit filter or denylist after merging.

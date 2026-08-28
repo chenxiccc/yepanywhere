@@ -391,8 +391,9 @@ versions therefore deny all yacron management from a verified sandboxed
 session, do not pass a usable management credential, socket, or localhost route
 into its execution domain, and fail closed if they cannot distinguish the
 caller. Omitting PATH copy or instructions alone is not enforcement. The
-current sandbox has a broader localhost control-plane escape tracked in
-[`gaps/session-sandbox-localhost-control-plane.md`](../gaps/session-sandbox-localhost-control-plane.md).
+project-write sandbox also requires operator authentication, blocks relaxing
+that authentication while a launch is pending or active, and gives the child
+neither a raw browser-session token nor an ambient YA operator credential.
 
 Later own-project scheduling is an integrated-only capability. It requires the
 provider service to own the authenticated session/project identity, yacron

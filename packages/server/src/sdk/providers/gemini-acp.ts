@@ -31,6 +31,7 @@ import type {
   ToolApprovalResult,
 } from "../types.js";
 import { ACPClient } from "./acp/client.js";
+import { stripYaControlPlaneCredentials } from "./env-filter.js";
 import type {
   AgentProvider,
   AgentSession,
@@ -869,6 +870,7 @@ export class GeminiACPProvider implements AgentProvider {
       // If it fails or doesn't recognize the flag, ACP isn't supported
       const proc = spawn(geminiPath, ["--help"], {
         stdio: ["pipe", "pipe", "pipe"],
+        env: stripYaControlPlaneCredentials(process.env),
         shell: process.platform === "win32",
       });
 

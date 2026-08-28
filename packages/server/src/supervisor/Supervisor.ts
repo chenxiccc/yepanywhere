@@ -567,6 +567,8 @@ export interface SupervisorOptions {
   dirtyFileEditorService?: DirtyFileEditorService;
   /** Root for persistent project-private provider state. */
   sandboxStateRoot?: string;
+  /** Whether local YA requests currently require non-readable credentials. */
+  isSessionSandboxAuthEnforced?: () => boolean;
 }
 
 export type { SessionDoneResult };
@@ -644,6 +646,8 @@ export class Supervisor {
   private toolResultMediaStore?: ToolResultMediaStore;
   private dirtyFileEditorService?: DirtyFileEditorService;
   private sandboxStateRoot?: string;
+  private isSessionSandboxAuthEnforced?: () => boolean;
+  private pendingSessionSandboxAuthReservations = 0;
   // In-flight forked recaps, keyed by process id. The AbortController cancels
   // the generator-fork helper turn when the parent becomes active again, so a
   // returning user's new turn is never shadowed by a stale recap. See
@@ -694,6 +698,7 @@ export class Supervisor {
     this.toolResultMediaStore = options.toolResultMediaStore;
     this.dirtyFileEditorService = options.dirtyFileEditorService;
     this.sandboxStateRoot = options.sandboxStateRoot;
+    this.isSessionSandboxAuthEnforced = options.isSessionSandboxAuthEnforced;
     this.activationCoordinator = new SessionActivationCoordinator({
       defaultPermissionMode: this.defaultPermissionMode,
       sessionMetadataService: this.sessionMetadataService,
@@ -741,6 +746,35 @@ export class Supervisor {
 
     if (!this.provider && !this.sdk && !this.realSdk) {
       throw new Error("Either provider, sdk, or realSdk must be provided");
+    }
+  }
+
+  /** Prevent local auth from being relaxed during or after a sandbox launch. */
+  isAuthenticationRelaxationBlocked(): boolean {
+    return (
+      this.pendingSessionSandboxAuthReservations > 0 ||
+      this.getAllProcesses().some(
+        (process) => process.sandboxEnforcement?.effective === "project-write",
+      )
+    );
+  }
+
+  private async withSessionSandboxAuthReservation<T>(
+    level: SessionSandboxLevel | undefined,
+    action: (authEnforced: boolean) => Promise<T>,
+  ): Promise<T> {
+    const authEnforced =
+      level === "project-write" &&
+      this.isSessionSandboxAuthEnforced?.() === true;
+    if (!authEnforced) {
+      return action(false);
+    }
+
+    this.pendingSessionSandboxAuthReservations++;
+    try {
+      return await action(true);
+    } finally {
+      this.pendingSessionSandboxAuthReservations--;
     }
   }
 
@@ -1091,12 +1125,34 @@ export class Supervisor {
    * Create a session using the real SDK without an initial message.
    * The session is created and waits for a message to be queued.
    */
-  private async createRealSession(
+  private createRealSession(
     projectPath: string,
     projectId: UrlProjectId,
     permissionMode?: PermissionMode,
     modelSettings?: ModelSettings,
     resumeSessionId?: string,
+  ): Promise<Process> {
+    return this.withSessionSandboxAuthReservation(
+      modelSettings?.sandboxLevel,
+      (authEnforced) =>
+        this.createRealSessionWithAuthReservation(
+          projectPath,
+          projectId,
+          permissionMode,
+          modelSettings,
+          resumeSessionId,
+          authEnforced,
+        ),
+    );
+  }
+
+  private async createRealSessionWithAuthReservation(
+    projectPath: string,
+    projectId: UrlProjectId,
+    permissionMode: PermissionMode | undefined,
+    modelSettings: ModelSettings | undefined,
+    resumeSessionId: string | undefined,
+    authEnforced: boolean,
   ): Promise<Process> {
     if (!this.realSdk) {
       throw new Error("realSdk is not available");
@@ -1117,6 +1173,7 @@ export class Supervisor {
       stateKey: modelSettings?.sandboxStateKey,
       resumeSessionId,
       stateRoot: this.sandboxStateRoot,
+      authEnforced,
     });
     // Start session WITHOUT an initial message - agent will wait
     const result = await this.realSdk.startSession({
@@ -1698,13 +1755,37 @@ export class Supervisor {
   /**
    * Start a session using the real SDK with full features.
    */
-  private async startRealSession(
+  private startRealSession(
     projectPath: string,
     projectId: UrlProjectId,
     message: UserMessage,
     resumeSessionId?: string,
     permissionMode?: PermissionMode,
     modelSettings?: ModelSettings,
+  ): Promise<Process> {
+    return this.withSessionSandboxAuthReservation(
+      modelSettings?.sandboxLevel,
+      (authEnforced) =>
+        this.startRealSessionWithAuthReservation(
+          projectPath,
+          projectId,
+          message,
+          resumeSessionId,
+          permissionMode,
+          modelSettings,
+          authEnforced,
+        ),
+    );
+  }
+
+  private async startRealSessionWithAuthReservation(
+    projectPath: string,
+    projectId: UrlProjectId,
+    message: UserMessage,
+    resumeSessionId: string | undefined,
+    permissionMode: PermissionMode | undefined,
+    modelSettings: ModelSettings | undefined,
+    authEnforced: boolean,
   ): Promise<Process> {
     const tempSessionId = resumeSessionId ?? randomUUID();
 
@@ -1731,6 +1812,7 @@ export class Supervisor {
       stateKey: modelSettings?.sandboxStateKey,
       resumeSessionId,
       stateRoot: this.sandboxStateRoot,
+      authEnforced,
     });
     const result = await this.realSdk.startSession({
       cwd: projectPath,
@@ -1869,7 +1951,7 @@ export class Supervisor {
    * Create a session using the provider interface without an initial message.
    * The session is created and waits for a message to be queued.
    */
-  private async createProviderSession(
+  private createProviderSession(
     projectPath: string,
     projectId: UrlProjectId,
     permissionMode?: PermissionMode,
@@ -1878,6 +1960,34 @@ export class Supervisor {
     resumeSessionId?: string,
     retryProviderStartupFailure = false,
     requireProviderSessionId = false,
+  ): Promise<Process> {
+    return this.withSessionSandboxAuthReservation(
+      modelSettings?.sandboxLevel,
+      (authEnforced) =>
+        this.createProviderSessionWithAuthReservation(
+          projectPath,
+          projectId,
+          permissionMode,
+          modelSettings,
+          provider,
+          resumeSessionId,
+          retryProviderStartupFailure,
+          requireProviderSessionId,
+          authEnforced,
+        ),
+    );
+  }
+
+  private async createProviderSessionWithAuthReservation(
+    projectPath: string,
+    projectId: UrlProjectId,
+    permissionMode: PermissionMode | undefined,
+    modelSettings: ModelSettings | undefined,
+    provider: AgentProvider | undefined,
+    resumeSessionId: string | undefined,
+    retryProviderStartupFailure: boolean,
+    requireProviderSessionId: boolean,
+    authEnforced: boolean,
   ): Promise<Process> {
     const activeProvider = provider ?? this.provider;
     if (!activeProvider) {
@@ -1913,6 +2023,7 @@ export class Supervisor {
       stateKey: modelSettings?.sandboxStateKey,
       resumeSessionId,
       stateRoot: this.sandboxStateRoot,
+      authEnforced,
     });
     const sessionSandboxOptions = {
       level: modelSettings?.sandboxLevel,
@@ -1922,6 +2033,7 @@ export class Supervisor {
       stateKey: modelSettings?.sandboxStateKey,
       resumeSessionId,
       stateRoot: this.sandboxStateRoot,
+      authEnforced,
     } as const;
 
     // Start session WITHOUT an initial message - agent will wait
@@ -2078,7 +2190,7 @@ export class Supervisor {
   /**
    * Start a session using the provider interface with full features.
    */
-  private async startProviderSession(
+  private startProviderSession(
     projectPath: string,
     projectId: UrlProjectId,
     message: UserMessage,
@@ -2088,6 +2200,36 @@ export class Supervisor {
     provider?: AgentProvider,
     retryProviderStartupFailure = false,
     requireProviderSessionId = false,
+  ): Promise<Process> {
+    return this.withSessionSandboxAuthReservation(
+      modelSettings?.sandboxLevel,
+      (authEnforced) =>
+        this.startProviderSessionWithAuthReservation(
+          projectPath,
+          projectId,
+          message,
+          resumeSessionId,
+          permissionMode,
+          modelSettings,
+          provider,
+          retryProviderStartupFailure,
+          requireProviderSessionId,
+          authEnforced,
+        ),
+    );
+  }
+
+  private async startProviderSessionWithAuthReservation(
+    projectPath: string,
+    projectId: UrlProjectId,
+    message: UserMessage,
+    resumeSessionId: string | undefined,
+    permissionMode: PermissionMode | undefined,
+    modelSettings: ModelSettings | undefined,
+    provider: AgentProvider | undefined,
+    retryProviderStartupFailure: boolean,
+    requireProviderSessionId: boolean,
+    authEnforced: boolean,
   ): Promise<Process> {
     const activeProvider = provider ?? this.provider;
     if (!activeProvider) {
@@ -2126,6 +2268,7 @@ export class Supervisor {
       stateKey: modelSettings?.sandboxStateKey,
       resumeSessionId,
       stateRoot: this.sandboxStateRoot,
+      authEnforced,
     });
     const sessionSandboxOptions = {
       level: modelSettings?.sandboxLevel,
@@ -2135,6 +2278,7 @@ export class Supervisor {
       stateKey: modelSettings?.sandboxStateKey,
       resumeSessionId,
       stateRoot: this.sandboxStateRoot,
+      authEnforced,
     } as const;
 
     const start = activeProvider.startSession({
@@ -2658,7 +2802,7 @@ export class Supervisor {
    * primitive — fork must not be emulated (see
    * topics/session-context-actions.md).
    */
-  async forkSession(options: {
+  forkSession(options: {
     sessionId: string;
     projectPath: string;
     providerName?: ProviderName;
@@ -2668,6 +2812,30 @@ export class Supervisor {
     sandboxLevel?: SessionSandboxLevel;
     sandboxStateKey?: string;
   }): Promise<{
+    sessionId: string;
+    sandboxStateKey?: string;
+    sessionSandbox?: Awaited<ReturnType<typeof prepareSessionSandbox>>;
+  }> {
+    return this.withSessionSandboxAuthReservation(
+      options.sandboxLevel,
+      (authEnforced) =>
+        this.forkSessionWithAuthReservation(options, authEnforced),
+    );
+  }
+
+  private async forkSessionWithAuthReservation(
+    options: {
+      sessionId: string;
+      projectPath: string;
+      providerName?: ProviderName;
+      upToMessageId?: string;
+      boundary?: ProviderForkBoundary;
+      title?: string;
+      sandboxLevel?: SessionSandboxLevel;
+      sandboxStateKey?: string;
+    },
+    authEnforced: boolean,
+  ): Promise<{
     sessionId: string;
     sandboxStateKey?: string;
     sessionSandbox?: Awaited<ReturnType<typeof prepareSessionSandbox>>;
@@ -2687,6 +2855,7 @@ export class Supervisor {
       projectPath: options.projectPath,
       stateKey: options.sandboxStateKey,
       stateRoot: this.sandboxStateRoot,
+      authEnforced,
     });
     const fork = await provider.forkSession({
       sessionId: options.sessionId,

@@ -50,6 +50,7 @@ import {
 import { findCodexCliPath, getCodexCliVersion } from "../cli-detection.js";
 import { logSDKMessage } from "../messageLogger.js";
 import { MessageQueue } from "../messageQueue.js";
+import { stripYaControlPlaneCredentials } from "./env-filter.js";
 import type {
   ProviderActivitySnapshot,
   ProviderCommandResult,
@@ -1213,7 +1214,7 @@ export class CodexProvider implements AgentProvider {
    * Build environment overrides for Codex subprocesses.
    */
   private getCodexEnv(): NodeJS.ProcessEnv {
-    const env: NodeJS.ProcessEnv = { ...process.env };
+    const env = stripYaControlPlaneCredentials(process.env);
     delete env.YEP_SESSION_WAKE_TOKEN;
     delete env.YEP_SESSION_WAKE_URL;
     if (this.config.baseUrl) {

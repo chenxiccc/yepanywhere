@@ -36,7 +36,7 @@ export interface AuthState {
     /** When account was created */
     createdAt: string;
   };
-  /** Active sessions: sessionId -> session data */
+  /** Active sessions: SHA-256 session verifier -> session data */
   sessions: Record<
     string,
     {
@@ -47,7 +47,15 @@ export interface AuthState {
   >;
 }
 
-const CURRENT_VERSION = 1;
+const CURRENT_VERSION = 2;
+
+function sessionVerifier(sessionId: string): string {
+  return crypto
+    .createHash("sha256")
+    .update("yep-anywhere-auth-session\0")
+    .update(sessionId)
+    .digest("hex");
+}
 
 export interface AuthServiceOptions {
   /** Directory to store auth state (defaults to dataDir) */
@@ -92,12 +100,23 @@ export class AuthService {
 
       if (parsed.version === CURRENT_VERSION) {
         this.state = parsed;
+      } else if (parsed.version === 1) {
+        // Version 1 persisted raw bearer tokens as object keys. Preserve the
+        // account and settings, but invalidate those exposed sessions.
+        this.state = {
+          version: CURRENT_VERSION,
+          enabled: parsed.enabled,
+          localhostOpen: parsed.localhostOpen,
+          account: parsed.account,
+          sessions: {},
+        };
+        await this.save();
       } else {
         // Future: handle migrations
         this.state = {
           version: CURRENT_VERSION,
           account: parsed.account,
-          sessions: parsed.sessions ?? {},
+          sessions: {},
         };
         await this.save();
       }
@@ -244,7 +263,7 @@ export class AuthService {
     const sessionId = crypto.randomBytes(SESSION_ID_BYTES).toString("hex");
     const now = new Date().toISOString();
 
-    this.state.sessions[sessionId] = {
+    this.state.sessions[sessionVerifier(sessionId)] = {
       createdAt: now,
       lastActiveAt: now,
       userAgent,
@@ -259,7 +278,8 @@ export class AuthService {
    * Returns true if valid, false if expired or not found.
    */
   async validateSession(sessionId: string): Promise<boolean> {
-    const session = this.state.sessions[sessionId];
+    const verifier = sessionVerifier(sessionId);
+    const session = this.state.sessions[verifier];
     if (!session) {
       return false;
     }
@@ -269,7 +289,7 @@ export class AuthService {
 
     if (now - createdAt > this.sessionTtlMs) {
       // Session expired
-      delete this.state.sessions[sessionId];
+      delete this.state.sessions[verifier];
       await this.save();
       return false;
     }
@@ -286,8 +306,9 @@ export class AuthService {
    * Invalidate a session (logout).
    */
   async invalidateSession(sessionId: string): Promise<void> {
-    if (this.state.sessions[sessionId]) {
-      delete this.state.sessions[sessionId];
+    const verifier = sessionVerifier(sessionId);
+    if (this.state.sessions[verifier]) {
+      delete this.state.sessions[verifier];
       await this.save();
     }
   }

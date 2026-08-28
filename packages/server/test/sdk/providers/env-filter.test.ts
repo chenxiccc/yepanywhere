@@ -84,6 +84,20 @@ describe("filterEnvForChildProcess", () => {
     expect(env.npm_execpath).toBeUndefined();
   });
 
+  it("strips YA control-plane credentials", () => {
+    const env = filterEnvForChildProcess({
+      AUTH_COOKIE_SECRET: "cookie-secret",
+      DESKTOP_AUTH_TOKEN: "desktop-token",
+      TOKEN: "provider-token",
+      YEP_PROVIDER_RUNTIME_TOKEN: "provider-runtime-token",
+    });
+
+    expect(env.AUTH_COOKIE_SECRET).toBeUndefined();
+    expect(env.DESKTOP_AUTH_TOKEN).toBeUndefined();
+    expect(env.TOKEN).toBe("provider-token");
+    expect(env.YEP_PROVIDER_RUNTIME_TOKEN).toBeUndefined();
+  });
+
   it("keeps the two-factor browser diagnostic broker environment", () => {
     const env = filterEnvForChildProcess({
       YEP_BROWSER_DEBUG_AGENT_URL: "http://127.0.0.1/browser-debug/v1",

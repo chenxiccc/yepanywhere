@@ -33,6 +33,59 @@ describe("AuthService file permissions", () => {
     expect(stat.mode & 0o777).toBe(0o600);
   });
 
+  it("persists only a one-way verifier for each browser session", async () => {
+    const sessionToken = await service.createSession("test-agent");
+    const filePath = path.join(testDir, "auth.json");
+    const content = await fs.readFile(filePath, "utf8");
+    const persisted = JSON.parse(content) as {
+      version: number;
+      sessions: Record<string, unknown>;
+    };
+    const [verifier] = Object.keys(persisted.sessions);
+
+    expect(persisted.version).toBe(2);
+    expect(content).not.toContain(sessionToken);
+    expect(verifier).toMatch(/^[0-9a-f]{64}$/);
+    await expect(service.validateSession(verifier ?? "")).resolves.toBe(false);
+    await expect(service.validateSession(sessionToken)).resolves.toBe(true);
+  });
+
+  it("invalidates raw version-1 session tokens during migration", async () => {
+    const rawSessionToken = "a".repeat(64);
+    const filePath = path.join(testDir, "auth.json");
+    await fs.writeFile(
+      filePath,
+      JSON.stringify({
+        version: 1,
+        enabled: true,
+        account: {
+          passwordHash: "preserved-password-hash",
+          createdAt: "2026-08-28T00:00:00.000Z",
+        },
+        sessions: {
+          [rawSessionToken]: {
+            createdAt: "2026-08-28T00:00:00.000Z",
+            lastActiveAt: "2026-08-28T00:00:00.000Z",
+          },
+        },
+      }),
+    );
+
+    const migrated = new AuthService({
+      dataDir: testDir,
+      cookieSecret: "test-secret",
+    });
+    await migrated.initialize();
+
+    await expect(migrated.validateSession(rawSessionToken)).resolves.toBe(
+      false,
+    );
+    expect(migrated.isEnabled()).toBe(true);
+    const content = await fs.readFile(filePath, "utf8");
+    expect(content).not.toContain(rawSessionToken);
+    expect(JSON.parse(content)).toMatchObject({ version: 2, sessions: {} });
+  });
+
   it("tightens permissions on existing auth.json files at startup", async () => {
     if (process.platform === "win32") {
       return;

@@ -24,6 +24,7 @@ import type {
 } from "@yep-anywhere/shared";
 import { selectCommandLookupTarget, whichCommand } from "../cli-detection.js";
 import { normalizeGeminiTool } from "./gemini-tools.js";
+import { stripYaControlPlaneCredentials } from "./env-filter.js";
 const execAsync = promisify(exec);
 
 /** Standard Gemini models (always available) */
@@ -278,9 +279,7 @@ export class GeminiProvider implements AgentProvider {
         geminiProcess = spawn(geminiPath, args, {
           cwd,
           stdio: ["pipe", "pipe", "pipe"],
-          env: {
-            ...process.env,
-          },
+          env: stripYaControlPlaneCredentials(process.env),
           shell: process.platform === "win32",
         });
         pidRef.value = geminiProcess.pid;

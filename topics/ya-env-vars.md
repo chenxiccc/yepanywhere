@@ -230,7 +230,7 @@ metered-vs-free and billing-isolation rules.
 | Var | Meaning |
 |-----|---------|
 | `AUTH_DISABLED` | `true` bypasses auth (recovery only). |
-| `AUTH_COOKIE_SECRET` | Override auth cookie secret. |
+| `AUTH_COOKIE_SECRET` | Override auth cookie secret; consumed at startup and never inherited by provider children. |
 | `SERVE_FRONTEND` | `false` runs API-only (no static client). |
 | `MAX_UPLOAD_SIZE_MB` / `MAX_QUEUE_SIZE` | Upload / queue limits. |
 | `ALLOWED_IMAGE_PATHS` | Extra dirs allowed for local image serving. |

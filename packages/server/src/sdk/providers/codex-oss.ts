@@ -29,6 +29,7 @@ import {
 import { findCodexCliPath } from "../cli-detection.js";
 import { MessageQueue } from "../messageQueue.js";
 import type { SDKMessage } from "../types.js";
+import { stripYaControlPlaneCredentials } from "./env-filter.js";
 import type {
   AgentProvider,
   AgentSession,
@@ -439,7 +440,7 @@ export class CodexOSSProvider implements AgentProvider {
         codexProcess = spawn(codexPath, args, {
           cwd: options.cwd,
           stdio: ["pipe", "pipe", "pipe"],
-          env: { ...process.env },
+          env: stripYaControlPlaneCredentials(process.env),
           shell: process.platform === "win32",
         });
         pidRef.value = codexProcess.pid;

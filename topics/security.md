@@ -61,15 +61,20 @@ outside the project and network access, and does not claim general hostile-code
 or confidentiality isolation. Unsupported providers, non-Linux hosts, and SSH
 executors cannot use it.
 
-The current Linux backend nevertheless shares the host network. A confined
-agent can reach YA's privileged localhost control plane and, on an ordinary
-open local server, ask an unsandboxed session or API route to perform the
-outside write. This defeats the stated filesystem-integrity boundary rather
-than merely exercising an excluded network-confidentiality risk. Until
-[`gaps/session-sandbox-localhost-control-plane.md`](../gaps/session-sandbox-localhost-control-plane.md)
-is fixed, treat the option as direct-write defense in depth, not as containment
-against adversarial provider code. See
-[`session-sandboxing.md`](session-sandboxing.md).
+The Linux backend shares the host network, so a confined agent can reach YA's
+localhost listener. YA therefore advertises and launches **Project writes
+only** only while local operator authentication is enforced: password or
+desktop authentication must be present, `--auth-disable` must be off, and
+localhost-open access must be off. While such a sandbox is launching or active,
+the auth routes reject disabling authentication or opening localhost access.
+
+Browser bearer tokens never appear in `auth.json`; it stores domain-separated
+SHA-256 verifiers of the random tokens instead. Provider environments omit the
+auth-cookie secret, desktop token, and provider-runtime control credentials.
+A sandbox may read password hashes and session verifiers and may connect to the
+listener, but that material does not authorize an operator request. Network
+confidentiality and isolation remain outside this filesystem-integrity level.
+See [`session-sandboxing.md`](session-sandboxing.md).
 
 Agent-authored active documents are therefore significant defense-in-depth
 hardening—important, but not a new general trust boundary—specifically for a
@@ -356,7 +361,7 @@ creation means full server-account authority.
   records the proposed content-aware redaction layer for public transcript
   output.
 - [`session-sandboxing.md`](session-sandboxing.md) defines the implemented
-  Linux project-write mechanism, its open localhost control-plane breach, and
+  Linux project-write mechanism, its localhost authentication invariant, and
   the additional admission work a future interactive “locked to this session”
   share would require.
 - [`relay-client-mux.md`](relay-client-mux.md) keeps each host's authentication

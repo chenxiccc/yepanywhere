@@ -21,6 +21,8 @@ export interface AuthRoutesDeps {
   desktopAuthToken?: string;
   /** Reload-safe desktop session authentication for bootstrap-v1 shells. */
   desktopBootstrapService?: DesktopBootstrapService;
+  /** Whether an active project-write sandbox forbids weakening local auth. */
+  isAuthenticationRelaxationBlocked?: () => boolean;
 }
 
 interface SetupBody {
@@ -64,6 +66,7 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
     authDisabled = false,
     desktopAuthToken,
     desktopBootstrapService,
+    isAuthenticationRelaxationBlocked,
   } = deps;
 
   /**
@@ -205,6 +208,15 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
     const sessionId = getCookie(c, SESSION_COOKIE_NAME);
     if (!sessionId || !(await authService.validateSession(sessionId))) {
       return c.json({ error: "Not authenticated" }, 401);
+    }
+    if (isAuthenticationRelaxationBlocked?.()) {
+      return c.json(
+        {
+          error:
+            "Stop project-write sandboxed sessions before disabling authentication",
+        },
+        409,
+      );
     }
 
     await authService.disableAuth();
@@ -383,6 +395,15 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
     const body = await c.req.json<{ open: boolean }>();
     if (typeof body.open !== "boolean") {
       return c.json({ error: "open must be a boolean" }, 400);
+    }
+    if (body.open && isAuthenticationRelaxationBlocked?.()) {
+      return c.json(
+        {
+          error:
+            "Stop project-write sandboxed sessions before opening localhost access",
+        },
+        409,
+      );
     }
 
     await authService.setLocalhostOpen(body.open);

@@ -32,6 +32,7 @@ import type {
   SDKMessage,
 } from "../types.js";
 import { PiRpcClient } from "./pi-rpc-client.js";
+import { stripYaControlPlaneCredentials } from "./env-filter.js";
 import {
   buildPiLaunchArgs,
   type PiLaunchTarget,
@@ -261,7 +262,7 @@ export class PiProvider implements AgentProvider {
         {
           cwd: homedir(),
           stdio: ["pipe", "pipe", "pipe"],
-          env: { ...process.env },
+          env: stripYaControlPlaneCredentials(process.env),
         },
       );
       const client = new PiRpcClient(proc);
@@ -319,7 +320,10 @@ export class PiProvider implements AgentProvider {
       proc = spawn(piTarget.command, buildPiLaunchArgs(piTarget, args), {
         cwd: options.cwd,
         stdio: ["pipe", "pipe", "pipe"],
-        env: { ...process.env, ...options.remoteEnv },
+        env: stripYaControlPlaneCredentials({
+          ...process.env,
+          ...options.remoteEnv,
+        }),
       });
     } catch (error) {
       return this.errorSession(

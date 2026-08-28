@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { serve } from "@hono/node-server";
+import { Hono } from "hono";
 import {
   lstat,
   mkdtemp,
@@ -14,20 +16,32 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionMetadataService } from "../src/metadata/SessionMetadataService.js";
+import { AuthService } from "../src/auth/AuthService.js";
+import { SESSION_COOKIE_NAME } from "../src/auth/routes.js";
+import { createAuthMiddleware } from "../src/middleware/auth.js";
 import {
+  applySessionSandboxAuthRequirement,
   getClaudeSandboxProjectDir,
   getCodexSandboxSessionsDir,
   getSessionSandboxSettingsError,
-  prepareSessionSandbox,
+  prepareSessionSandbox as prepareSessionSandboxWithoutAuth,
   probeSessionSandboxAvailability,
   type SessionSandboxSpawn,
 } from "../src/session-sandbox.js";
 import { ClaudeSessionReader } from "../src/sessions/reader.js";
 import { ClaudeProvider } from "../src/sdk/providers/claude.js";
+import type { AgentProvider } from "../src/sdk/providers/types.js";
+import { Supervisor } from "../src/supervisor/Supervisor.js";
 import type { UrlProjectId } from "@yep-anywhere/shared";
 
 const hostSandboxAvailable =
   (await probeSessionSandboxAvailability()).state === "available";
+
+function prepareSessionSandbox(
+  options: Parameters<typeof prepareSessionSandboxWithoutAuth>[0],
+) {
+  return prepareSessionSandboxWithoutAuth({ ...options, authEnforced: true });
+}
 
 async function runSandboxed(spawnOptions: SessionSandboxSpawn): Promise<void> {
   await new Promise<void>((resolve, reject) => {
@@ -93,6 +107,87 @@ describe("session sandbox", () => {
       state: "unsupported-platform",
       platform: "win32",
     });
+  });
+
+  it("reports and enforces the local authentication prerequisite", async () => {
+    expect(
+      applySessionSandboxAuthRequirement(
+        {
+          state: "available",
+          platform: "linux",
+          backend: "bubblewrap",
+          version: "0.4.0",
+        },
+        false,
+      ),
+    ).toEqual({
+      state: "auth-required",
+      platform: "linux",
+      backend: "bubblewrap",
+      version: "0.4.0",
+    });
+
+    const root = await fixtureRoot();
+    const projectPath = join(root, "project");
+    await mkdir(projectPath);
+    await expect(
+      prepareSessionSandboxWithoutAuth({
+        level: "project-write",
+        provider: "codex",
+        projectPath,
+      }),
+    ).rejects.toThrow(/requires password or desktop authentication/);
+  });
+
+  t("blocks auth relaxation throughout a pending sandbox launch", async () => {
+    const root = await fixtureRoot();
+    const projectPath = join(root, "project");
+    await mkdir(projectPath);
+    let rejectProviderStart!: (error: Error) => void;
+    let markProviderStartEntered!: () => void;
+    const providerStartEntered = new Promise<void>((resolve) => {
+      markProviderStartEntered = resolve;
+    });
+    const provider = {
+      name: "claude",
+      displayName: "Claude",
+      supportsPermissionMode: true,
+      supportsThinkingToggle: true,
+      supportsSlashCommands: true,
+      supportsSteering: false,
+      isInstalled: async () => true,
+      isAuthenticated: async () => true,
+      getAuthStatus: async () => ({
+        installed: true,
+        authenticated: true,
+        enabled: true,
+      }),
+      getAvailableModels: async () => [],
+      startSession: () => {
+        markProviderStartEntered();
+        return new Promise((_, reject) => {
+          rejectProviderStart = reject;
+        });
+      },
+    } as AgentProvider;
+    const supervisor = new Supervisor({
+      provider,
+      isSessionSandboxAuthEnforced: () => true,
+      sandboxStateRoot: join(root, "state"),
+    });
+
+    const launch = supervisor.startSession(
+      projectPath,
+      { text: "test" },
+      undefined,
+      { sandboxLevel: "project-write" },
+    );
+    await providerStartEntered;
+    expect(supervisor.isAuthenticationRelaxationBlocked()).toBe(true);
+
+    rejectProviderStart(new Error("test provider launch failure"));
+    await expect(launch).rejects.toThrow("test provider launch failure");
+    expect(supervisor.isAuthenticationRelaxationBlocked()).toBe(false);
   });
 
   it("distinguishes missing, untrusted, and unusable Linux backends", async () => {
@@ -239,6 +334,89 @@ describe("session sandbox", () => {
       ).rejects.toMatchObject({
         code: "ENOENT",
       });
+    },
+  );
+
+  t(
+    "cannot authenticate with verifier material readable inside Bubblewrap",
+    async () => {
+      const root = await fixtureRoot();
+      const projectPath = join(root, "project");
+      const dataDir = join(projectPath, "readable-auth-state");
+      await mkdir(projectPath);
+      const authService = new AuthService({
+        dataDir,
+        cookieSecret: "sandbox-auth-test-secret",
+      });
+      await authService.initialize();
+      await authService.enableAuth("sandbox-test-password");
+      const sessionToken = await authService.createSession("sandbox-test");
+      const authFilePath = authService.getFilePath();
+      expect(await readFile(authFilePath, "utf8")).not.toContain(sessionToken);
+
+      const authApp = new Hono();
+      authApp.use("*", createAuthMiddleware({ authService }));
+      authApp.post("/mutate", (c) => c.text("authorized"));
+      let server!: ReturnType<typeof serve>;
+      const port = await new Promise<number>((resolvePort) => {
+        server = serve(
+          { fetch: authApp.fetch, hostname: "127.0.0.1", port: 0 },
+          (info) => resolvePort(info.port),
+        );
+      });
+      const url = `http://127.0.0.1:${port}/mutate`;
+
+      try {
+        const authorized = await fetch(url, {
+          method: "POST",
+          headers: { Cookie: `${SESSION_COOKIE_NAME}=${sessionToken}` },
+        });
+        expect(authorized.status).toBe(200);
+
+        const runtime = await prepareSessionSandbox({
+          level: "project-write",
+          provider: "codex",
+          projectPath,
+          stateRoot: join(root, "state"),
+        });
+        if (!runtime) throw new Error("sandbox runtime was not prepared");
+        const script = `
+          const { readFile } = require("node:fs/promises");
+          void (async () => {
+            const [authPath, requestUrl] = process.argv.slice(1);
+            const state = JSON.parse(await readFile(authPath, "utf8"));
+            const verifier = Object.keys(state.sessions)[0];
+            if (!verifier) throw new Error("missing persisted verifier");
+            for (const name of ["AUTH_COOKIE_SECRET", "DESKTOP_AUTH_TOKEN", "YEP_PROVIDER_RUNTIME_TOKEN"]) {
+              if (process.env[name] !== undefined) throw new Error(name + " leaked");
+            }
+            const response = await fetch(requestUrl, {
+              method: "POST",
+              headers: { Cookie: "${SESSION_COOKIE_NAME}=" + verifier },
+            });
+            if (response.status !== 401) throw new Error("verifier authorized status " + response.status);
+          })();
+        `;
+        await runSandboxed(
+          runtime.wrapSpawn(
+            process.execPath,
+            ["-e", script, authFilePath, url],
+            {
+              ...process.env,
+              AUTH_COOKIE_SECRET: "must-not-reach-provider",
+              DESKTOP_AUTH_TOKEN: "must-not-reach-provider",
+              YEP_PROVIDER_RUNTIME_TOKEN: "must-not-reach-provider",
+            },
+          ),
+        );
+      } finally {
+        await new Promise<void>((resolveClose, rejectClose) => {
+          server.close((error) => {
+            if (error) rejectClose(error);
+            else resolveClose();
+          });
+        });
+      }
     },
   );
 
