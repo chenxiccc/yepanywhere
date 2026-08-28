@@ -346,6 +346,20 @@ async function measureTooltip(page, configuredDelayMs) {
 }
 
 async function measureSessionHoverCard(page, configuredDelayMs) {
+  let openedSidebar = false;
+  const visibleRows = page.locator(".session-list-item:visible");
+  if ((await visibleRows.count()) === 0) {
+    const openSidebar = page.getByRole("button", {
+      exact: true,
+      name: "Open sidebar",
+    });
+    if ((await openSidebar.count()) !== 1) {
+      throw new Error("SessionHoverCard target and sidebar opener were absent");
+    }
+    await openSidebar.click();
+    await visibleRows.first().waitFor({ state: "visible" });
+    openedSidebar = true;
+  }
   const target = await markFirstVisibleTarget(
     page,
     ".session-list-item",
@@ -355,6 +369,12 @@ async function measureSessionHoverCard(page, configuredDelayMs) {
   await page.waitForSelector("[data-session-hovercard-id]", {
     state: "detached",
   });
+  if (openedSidebar) {
+    await page
+      .getByRole("button", { exact: true, name: "Close sidebar" })
+      .first()
+      .click();
+  }
   await resetInteractionProbe(page);
   const startedAtMs = await page.evaluate(() => performance.now());
   await target.hover();
