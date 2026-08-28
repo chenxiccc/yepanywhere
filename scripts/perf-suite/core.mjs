@@ -157,6 +157,15 @@ export function validateScenario(scenario, name) {
       `scenarios.${name}.interactionTrace must enable nonnegative integer delays`,
     );
   }
+  if (
+    scenario.interactionTraceOnly !== undefined &&
+    (scenario.interactionTraceOnly !== true ||
+      scenario.interactionTrace?.enabled !== true)
+  ) {
+    throw new Error(
+      `scenarios.${name}.interactionTraceOnly requires an enabled interactionTrace`,
+    );
+  }
 }
 
 export function percentile(values, fraction) {

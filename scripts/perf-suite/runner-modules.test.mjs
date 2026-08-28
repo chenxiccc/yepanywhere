@@ -50,6 +50,7 @@ test("core validates scenario shape and creates exact-size fixture text", () => 
           hoverCardDelayMs: 240,
           tooltipDelayMs: 80,
         },
+        interactionTraceOnly: true,
       },
       "unit",
     ),

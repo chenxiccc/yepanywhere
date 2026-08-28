@@ -869,6 +869,11 @@ export async function measureBrowserMode({
             );
           }
 
+          if (scenario.interactionTraceOnly) {
+            appendTargets[index] = workingSet[0];
+            return;
+          }
+
           await navigateSpa(page, `${server.baseUrl}/projects`);
           await page.waitForFunction(
             () => !document.querySelector(".message-list"),
@@ -974,6 +979,8 @@ export async function measureBrowserMode({
         cacheBudgetMiB,
         correctness: {
           cacheProofs,
+          cacheProofsSkippedForInteractionTrace:
+            scenario.interactionTraceOnly === true,
           glossaryHintsRendered: glossarySupported,
           projectPathsRendered: generalizedProjectPathsSupported,
           workingSetSessions: workingSetSessionCount,
