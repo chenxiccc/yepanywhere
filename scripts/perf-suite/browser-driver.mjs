@@ -647,7 +647,8 @@ async function measureSidebarSwitches(
       marker,
     );
     const probe = await interactionProbeResult(page);
-    const nextPaintMs = round(finishedAtMs - startedAtMs);
+    const confirmationPaintMs = round(finishedAtMs - startedAtMs);
+    const nextPaintMs = round(readableAtMs - startedAtMs);
     const diagnostics = await page.evaluate(
       ({
         endAtMs,
@@ -824,7 +825,7 @@ async function measureSidebarSwitches(
               visualSwap?.atMs,
             ),
             stateQueuedToCommitMs: duration(stateQueued?.atMs, commit?.atMs),
-            readableToNextPaintMs: duration(readableAtMs, endAtMs),
+            readableToConfirmationMs: duration(readableAtMs, endAtMs),
             sessionLayerRenderMs:
               Math.round(
                 sessionLayerRenders.reduce(
@@ -893,6 +894,7 @@ async function measureSidebarSwitches(
       cache: (await clientTelemetry(page)).transcriptMemory,
       ...diagnostics,
       catchUpNextPaintMs,
+      confirmationPaintMs,
       settledActiveSessionConsumerCount:
         settledActiveSessionConsumerIds?.length ?? null,
       settledActiveSessionConsumerIds,
