@@ -24,6 +24,7 @@ describe("Auth routes - POST /enable", () => {
   });
 
   afterEach(async () => {
+    await authService.flushPendingWrites();
     await fs.rm(testDir, { recursive: true, force: true });
   });
 
@@ -148,6 +149,7 @@ describe("Auth routes - cookie secure flag", () => {
   });
 
   afterEach(async () => {
+    await authService.flushPendingWrites();
     await fs.rm(testDir, { recursive: true, force: true });
   });
 

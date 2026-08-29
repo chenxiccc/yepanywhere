@@ -72,7 +72,8 @@ export class AuthService {
   private filePath: string;
   private sessionTtlMs: number;
   private cookieSecret: string;
-  private save = createCoalescingSaver(() => this.doSave()).save;
+  private saver = createCoalescingSaver(() => this.doSave());
+  private save = this.saver.save;
 
   constructor(options: AuthServiceOptions) {
     this.dataDir = options.dataDir;
@@ -326,6 +327,11 @@ export class AuthService {
    */
   getCookieSecret(): string {
     return this.cookieSecret;
+  }
+
+  /** Wait until the latest in-memory authentication state is durable. */
+  async flushPendingWrites(): Promise<void> {
+    await this.saver.flush();
   }
 
   /**
