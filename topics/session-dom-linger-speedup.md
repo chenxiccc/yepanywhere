@@ -78,15 +78,19 @@ narrow session host keeps the behavior inspectable.
 Do not retain two parked sessions. Direct switching is bounded to one active
 tree and one parked tree. The parked tree releases its activity listener,
 focused session watch, and owned-session stream, and remains inert and hidden.
-Trees above 5,000 descendant elements are not admitted beside an active
-session; they fall back to `SessionRouteSnapshot` remount behavior.
+Trees above 5,000 descendant elements are admitted beside an active session
+only when Conversation View can compact a bottom-following transcript to its
+bounded tail. A scrolled-away or otherwise non-compactable tree falls back to
+`SessionRouteSnapshot` remount behavior so direct reuse cannot silently move
+the user's scroll position.
 
 ## Resource Contract
 
 - Bounded grace: default candidate 60 seconds.
 - Bounded entries: one active session plus at most one parked session.
 - Bounded direct-session size: at most 5,000 descendant elements in the parked
-  tree while another session is active.
+  tree while another session is active, unless the parked bottom-following
+  Conversation View is compacted to the 120-render-item tail.
 - Same-tab only; no durable persistence and no cross-source reuse.
 - Hidden DOM must not survive a closed tab or browser reload.
 - The hidden route must be inert to the foreground route: no pointer events,
@@ -254,6 +258,9 @@ still cannot share the session DOM.
   existing session within one animation frame on development hardware. If the
   route still takes hundreds of milliseconds, the implementation is falling
   back to remount or doing synchronous foreground work on reveal.
+- Direct-session performance check: after both eligible sessions are warm,
+  quiet A/B sidebar switches must reuse the retained layer and reach the first
+  readable frame within a 200 ms p95 ceiling.
 - Back/reselect parity: browser Back and sidebar/session-list reselection of
   the same session should hit the same linger-reveal path.
 - Expiry test: after the grace period, the subtree unmounts and the normal
@@ -360,3 +367,20 @@ paint, remount versus DOM reuse, active/parked layer counts, active session
 consumers, cache bytes, heap, listeners, and browser process memory. Its causal
 mode alternates idle and immediate-append arms by repetition so elapsed idle
 time is not silently attributed to session activity.
+
+Sidebar activation performs the wrapper visibility, `inert`, accessibility,
+and pause-signal swap synchronously before urgent router navigation. The keyed
+session subtree is memoized, so that navigation can commit without traversing
+the retained transcript. Background-resource state follows after the first
+paint, on the next animation frame plus 500 ms, and is cancelled if another
+switch supersedes it.
+
+A completed, bottom-following Conversation View compacts to the existing
+120-render-item progressive tail while parked. On reveal, that useful tail is
+immediately readable; after a 1.5-second grace, the rest returns in 12-item
+batches. Every queued batch and final reveal rechecks the synchronous pause
+signal, so parking the session again cancels obsolete hydration. A scrolled-away
+view does not opt into compaction and therefore remains subject to the 5,000-
+element admission cap. The smaller batch applies only to retained rehydration;
+ordinary initial progressive restoration keeps its 90-item batch so an
+off-tail remembered scroll anchor mounts promptly.

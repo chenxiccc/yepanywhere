@@ -7,8 +7,9 @@ but the primary 100-point candidate screen was not computable from the
 specialized cohort alone and no coherent production edit fit the remaining
 60-minute candidate budget.
 
-2026-08-29 follow-up: the ranked pointers below were triaged into an opened
-perf sprint and are in progress —
+2026-08-29 follow-up: the cached sidebar pointer below is complete with a
+bounded retained-DOM implementation and a routine 200 ms push/PR ratchet. The
+remaining ranked pointers stay in the opened perf sprint —
 [`gaps/perf-sprint-system-observed-followups.md`](../../gaps/perf-sprint-system-observed-followups.md)
 holds the selection, order, and dependency plans.
 
@@ -100,6 +101,10 @@ Raw output and verbatim command records:
 - Current load: `system-observed-sprint-20260828-current-b1` through `-b3`.
 - +25% load: `system-observed-sprint-20260828-plusx-b1` through `-b3`.
 - Supplemental navigation: `system-observed-sprint-20260828-sidebar-switch.json`.
+- Accepted sidebar follow-up:
+  `cached-sidebar-baseline-firstpaint-831e79b1-4rep.json`,
+  `cached-sidebar-current-firstpaint-bc6cc2b2-4rep.json`, and
+  `cached-sidebar-routine-adeb7ac3.json`.
 - Specialized smoke: `system-observed-sprint-20260828-specialized-smoke.json`.
 - Compact history: `system-observed-sprint-20260828-history.jsonl`.
 
@@ -204,6 +209,50 @@ that boundary is critical; placing the same delay after state queue but before
 an unrelated diagnostic should not. This delay probe would validate the clock
 path, not claim that removing 50 ms from a different phase produces the same
 gain.
+
+### 2026-08-29 retained-DOM follow-up
+
+The follow-up corrected the endpoint to the first animation frame where the
+target's useful content is readable. The older clock waited two additional
+frames and remains a confirmation diagnostic. It also separated the first
+cached snapshot paint from the later arrival of one appended marker.
+
+Four baseline and four candidate repetitions ran on the same registered
+capacity key. The pre-fix baseline remounted every switch. The candidate keeps
+one active and one parked keyed session layer, and the table below includes
+only switches that actually reused the retained destination:
+
+| Condition | Baseline remount median / p95, ms | Candidate retained median / p95, ms |
+|---|---:|---:|
+| Fresh alternating switches | 221.7 / 269.2 | 50.6 / 98.3 |
+| Switches after the 65-second expiry probe | 227.1 / 254.7 | 41.7 / 56.1 |
+| First readable frame after one append | 233.2 / 242.2 | 60.9 / 193.1 |
+
+The 65-second probe intentionally exceeds the 60-second linger lifetime. Its
+first return in each repetition therefore remounted; the next two returns
+re-established retained reuse and form the candidate row above. Fresh runs
+likewise had one cold destination load before five retained switches. No
+expired or cold remount is relabeled as retained performance.
+
+Across 40 retained large-session switches, the synchronous wrapper swap took
+0.3 ms median, 0.6 ms p95, and 1.2 ms maximum. One active plus one parked layer
+was the maximum. The sampled high-water marks were 288 rendered rows, 7,805
+elements, 13,951 CDP nodes, and 2,511 listeners. Settled resource ownership
+converged to one active session consumer whenever the provider-neutral probe
+was available. Retained server heap was 41.6 MiB; every process survivor sweep
+was clean.
+
+The appended marker arrived later: 1,025.1 ms median and 1,262.3 ms p95 from
+the original click. That is an explicit catch-up clock, not the retained first
+paint. A separate gap now covers the unmeasured cross-product of sustained
+updates and rapid switching:
+[`cached-sidebar-high-cadence-catch-up.md`](../../gaps/cached-sidebar-high-cadence-catch-up.md).
+
+The smaller routine scenario uses two 120-turn sessions and no injected
+activity. On the final source revision, its first cold destination load took
+294.9 ms; all five later switches reused retained DOM at 30.7–44.4 ms,
+producing a 44.4 ms p95 against the user-approved 200 ms ceiling. Ordinary
+push/PR CI now runs that ratchet.
 
 ## Causal ownership and ranked pointers
 
