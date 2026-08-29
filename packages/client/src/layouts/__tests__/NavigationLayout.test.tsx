@@ -158,11 +158,17 @@ function renderNavigationLayoutWithSessionLinger(
                       <Link to="/projects/project-1/file?path=README.md">
                         File
                       </Link>
-                      <Link to="/projects/project-1/sessions/session-2">
+                      <Link
+                        className="session-list-item__link"
+                        to="/projects/project-1/sessions/session-2"
+                      >
                         Session 2
                       </Link>
                       {route.sessionId === "session-2" && (
-                        <Link to="/projects/project-1/sessions/session-1">
+                        <Link
+                          className="session-list-item__link"
+                          to="/projects/project-1/sessions/session-1"
+                        >
                           Session 1
                         </Link>
                       )}
@@ -290,6 +296,7 @@ describe("NavigationLayout", () => {
     cleanup();
     vi.useRealTimers();
     window.localStorage.clear();
+    delete window.__YA_RELOAD_PERF_PROBE__;
   });
 
   it("mounts sidebar session coverage once, above everything that reads it", () => {
@@ -580,6 +587,8 @@ describe("NavigationLayout", () => {
 
   it("parks one compact session during direct session switching and reuses it", () => {
     enableSessionDomLinger();
+    const mark = vi.fn();
+    window.__YA_RELOAD_PERF_PROBE__ = { mark };
     renderNavigationLayoutWithSessionLinger();
 
     const firstSessionLayer = screen.getByTestId("session-layer");
@@ -614,6 +623,9 @@ describe("NavigationLayout", () => {
     ).toBe(firstSessionLayer);
     expect(firstSessionLayer.dataset.parked).toBe("false");
     expect(secondSessionLayer?.dataset.parked).toBe("true");
+    expect(mark).toHaveBeenCalledWith("session_dom_linger_visual_swap", {
+      sessionId: "session-1",
+    });
   });
 
   it("expires a directly parked session while the next session stays active", () => {

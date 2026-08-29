@@ -1,5 +1,8 @@
 import {
+  Profiler,
   createContext,
+  startTransition,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   useCallback,
   useContext,
@@ -9,7 +12,16 @@ import {
   useRef,
   useState,
 } from "react";
-import { Link, Outlet, useLocation, useOutletContext } from "react-router-dom";
+import {
+  Link,
+  Outlet,
+  UNSAFE_LocationContext,
+  UNSAFE_NavigationContext,
+  UNSAFE_RouteContext,
+  useLocation,
+  useNavigate,
+  useOutletContext,
+} from "react-router-dom";
 import { Sidebar, SidebarToggleIcon } from "../components/Sidebar";
 import { GlossaryProjectProvider } from "../contexts/GlossaryContext";
 import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
@@ -23,6 +35,7 @@ import {
 } from "../hooks/useSidebarWidth";
 import { SidebarSessionFeedsProvider } from "../hooks/useSidebarSessionFeeds";
 import { useI18n } from "../i18n";
+import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 
 export interface NavigationLayoutContext {
   /** Open the mobile sidebar */
@@ -54,6 +67,8 @@ const NavigationLayoutReactContext =
   createContext<NavigationLayoutContext | null>(null);
 
 interface SessionRouteLocationSnapshot {
+  hash: string;
+  key: string;
   pathname: string;
   search: string;
   state: unknown;
@@ -75,6 +90,91 @@ interface NavigationLayoutProps {
     route: SessionDomLingerRoute,
     options: { parked: boolean },
   ) => ReactNode;
+}
+
+interface SessionDomLingerLayerProps {
+  parked: boolean;
+  route: SessionDomLingerRoute;
+  sessionElement: NonNullable<NavigationLayoutProps["sessionElement"]>;
+  layerRefs: React.MutableRefObject<Map<string, HTMLDivElement>>;
+}
+
+function SessionDomLingerLayer({
+  parked,
+  route,
+  sessionElement,
+  layerRefs,
+}: SessionDomLingerLayerProps) {
+  const parentLocationContext = useContext(UNSAFE_LocationContext);
+  const parentRouteContext = useContext(UNSAFE_RouteContext);
+  if (!parentLocationContext) {
+    throw new Error("Session DOM linger requires a router location context");
+  }
+  const [sessionRoute] = useState(route);
+  const [subtreeParked, setSubtreeParked] = useState(parked);
+  useEffect(() => {
+    if (subtreeParked === parked) {
+      return;
+    }
+    startTransition(() => setSubtreeParked(parked));
+  }, [parked, subtreeParked]);
+  const [sessionLocationContext] = useState(() => ({
+    location: sessionRoute.location,
+    navigationType: parentLocationContext.navigationType,
+  }));
+  const [sessionRouteContext] = useState(parentRouteContext);
+  const subtree = useMemo(
+    () => sessionElement(sessionRoute, { parked: subtreeParked }),
+    [sessionElement, sessionRoute, subtreeParked],
+  );
+  const scopedSubtree = useMemo(
+    () => (
+      <UNSAFE_LocationContext.Provider value={sessionLocationContext}>
+        <UNSAFE_RouteContext.Provider value={sessionRouteContext}>
+          {subtree}
+        </UNSAFE_RouteContext.Provider>
+      </UNSAFE_LocationContext.Provider>
+    ),
+    [sessionLocationContext, sessionRouteContext, subtree],
+  );
+  const handleRender = useCallback<React.ProfilerOnRenderCallback>(
+    (_id, phase, actualDuration, baseDuration) => {
+      markReloadPerfPhase("session_dom_linger_layer_render", {
+        actualDuration,
+        baseDuration,
+        phase,
+        sessionId: sessionRoute.sessionId,
+        subtreeParked,
+      });
+    },
+    [sessionRoute.sessionId, subtreeParked],
+  );
+
+  return (
+    <div
+      ref={(element) => {
+        if (element) {
+          layerRefs.current.set(sessionRoute.key, element);
+        } else {
+          layerRefs.current.delete(sessionRoute.key);
+        }
+      }}
+      className={`navigation-route-layer session-dom-linger-layer ${
+        parked ? "is-parked" : "is-active"
+      }`}
+      aria-hidden={parked ? true : undefined}
+      data-session-dom-linger={parked ? "parked" : "active"}
+    >
+      {typeof window !== "undefined" &&
+      window.__YA_RELOAD_PERF_PROBE__?.mark ? (
+        <Profiler id={sessionRoute.key} onRender={handleRender}>
+          {scopedSubtree}
+        </Profiler>
+      ) : (
+        scopedSubtree
+      )}
+    </div>
+  );
 }
 
 interface ResponsiveLayoutState {
@@ -212,6 +312,8 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
   const { t } = useI18n();
 
   const location = useLocation();
+  const navigate = useNavigate();
+  const navigationContext = useContext(UNSAFE_NavigationContext);
   const currentSessionMatch = useMemo(
     () => readSessionRouteFromPathname(location.pathname),
     [location.pathname],
@@ -394,6 +496,8 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
       projectId,
       sessionId,
       location: {
+        hash: location.hash,
+        key: location.key,
         pathname: location.pathname,
         search: location.search,
         state: location.state,
@@ -403,6 +507,8 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
   }, [
     currentSessionMatch,
     location.pathname,
+    location.hash,
+    location.key,
     location.search,
     location.state,
     sourceKey,
@@ -525,6 +631,91 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
     }
   }, [currentSessionRoute?.key]);
 
+  const handleSessionLinkCapture = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      if (
+        !sessionDomLingerEnabled ||
+        !currentSessionRoute ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return;
+      }
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const anchor = target.closest<HTMLAnchorElement>(
+        "a.session-list-item__link[href]",
+      );
+      if (!anchor) {
+        return;
+      }
+      const targetUrl = new URL(anchor.href, window.location.href);
+      if (targetUrl.origin !== window.location.origin) {
+        return;
+      }
+      const targetMatch = readSessionRouteFromPathname(targetUrl.pathname);
+      if (
+        !targetMatch ||
+        targetMatch.projectId !== currentSessionRoute.projectId ||
+        targetMatch.sessionId === currentSessionRoute.sessionId
+      ) {
+        return;
+      }
+      const targetKey = createSessionDomLingerKey({
+        sourceKey,
+        projectId: targetMatch.projectId,
+        sessionId: targetMatch.sessionId,
+        search: targetUrl.search,
+      });
+      if (!sessionLayerRefs.current.has(targetKey)) {
+        return;
+      }
+
+      event.preventDefault();
+      for (const [key, element] of sessionLayerRefs.current) {
+        const active = key === targetKey;
+        element.classList.toggle("is-active", active);
+        element.classList.toggle("is-parked", !active);
+        if (active) {
+          element.removeAttribute("aria-hidden");
+        } else {
+          element.setAttribute("aria-hidden", "true");
+        }
+        element.dataset.sessionDomLinger = active ? "active" : "parked";
+        (element as HTMLDivElement & { inert?: boolean }).inert = !active;
+      }
+      markReloadPerfPhase("session_dom_linger_visual_swap", {
+        sessionId: targetMatch.sessionId,
+      });
+      startTransition(() => {
+        const basename = navigationContext?.basename ?? "/";
+        const pathname =
+          basename !== "/" &&
+          (targetUrl.pathname === basename ||
+            targetUrl.pathname.startsWith(`${basename}/`))
+            ? targetUrl.pathname.slice(basename.length) || "/"
+            : targetUrl.pathname;
+        navigate({
+          hash: targetUrl.hash,
+          pathname,
+          search: targetUrl.search,
+        });
+      });
+    },
+    [
+      currentSessionRoute,
+      navigate,
+      navigationContext?.basename,
+      sessionDomLingerEnabled,
+      sourceKey,
+    ],
+  );
+
   const sidebarFeedsEnabled = isContentFrameRoute
     ? sidebarOpen
     : (isWideScreen && !isMinimized) || (!isWideScreen && sidebarOpen);
@@ -533,6 +724,7 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
     <SidebarSessionFeedsProvider enabled={sidebarFeedsEnabled}>
       <div
         ref={layoutFrameRef}
+        onClickCapture={handleSessionLinkCapture}
         className={`session-page ${isWideScreen ? "desktop-layout" : ""} ${
           isContentFrameRoute ? "content-frame-layout" : ""
         } ${isResizing ? "resizing" : ""}`}
@@ -618,23 +810,13 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
                 renderedSessionRoutes.map((route) => {
                   const parked = route.key !== currentSessionRoute?.key;
                   return (
-                    <div
+                    <SessionDomLingerLayer
                       key={route.key}
-                      ref={(element) => {
-                        if (element) {
-                          sessionLayerRefs.current.set(route.key, element);
-                        } else {
-                          sessionLayerRefs.current.delete(route.key);
-                        }
-                      }}
-                      className={`navigation-route-layer session-dom-linger-layer ${
-                        parked ? "is-parked" : "is-active"
-                      }`}
-                      aria-hidden={parked ? true : undefined}
-                      data-session-dom-linger={parked ? "parked" : "active"}
-                    >
-                      {sessionElement(route, { parked })}
-                    </div>
+                      parked={parked}
+                      route={route}
+                      sessionElement={sessionElement}
+                      layerRefs={sessionLayerRefs}
+                    />
                   );
                 })}
               <div

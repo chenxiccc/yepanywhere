@@ -42,7 +42,7 @@
       "concurrentClients": 2,
       "browserCacheBudgetsMiB": [0, 24],
       "payloadBytes": 512,
-      "repetitions": 1,
+      "repetitions": 4,
       "settleMs": 250
     },
     "focused-append": {
@@ -103,7 +103,7 @@
       "browserCacheBudgetsMiB": [256],
       "browserWorkingSetSessions": 1,
       "payloadBytes": 8192,
-      "repetitions": 4,
+      "repetitions": 1,
       "settleMs": 250,
       "browserSettings": {
         "yep-anywhere-conversation-view-enabled": "true",

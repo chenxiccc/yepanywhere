@@ -577,38 +577,73 @@ async function measureSidebarSwitches(
       throw new Error(`sidebar target omitted session: ${targetPath}`);
     const marker = `[${sessionId}:assistant:${expectedAssistantTurnIndex}]`;
     await resetInteractionProbe(page);
-    const { markIndex, startedAtMs } = await page.evaluate((pathName) => {
-      const interaction = window.__yaPerfInteraction;
-      const activeLayer = document.querySelector(
-        '[data-session-dom-linger="active"]',
+    const { finishedAtMs, markIndex, readableAtMs, startedAtMs } = await links
+      .nth(targetIndex)
+      .evaluate(
+        async (link, { expectedMarker, fromPathName, targetPathName }) => {
+          const interaction = window.__yaPerfInteraction;
+          const activeLayer = document.querySelector(
+            '[data-session-dom-linger="active"]',
+          );
+          if (activeLayer) {
+            let layerId = interaction.sessionLayerIds.get(activeLayer);
+            if (!layerId) {
+              layerId = interaction.nextSessionLayerId;
+              interaction.nextSessionLayerId += 1;
+              interaction.sessionLayerIds.set(activeLayer, layerId);
+            }
+            interaction.lastSessionLayerIdByPath[fromPathName] = layerId;
+          }
+          const startedAtMs = performance.now();
+          window.__YA_RELOAD_PERF_PROBE__?.mark("sidebar_switch_route_click", {
+            pathName: fromPathName,
+          });
+          const markIndex = (window.__yaPerfMarks ?? []).length - 1;
+          link.click();
+
+          const deadline = startedAtMs + 30_000;
+          let readableAtMs = null;
+          while (performance.now() < deadline) {
+            await new Promise(requestAnimationFrame);
+            const nextActiveLayer = document.querySelector(
+              '[data-session-dom-linger="active"]',
+            );
+            if (
+              window.location.pathname === targetPathName &&
+              nextActiveLayer?.textContent?.includes(expectedMarker) === true
+            ) {
+              readableAtMs = performance.now();
+              break;
+            }
+          }
+          if (readableAtMs === null) {
+            throw new Error(
+              `sidebar target did not become readable: ${targetPathName}`,
+            );
+          }
+          await new Promise(requestAnimationFrame);
+          await new Promise(requestAnimationFrame);
+          return {
+            finishedAtMs: performance.now(),
+            markIndex,
+            readableAtMs,
+            startedAtMs,
+          };
+        },
+        {
+          expectedMarker: marker,
+          fromPathName: fromPath,
+          targetPathName: targetPath,
+        },
       );
-      if (activeLayer) {
-        let layerId = interaction.sessionLayerIds.get(activeLayer);
-        if (!layerId) {
-          layerId = interaction.nextSessionLayerId;
-          interaction.nextSessionLayerId += 1;
-          interaction.sessionLayerIds.set(activeLayer, layerId);
-        }
-        interaction.lastSessionLayerIdByPath[pathName] = layerId;
-      }
-      const atMs = performance.now();
-      window.__YA_RELOAD_PERF_PROBE__?.mark("sidebar_switch_route_click", {
-        pathName,
-      });
-      return {
-        markIndex: (window.__yaPerfMarks ?? []).length - 1,
-        startedAtMs: atMs,
-      };
-    }, fromPath);
-    await links.nth(targetIndex).click();
     await page.waitForURL((url) => url.pathname === targetPath);
     await page.waitForFunction(
-      (expectedMarker) => document.body?.innerText.includes(expectedMarker),
+      (expectedMarker) =>
+        document
+          .querySelector('[data-session-dom-linger="active"]')
+          ?.textContent?.includes(expectedMarker) === true,
       marker,
     );
-    const readableAtMs = await page.evaluate(() => performance.now());
-    await twoAnimationFrames(page);
-    const finishedAtMs = await page.evaluate(() => performance.now());
     const probe = await interactionProbeResult(page);
     const nextPaintMs = round(finishedAtMs - startedAtMs);
     const diagnostics = await page.evaluate(
@@ -639,7 +674,14 @@ async function measureSidebarSwitches(
         }
 
         const allMarks = window.__yaPerfMarks ?? [];
-        const marks = allMarks.slice(marksFromIndex);
+        const marks = allMarks
+          .slice(marksFromIndex)
+          .filter((mark) => mark.atMs <= endAtMs);
+        const visualSwap = marks.find(
+          (mark) =>
+            mark.name === "session_dom_linger_visual_swap" &&
+            mark.detail?.sessionId === targetSessionId,
+        );
         const loadStart = marks.find(
           (mark) =>
             mark.name === "session_initial_load_start" &&
@@ -709,11 +751,24 @@ async function measureSidebarSwitches(
             latestBackgroundEffects.set(mark.detail.sessionId, mark.detail);
           }
         }
-        const activeSessionConsumerCount = [
-          ...latestBackgroundEffects.values(),
-        ].filter(
-          (detail) => detail.mounted === true && detail.paused !== true,
-        ).length;
+        const activeSessionConsumerIds = [...latestBackgroundEffects.values()]
+          .filter((detail) => detail.mounted === true && detail.paused !== true)
+          .map((detail) => detail.sessionId)
+          .sort();
+        const sessionLayerRenders = marks.filter(
+          (mark) => mark.name === "session_dom_linger_layer_render",
+        );
+        const sessionLayerRenderBySession = {};
+        for (const mark of sessionLayerRenders) {
+          const sessionId = mark.detail?.sessionId;
+          if (typeof sessionId !== "string") continue;
+          sessionLayerRenderBySession[sessionId] =
+            Math.round(
+              ((sessionLayerRenderBySession[sessionId] ?? 0) +
+                (mark.detail?.actualDuration ?? 0)) *
+                10,
+            ) / 10;
+        }
         const duration = (start, end) =>
           typeof start === "number" && typeof end === "number"
             ? Math.round((end - start) * 10) / 10
@@ -721,8 +776,10 @@ async function measureSidebarSwitches(
         return {
           activeSessionConsumerCount:
             latestBackgroundEffects.size > 0
-              ? activeSessionConsumerCount
+              ? activeSessionConsumerIds.length
               : null,
+          activeSessionConsumerIds:
+            latestBackgroundEffects.size > 0 ? activeSessionConsumerIds : null,
           dom: {
             activeLayers: document.querySelectorAll(
               '[data-session-dom-linger="active"]',
@@ -760,8 +817,20 @@ async function measureSidebarSwitches(
             snapshotMessagesIdentityPreserved:
               snapshotHydration?.detail?.messagesIdentityPreserved === true,
             routeClickToLoadStartMs: duration(marks[0]?.atMs, loadStart?.atMs),
+            routeClickToVisualSwapMs: duration(
+              marks[0]?.atMs,
+              visualSwap?.atMs,
+            ),
             stateQueuedToCommitMs: duration(stateQueued?.atMs, commit?.atMs),
             readableToNextPaintMs: duration(readableAtMs, endAtMs),
+            sessionLayerRenderMs:
+              Math.round(
+                sessionLayerRenders.reduce(
+                  (total, mark) => total + (mark.detail?.actualDuration ?? 0),
+                  0,
+                ) * 10,
+              ) / 10,
+            sessionLayerRenderBySession,
           },
         };
       },
@@ -773,6 +842,25 @@ async function measureSidebarSwitches(
         targetSessionId: sessionId,
       },
     );
+    let settledActiveSessionConsumerIds = diagnostics.activeSessionConsumerIds;
+    if (settledActiveSessionConsumerIds !== null) {
+      await page.waitForFunction((expectedSessionId) => {
+        const latestBackgroundEffects = new Map();
+        for (const mark of window.__yaPerfMarks ?? []) {
+          if (
+            mark.name === "session_background_effects_changed" &&
+            typeof mark.detail?.sessionId === "string"
+          ) {
+            latestBackgroundEffects.set(mark.detail.sessionId, mark.detail);
+          }
+        }
+        const activeIds = [...latestBackgroundEffects.values()]
+          .filter((detail) => detail.mounted === true && detail.paused !== true)
+          .map((detail) => detail.sessionId);
+        return activeIds.length === 1 && activeIds[0] === expectedSessionId;
+      }, sessionId);
+      settledActiveSessionConsumerIds = [sessionId];
+    }
     await recordSemanticMeasurement(
       page,
       "performance-sprint.sidebar-switch-next-paint",
@@ -781,6 +869,9 @@ async function measureSidebarSwitches(
     switches.push({
       cache: (await clientTelemetry(page)).transcriptMemory,
       ...diagnostics,
+      settledActiveSessionConsumerCount:
+        settledActiveSessionConsumerIds?.length ?? null,
+      settledActiveSessionConsumerIds,
       fromPath,
       longTasks: summarizeLongTasks(probe.longTasks),
       nextPaintMs,
