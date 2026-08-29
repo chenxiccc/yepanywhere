@@ -23,8 +23,10 @@ Status: Stage 1 removed the per-second O(rows) re-render. The Stage 2
 scroll-position failures and severe amplification in a real long-session
 reload. The bounded semantic client data window is shipped. A measured-height
 semantic render window landed on 2026-08-29 after a 360-turn profile still
-settled at roughly 19,000 elements; its system-observed recovery measurement is
-pending.
+settled at roughly 19,000 elements. Its accepted three-repetition browser trace
+ended at eight mounted rows and 435 elements, with the exact latency and
+trade-off record in the
+[`2026-08-29 system-observed follow-up`](performance-regression-suite.runs/20260829-system-observed-followups.md).
 
 2026-07-09 (follow-up, measured): **Stage 1 items 2–3 are moot, not
 "re-prioritized."** Direct render-count instrumentation on the full-transcript
@@ -317,9 +319,15 @@ row does not reset explicit activity/tool disclosure.
 The 2026-08-29 unit contract covers the 48-row bound, waking a distant requested
 turn, virtual turn-rail geometry, short-session DOM identity, older-page
 chunking, scroll/snapshot behavior, and retaining a distant live quote anchor.
-System-observed browser latency, DOM/layout counts, tooltip amplification, and
-visual traversal remain the acceptance gate before closing the implementation
-gap.
+The same-day system trace reduced the 360-turn final state from 722 mounted
+rows, 18,985 elements, and roughly 26,500 layout objects to eight rows, 435
+elements, and 451–454 layout objects. Yielded older-history work completed
+without a multi-second task or control timeout; its longest tasks were
+118–127 ms. Tooltip long-task time fell from 186–299 ms to zero. Full-mode
+scroll frame p95 rose from 16.8 to 33.4 ms without a long task, and the
+Conversation scroll's numeric starting edge changed as measured heights
+settled; those accepted limitations remain explicit in the report while row
+anchor preservation and wake behavior remain unit-contract requirements.
 
 ## Non-goals
 

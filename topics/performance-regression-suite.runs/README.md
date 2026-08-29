@@ -102,9 +102,21 @@ evidence.
 offered-load sprint established reusable semantic-action cohort and
 long-session browser traces but selected no production candidate. Its weighted
 screen remained invalid because the specialized cohort did not collect every
-frozen browser/leak quality. Long-transcript structure and cached cross-session
-remount remain the measured implementation fronts; the ordered sidebar trace
-does not causally distinguish elapsed idle time from appended activity.
+frozen browser/leak quality. At that sprint's close, long-transcript structure
+and cached cross-session remount were the measured implementation fronts; the
+ordered sidebar trace did not causally distinguish elapsed idle time from
+appended activity.
+
+## 2026-08-29 system-observed follow-ups
+
+[Full report](20260829-system-observed-followups.md). A measured-height semantic
+render window and eight-unit yielded older-page prepend reduced the 360-turn
+final DOM from 722 rows and 18,985 elements to eight rows and 435 elements.
+Prepend-associated longest tasks fell to 118–127 ms without control timeouts,
+and tooltip long-task amplification disappeared. Persisted-augmentation counts
+showed unchanged rows already hit the source-versioned cache, so that branch
+correctly stopped at instrumentation. The accepted result records a full-mode
+scroll-frame trade-off and does not claim concurrent-prepend typing evidence.
 
 ## Current use
 

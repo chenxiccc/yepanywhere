@@ -9,9 +9,10 @@ specialized cohort alone and no coherent production edit fit the remaining
 
 2026-08-29 follow-up: the cached sidebar pointer below is complete with a
 bounded retained-DOM implementation and a routine 200 ms push/PR ratchet. The
-remaining ranked pointers stay in the opened perf sprint —
-[`gaps/perf-sprint-system-observed-followups.md`](../../gaps/perf-sprint-system-observed-followups.md)
-holds the selection, order, and dependency plans.
+remaining ranked performance pointers were implemented and measured in the
+[`system-observed follow-up report`](20260829-system-observed-followups.md):
+render-window virtualization and yielded prepend were accepted, while the
+augmentation and tooltip branches stopped at their evidence gates.
 
 This is the first report under YA's one-sprint performance guidance. It is
 deliberately explicit about missing evidence: the current revision's baseline
@@ -274,7 +275,9 @@ then implement measured-height, wakeable turn/activity chunks with stable
 anchors. This means browser render-window virtualization. It does not mean
 withholding provider activity from the client or sending a permanently
 truncated transcript. The exact contract remains in
-[`gaps/full-transcript-render-window-virtualization.md`](../../gaps/full-transcript-render-window-virtualization.md).
+[`transcript-virtualization.md`](../transcript-virtualization.md), with the
+accepted measurement in the
+[`2026-08-29 follow-up`](20260829-system-observed-followups.md).
 
 ### 2. Attribute and reduce cached cross-session remount
 
@@ -399,8 +402,8 @@ correctness, security, or measured user-latency front; “Next” is material bu
 needs a bounded design/measurement step; “Later” is valuable roadmap work;
 “Opportunistic” is narrow cleanup.
 
-The virtualization *gap* has just landed; the virtualization implementation
-has not.
+Render-window virtualization and its system-observed acceptance have now
+landed; the table omits that closed gap.
 
 | Gap | Cost | Benefit | Triage | Reason |
 |---|---:|---:|---|---|
@@ -408,7 +411,6 @@ has not.
 | `remote-session-project-views-use-local-files` | XL | Critical | Now | Remote session views can present the wrong machine's files. |
 | `session-transcript-project-from-launch-cwd` | L | Critical | Now | Wrong cwd/project identity can misplace resume work and transcript ownership. |
 | `background-relay-reconnect-blank-page` | L | Critical | Now | A live session can become unusably blank after reconnect. |
-| `full-transcript-render-window-virtualization` | XL | High | Now | Directly addresses measured 46k-node, multi-second long-task growth; first slice can be smaller. |
 | `cached-large-session-sidebar-remount-latency` | M measure / L fix | High | Now | Reproduced 0.6–1.4 second cached cross-session switches; cause still needs separation. |
 | `long-session-old-content-motion-recurrence` | M | High | Next | Potential transcript instability is severe, but current reproduction confidence is low. |
 | `lower-websocket-message-admission` | L | High | Now | Reduces a large production memory/denial-of-service exposure. |
@@ -449,9 +451,10 @@ task beyond the selected gap.
 
 ## Final disposition
 
-Pursue render-window virtualization and route-switch phase attribution as the
-two measured browser fronts. Hold augmentation optimization until hit/change
-counts identify a safe owner. Park automatic recurring performance sprints
-until a single scenario can compute the full frozen weighted score. Preserve
-the semantic action, cohort, and interaction-trace facilities for the next
+Render-window virtualization is complete; pursue route-switch phase
+attribution as the remaining measured browser front. Augmentation counts showed
+that unchanged messages already hit the source-versioned cache, so no delta
+reuse edit is warranted. Park automatic recurring performance sprints until a
+single scenario can compute the full frozen weighted score. Preserve the
+semantic action, cohort, and interaction-trace facilities for the next
 candidate rather than rebuilding the measurement seam.

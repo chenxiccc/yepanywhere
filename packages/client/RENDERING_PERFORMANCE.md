@@ -275,6 +275,17 @@ with steady steps at 21–29 ms after two transition frames. This established th
 scroll-rest measurement and one-index-per-measurement invariant above; it is
 diagnostic evidence, not a portable timing ceiling.
 
+A ratchet-grade three-repetition 360-turn trace on 2026-08-29 accepted the
+measured-height semantic render window and eight-unit yielded prepend. Final
+mounted rows fell from 722 to eight, elements from 18,985 to 435, and layout
+objects from roughly 26,500 to 451–454. Full-projection typing maxima fell from
+239.5–244.3 ms to 18.8–21.2 ms, prepend-associated longest tasks reached
+118–127 ms without a control timeout, and tooltip long-task time fell to zero.
+The result is not uniform: full-mode scroll frame p95 rose from 16.8 to 33.4 ms,
+though maximum frames remained 33.4–50.1 ms with no long task. The complete
+identity, limitations, and augmentation control are in the
+[`2026-08-29 system-observed follow-up`](../../topics/performance-regression-suite.runs/20260829-system-observed-followups.md).
+
 ## Review Checklist
 
 - Does this change introduce a new path from token-sized events to React state?
