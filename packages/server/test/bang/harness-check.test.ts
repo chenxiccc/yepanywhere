@@ -2,7 +2,7 @@
  * The toy acli tool behind bang-command tests: JSONL default, --pretty,
  * --md, --toon formats, the --acli-complete verb, and fail-loud unknown
  * flags. Contract: topics/bang-commands.md; acli spec:
- * ~/agents topics/agent-cli.md.
+ * ~/agents/topics/acli.md.
  */
 
 import { execFile } from "node:child_process";

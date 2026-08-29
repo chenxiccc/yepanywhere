@@ -112,7 +112,7 @@ const ACLI_COMPLETE_MAX_OUTPUT = 256 * 1024;
 
 /**
  * Commands trusted to implement the acli `--acli-complete` verb
- * (~/agents topics/agent-cli.md § Completion protocol). Tab must never
+ * (~/agents/topics/acli.md § Completion protocol). Tab must never
  * execute an arbitrary program — a lax non-compliant tool could ignore the
  * unknown flag and run its default action — so per-tool completion is
  * strictly allowlist-gated: YA_BANG_ACLI_COMPLETERS (comma-separated

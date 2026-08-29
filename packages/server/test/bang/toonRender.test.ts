@@ -1,7 +1,7 @@
 /**
  * TOON flat tables render as real tables through the standard fence
  * pipeline (augment generator), for bang output and any other fenced
- * command output. Spec: ~/agents topics/agent-cli.md; contract:
+ * command output. Spec: ~/agents/topics/acli.md; contract:
  * topics/bang-commands.md.
  */
 
