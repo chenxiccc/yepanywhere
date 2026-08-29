@@ -15,8 +15,8 @@ Markdown renderer dependency change:
 These are not reachable through the Markdown renderer configuration and should
 not be folded into its parser migration. Re-audit the exact consuming paths,
 then update the direct or parent dependencies (or add a narrowly justified
-override) with their own compatibility tests. Root `package.json`
-`pnpm.auditConfig.ignoreGhsas` and `CLAUDE.md` **Known-unreachable advisories**
+override) with their own compatibility tests. `pnpm-workspace.yaml`
+`auditConfig.ignoreGhsas` and `CLAUDE.md` **Known-unreachable advisories**
 carry the current justification and revisit triggers. The former `body-parser`
 advisory is no longer present; the separate direct `sanitize-html` finding was
 patched in place because that dependency owns the renderer's output boundary.

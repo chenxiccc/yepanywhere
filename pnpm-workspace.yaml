@@ -1,2 +1,27 @@
 packages:
   - "packages/*"
+
+# pnpm settings live here, not under a "pnpm" key in package.json: pnpm 11
+# stopped reading that key, and a pnpm 11 invocation of an install in this
+# repo reports all three of these as ignored. Silently losing
+# onlyBuiltDependencies would re-enable arbitrary dependency install scripts,
+# so keep them where every supported pnpm reads them. Rationale for the
+# individual entries is in CLAUDE.md ("Dependency Security Maintenance").
+overrides:
+  "@mdit/helper@1.0.1>markdown-it": "15.0.0"
+  "@mdit/plugin-katex@1.0.2>katex": "0.16.45"
+  "@mdit/plugin-katex@1.0.2>markdown-it": "15.0.0"
+  "@mdit/plugin-tex@1.0.2>markdown-it": "15.0.0"
+  "bn.js": "5.2.3"
+  "fast-uri": "3.1.5"
+  "postcss": "^8.5.23"
+
+onlyBuiltDependencies:
+  - bcrypt
+  - better-sqlite3
+
+auditConfig:
+  ignoreGhsas:
+    - GHSA-qwww-vcr4-c8h2
+    - GHSA-frvp-7c67-39w9
+    - GHSA-w5hq-g745-h8pq

@@ -211,7 +211,7 @@ deps).
 ### Install-script allowlist
 
 Dependency install scripts (preinstall/install/postinstall) are blocked by
-default via `pnpm.onlyBuiltDependencies` in the root `package.json`; only
+default via `onlyBuiltDependencies` in `pnpm-workspace.yaml`; only
 `bcrypt` and `better-sqlite3` (native node-gyp/prebuild builds) may run
 theirs. This neutralizes the `"preinstall": "node setup.mjs"` vector used
 by npm supply-chain attacks. If a newly added dep needs its build script,
@@ -227,7 +227,7 @@ there is no silent WASM fallback), `@firebase/util` (bakes
 ### Known-unreachable advisories
 
 Advisories triaged as unreachable are suppressed via
-`pnpm.auditConfig.ignoreGhsas` in the root `package.json`; that list and this
+`auditConfig.ignoreGhsas` in `pnpm-workspace.yaml`; that list and this
 table must stay in sync — every ignored GHSA needs a row here, and removing a
 row means removing the ignore. As of 2026-08-07 three advisories are triaged as
 unreachable with no safe in-range fix available. Re-check when the listed
