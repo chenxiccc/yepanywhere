@@ -41,7 +41,10 @@ stable component identity, and lower update cadence.
    while urgent composer updates proceed; the session-detail store still
    retains every received message and the latest snapshot always renders.
    Older-page insertion and active-window prefix trimming bypass deferral so
-   their scroll-anchor bookkeeping commits with the structural change.
+   their scroll-anchor bookkeeping commits with the structural change. A
+   large older page enters the DOM in bounded turn-aligned commits separated
+   by animation-frame yields; each commit restores the original visible
+   anchor in its layout phase before paint.
 6. `RenderItemComponent` routes exactly one render item to one block/tool
    renderer: text, thinking, tool call, user prompt, session setup, or system.
 7. Rich renderers operate on block/tool-sized input:

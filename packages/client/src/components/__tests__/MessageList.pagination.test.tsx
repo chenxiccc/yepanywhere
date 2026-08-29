@@ -224,6 +224,81 @@ describe("MessageList older-page pagination", () => {
     expect(onLoadOlderMessages).toHaveBeenCalledTimes(2);
   });
 
+  it("yields between bounded semantic commits for a large older page", async () => {
+    Object.defineProperty(window, "IntersectionObserver", {
+      configurable: true,
+      value: undefined,
+    });
+    const frames: FrameRequestCallback[] = [];
+    const frameSpy = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        frames.push(callback);
+        return frames.length;
+      });
+    const cancelFrameSpy = vi
+      .spyOn(window, "cancelAnimationFrame")
+      .mockImplementation(() => {});
+    let resolveLoad: (() => void) | undefined;
+    const load = new Promise<void>((resolve) => {
+      resolveLoad = resolve;
+    });
+    const current = [
+      userMessage("user-current", "Current request"),
+      assistantMessage("assistant-current", "Current answer"),
+    ];
+    const older = Array.from({ length: 80 }, (_, index) => [
+      userMessage(`user-${index}`, `Older request ${index}`),
+      assistantMessage(`assistant-${index}`, `Older answer ${index}`),
+    ]).flat();
+
+    try {
+      const { container, rerender } = render(
+        <MessageList
+          messages={current}
+          hasOlderMessages={true}
+          olderMessagesCursor="user-current"
+          onLoadOlderMessages={() => load}
+        />,
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Load older messages" }),
+      );
+      rerender(
+        <MessageList
+          messages={[...older, ...current]}
+          hasOlderMessages={false}
+          onLoadOlderMessages={() => load}
+        />,
+      );
+      await act(async () => resolveLoad?.());
+
+      const countRows = () =>
+        container.querySelectorAll("[data-render-id]").length;
+      const firstCommitCount = countRows();
+      expect(firstCommitCount).toBeGreaterThan(current.length);
+      expect(firstCommitCount).toBeLessThan(older.length + current.length);
+
+      let previousCount = firstCommitCount;
+      while (frames.length > 0) {
+        const pendingFrames = frames.splice(0);
+        await act(async () => {
+          for (const frame of pendingFrames) {
+            frame(performance.now());
+          }
+          await Promise.resolve();
+        });
+        const nextCount = countRows();
+        expect(nextCount).toBeGreaterThanOrEqual(previousCount);
+        previousCount = nextCount;
+      }
+      expect(countRows()).toBe(older.length + current.length);
+    } finally {
+      frameSpy.mockRestore();
+      cancelFrameSpy.mockRestore();
+    }
+  });
+
   it("keeps the manual button when visibility observation is unavailable", () => {
     Object.defineProperty(window, "IntersectionObserver", {
       configurable: true,

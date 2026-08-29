@@ -133,7 +133,123 @@ const PROGRESSIVE_RETAINED_RENDER_ITEM_BATCH_TARGET = 12;
 const PROGRESSIVE_RENDER_BATCH_DELAY_MS = 32;
 const PROGRESSIVE_RETAINED_RESUME_DELAY_MS = 1_500;
 const PROGRESSIVE_RENDER_REVEAL_DELAY_MS = 180;
+const OLDER_PAGE_PREPEND_BATCH_TARGET = 24;
 const EMPTY_THINKING_PREVIEW_SLOTS = new Set<ConversationThinkingPreviewSlot>();
+
+interface KeyedTimelineRow {
+  key: string;
+  kind: string;
+}
+
+interface ChunkedTimelinePrependState<TRow> {
+  rows: readonly TRow[];
+  start: number;
+}
+
+function getTimelineRowRenderWeight(row: KeyedTimelineRow): number {
+  if (row.kind !== "assistant" || !("rows" in row)) {
+    return row.kind === "empty" ? 0 : 1;
+  }
+  const assistantRows = row.rows;
+  return Array.isArray(assistantRows) ? Math.max(1, assistantRows.length) : 1;
+}
+
+function getPreviousTimelineBatchStart<TRow extends KeyedTimelineRow>(
+  rows: readonly TRow[],
+  end: number,
+): number {
+  let start = Math.min(rows.length, Math.max(0, end));
+  let weight = 0;
+  while (start > 0 && weight < OLDER_PAGE_PREPEND_BATCH_TARGET) {
+    start -= 1;
+    const row = rows[start];
+    if (row) {
+      weight += getTimelineRowRenderWeight(row);
+    }
+  }
+  return start;
+}
+
+function getPrependedTimelineRowCount<TRow extends KeyedTimelineRow>(
+  previous: readonly TRow[],
+  next: readonly TRow[],
+): number {
+  const added = next.length - previous.length;
+  if (added <= 0) {
+    return 0;
+  }
+  for (let index = 0; index < previous.length; index += 1) {
+    if (previous[index]?.key !== next[index + added]?.key) {
+      return 0;
+    }
+  }
+  return added;
+}
+
+function useChunkedTimelinePrepend<TRow extends KeyedTimelineRow>(
+  rows: readonly TRow[],
+  prependPending: boolean,
+): { active: boolean; revision: number; rows: readonly TRow[] } {
+  const stateRef = useRef<ChunkedTimelinePrependState<TRow>>({
+    rows,
+    start: 0,
+  });
+  const [revision, setRevision] = useState(0);
+  let current = stateRef.current;
+
+  if (current.rows !== rows) {
+    const firstVisibleKey = current.rows[current.start]?.key;
+    const preservedStart =
+      current.start > 0 && firstVisibleKey
+        ? rows.findIndex((row) => row.key === firstVisibleKey)
+        : -1;
+    const prepended = prependPending
+      ? getPrependedTimelineRowCount(current.rows, rows)
+      : 0;
+    if (preservedStart >= 0) {
+      current.rows = rows;
+      current.start = preservedStart;
+    } else {
+      current = {
+        rows,
+        start:
+          prepended > 0 ? getPreviousTimelineBatchStart(rows, prepended) : 0,
+      };
+      stateRef.current = current;
+    }
+  }
+
+  useLayoutEffect(() => {
+    if (current.start <= 0) {
+      return;
+    }
+    const scheduledState = current;
+    const frame = requestAnimationFrame(() => {
+      if (stateRef.current !== scheduledState) {
+        return;
+      }
+      const start = getPreviousTimelineBatchStart(
+        scheduledState.rows,
+        scheduledState.start,
+      );
+      if (start === scheduledState.start) {
+        return;
+      }
+      stateRef.current = {
+        ...scheduledState,
+        start,
+      };
+      setRevision((previous) => previous + 1);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [current]);
+
+  return {
+    active: current.start > 0,
+    revision,
+    rows: current.rows.slice(current.start),
+  };
+}
 
 function reuseEqualSet<T>(previous: ReadonlySet<T>, next: ReadonlySet<T>) {
   if (previous.size !== next.size) return next;
@@ -2294,6 +2410,10 @@ export const MessageList = memo(function MessageList({
   useEffect(() => {
     previousTimelineEntryRowsRef.current = timelineEntryRows;
   }, [timelineEntryRows]);
+  const chunkedTimelinePrepend = useChunkedTimelinePrepend(
+    timelineEntryRows,
+    pendingOlderPageScrollRef.current !== null,
+  );
   const firstPromptActionId = useMemo(() => {
     for (const row of timelineEntryRows) {
       if (row.kind === "user" && row.allowsPromptActions) {
@@ -3178,43 +3298,69 @@ export const MessageList = memo(function MessageList({
     }
   };
 
+  const restorePendingOlderPageScroll = useCallback(
+    (pending: NonNullable<typeof pendingOlderPageScrollRef.current>): void => {
+      const messageList = containerRef.current;
+      const scrollContainer = messageList?.parentElement;
+      if (!messageList || !scrollContainer) return;
+      isProgrammaticScrollRef.current = true;
+
+      if (pending.wasAtBottom) {
+        scrollToBottom(scrollContainer);
+      } else {
+        const anchorRow = pending.anchor
+          ? findRenderRow(messageList, pending.anchor.id)
+          : null;
+        if (anchorRow && pending.anchor) {
+          restoreScrollToAnchorRow(
+            scrollContainer,
+            anchorRow,
+            pending.anchor.topOffset,
+          );
+        } else {
+          scrollContainer.scrollTop = Math.max(
+            0,
+            pending.scrollTop +
+              scrollContainer.scrollHeight -
+              pending.scrollHeight,
+          );
+        }
+      }
+      lastHeightRef.current = scrollContainer.scrollHeight;
+      requestAnimationFrame(() => {
+        isProgrammaticScrollRef.current = false;
+      });
+    },
+    [scrollToBottom],
+  );
+
   useLayoutEffect(() => {
-    if (olderPageLoadCompletionRevision === 0) return;
+    void chunkedTimelinePrepend.revision;
+    const pending = pendingOlderPageScrollRef.current;
+    if (!pending || !chunkedTimelinePrepend.active) return;
+    restorePendingOlderPageScroll(pending);
+  }, [
+    chunkedTimelinePrepend.active,
+    chunkedTimelinePrepend.revision,
+    restorePendingOlderPageScroll,
+  ]);
+
+  useLayoutEffect(() => {
+    if (
+      olderPageLoadCompletionRevision === 0 ||
+      chunkedTimelinePrepend.active
+    ) {
+      return;
+    }
     const pending = pendingOlderPageScrollRef.current;
     pendingOlderPageScrollRef.current = null;
     if (!pending) return;
-
-    const messageList = containerRef.current;
-    const scrollContainer = messageList?.parentElement;
-    if (!messageList || !scrollContainer) return;
-    isProgrammaticScrollRef.current = true;
-
-    if (pending.wasAtBottom) {
-      scrollToBottom(scrollContainer);
-    } else {
-      const anchorRow = pending.anchor
-        ? findRenderRow(messageList, pending.anchor.id)
-        : null;
-      if (anchorRow && pending.anchor) {
-        restoreScrollToAnchorRow(
-          scrollContainer,
-          anchorRow,
-          pending.anchor.topOffset,
-        );
-      } else {
-        scrollContainer.scrollTop = Math.max(
-          0,
-          pending.scrollTop +
-            scrollContainer.scrollHeight -
-            pending.scrollHeight,
-        );
-      }
-    }
-    lastHeightRef.current = scrollContainer.scrollHeight;
-    requestAnimationFrame(() => {
-      isProgrammaticScrollRef.current = false;
-    });
-  }, [olderPageLoadCompletionRevision, scrollToBottom]);
+    restorePendingOlderPageScroll(pending);
+  }, [
+    chunkedTimelinePrepend.active,
+    olderPageLoadCompletionRevision,
+    restorePendingOlderPageScroll,
+  ]);
 
   const automaticOlderLoadKey = useMemo(() => {
     const keys: string[] = [];
@@ -3890,7 +4036,7 @@ export const MessageList = memo(function MessageList({
             )}
           </div>
         )}
-        {timelineEntryRows.map((timelineRow) => {
+        {chunkedTimelinePrepend.rows.map((timelineRow) => {
           if (timelineRow.kind === "btw") {
             return (
               <BtwAsideTimelineCard
