@@ -1,9 +1,26 @@
 import { join } from "node:path";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { e2ePaths, expect, test } from "./fixtures.js";
 
 const mockProjectPath = join(e2ePaths.tempDir, "mockproject");
 const projectId = Buffer.from(mockProjectPath).toString("base64url");
+
+async function textPoint(locator: Locator, offset: number) {
+  return locator.evaluate((element, textOffset) => {
+    const text = document
+      .createTreeWalker(element, NodeFilter.SHOW_TEXT)
+      .nextNode() as Text | null;
+    if (!text) throw new Error("Expected selectable text");
+    const range = document.createRange();
+    range.setStart(text, textOffset);
+    range.setEnd(text, Math.min(textOffset + 1, text.data.length));
+    const rect = range.getBoundingClientRect();
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    };
+  }, offset);
+}
 
 async function openSessionFile(page: Page) {
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -111,6 +128,61 @@ async function quoteSelectionAndReadTint(page: Page) {
     };
   });
 }
+
+test("starts a new transcript selection inside previously selected text", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1000, height: 600 });
+  await page.goto(`/projects/${projectId}/sessions/source-selection-001`);
+  const text = "Review the formatted source";
+  const prompt = page.locator(".message-list").getByText(text, { exact: true });
+  await expect(prompt).toBeVisible();
+  await prompt.evaluate((element) => {
+    const selection = document.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    document.dispatchEvent(new Event("selectionchange"));
+  });
+  const start = await textPoint(prompt, 14);
+  const end = await textPoint(prompt, 2);
+  await page.evaluate(() => {
+    document.documentElement.dataset.selectionDragStarts = "0";
+    document.documentElement.dataset.selectionPointerCancels = "0";
+    document.addEventListener(
+      "dragstart",
+      () => {
+        document.documentElement.dataset.selectionDragStarts = "1";
+      },
+      { once: true },
+    );
+    document.addEventListener(
+      "pointercancel",
+      () => {
+        document.documentElement.dataset.selectionPointerCancels = "1";
+      },
+      { once: true },
+    );
+  });
+
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(end.x, end.y, { steps: 12 });
+  await page.mouse.up();
+
+  const outcome = await page.evaluate(() => ({
+    dragStarts: Number(document.documentElement.dataset.selectionDragStarts),
+    pointerCancels: Number(
+      document.documentElement.dataset.selectionPointerCancels,
+    ),
+    selection: document.getSelection()?.toString() ?? "",
+  }));
+  expect(outcome.dragStarts).toBe(0);
+  expect(outcome.pointerCancels).toBe(0);
+  expect(outcome.selection).not.toBe(text);
+  expect(outcome.selection.length).toBeGreaterThan(5);
+});
 
 for (const direction of ["forward", "reverse"] as const) {
   test(`keeps ${direction} highlighted-file selection ordered and tinted`, async ({

@@ -207,6 +207,7 @@ export function useSelectionActionPresentation({
     getActionCount: actionCountForSnapshot,
     containerRef,
     inert,
+    isInteractiveTarget,
   });
 
   useEffect(() => {

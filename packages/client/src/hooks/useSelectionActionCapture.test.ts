@@ -78,6 +78,7 @@ describe("useSelectionActionCapture", () => {
         actionCount: 1,
         containerRef,
         inert: false,
+        isInteractiveTarget: () => false,
       }),
     );
 
@@ -109,6 +110,48 @@ describe("useSelectionActionCapture", () => {
     act(() => vi.advanceTimersByTime(50));
 
     expect(range.getBoundingClientRect).toHaveBeenCalledTimes(4);
+    unmount();
+    unregister();
+  });
+
+  it("restarts read-only selections without clearing editable controls", () => {
+    const root = document.createElement("div");
+    const sourceElement = document.createElement("p");
+    const textNode = document.createTextNode("Selectable text");
+    const input = document.createElement("textarea");
+    sourceElement.append(textNode);
+    root.append(sourceElement, input);
+    document.body.append(root);
+    const range = document.createRange();
+    range.selectNodeContents(textNode);
+    const selection = document.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    const unregister = registerMarkdownCopySource(
+      sourceElement,
+      "Selectable text",
+    );
+    const containerRef = { current: root } as RefObject<HTMLDivElement>;
+    const { unmount } = renderHook(() =>
+      useSelectionActionCapture({
+        actionCount: 1,
+        containerRef,
+        inert: false,
+        isInteractiveTarget: (target) => target === input,
+      }),
+    );
+
+    sourceElement.dispatchEvent(
+      new MouseEvent("mousedown", { bubbles: true, button: 0 }),
+    );
+    expect(selection?.rangeCount).toBe(0);
+
+    selection?.addRange(range);
+    input.dispatchEvent(
+      new MouseEvent("mousedown", { bubbles: true, button: 0 }),
+    );
+    expect(selection?.toString()).toBe("Selectable text");
+
     unmount();
     unregister();
   });

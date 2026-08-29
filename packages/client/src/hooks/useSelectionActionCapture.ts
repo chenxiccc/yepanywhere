@@ -45,6 +45,7 @@ interface UseSelectionActionCaptureOptions {
   getActionCount?: (snapshot: SelectionActionSnapshot) => number;
   containerRef: RefObject<HTMLDivElement | null>;
   inert: boolean;
+  isInteractiveTarget: (target: EventTarget | null) => boolean;
 }
 
 export interface SelectionActionCaptureController {
@@ -310,6 +311,7 @@ export function useSelectionActionCapture({
   getActionCount,
   containerRef,
   inert,
+  isInteractiveTarget,
 }: UseSelectionActionCaptureOptions): SelectionActionCaptureController {
   const selectionPointerStartedRef = useRef(false);
   const [state, setState] = useState<SelectionActionState | null>(null);
@@ -356,6 +358,34 @@ export function useSelectionActionCapture({
     document.addEventListener("copy", handleCopy);
     return () => document.removeEventListener("copy", handleCopy);
   }, [containerRef, inert]);
+
+  useEffect(() => {
+    if (inert) return;
+    const root = containerRef.current;
+    const doc = root?.ownerDocument ?? document;
+    const handleMouseDown = (event: MouseEvent) => {
+      const currentRoot = containerRef.current;
+      if (
+        event.button !== 0 ||
+        !currentRoot ||
+        isInteractiveTarget(event.target)
+      ) {
+        return;
+      }
+      const selection = doc.getSelection();
+      const selectionRoot = getQuoteSelectionRoot(currentRoot, selection);
+      const targetRoot = getQuoteSelectionRootForTarget(
+        currentRoot,
+        event.target,
+      );
+      if (selectionRoot && selectionRoot === targetRoot) {
+        selection?.removeAllRanges();
+      }
+    };
+
+    doc.addEventListener("mousedown", handleMouseDown, true);
+    return () => doc.removeEventListener("mousedown", handleMouseDown, true);
+  }, [containerRef, inert, isInteractiveTarget]);
 
   useEffect(() => {
     if (inert) return;

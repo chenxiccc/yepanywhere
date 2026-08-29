@@ -33,7 +33,8 @@ session-file Markdown block clicks and live-drag deferral landed
 2026-08-20; viewer toolbar select-all landed 2026-08-22; collapsed-preview
 selection and live-tail suspension landed 2026-08-23; session-file inline
 Comment mode landed 2026-08-25; selection-event coalescing and file-viewer
-reselection landed 2026-08-28.**
+reselection landed 2026-08-28; transcript and registered-surface reselection
+landed 2026-08-29.**
 Assistant text blocks can be quoted via selection typing, a floating selection
 `>` action, or per-paragraph `>` circles; the resulting `>` block is inserted
 into the composer and the selected source span is tinted until that quote is
@@ -152,6 +153,10 @@ menu.
    so the action remains valid when the native highlight collapses during the
    press. The cluster never replays intermediate positions from a burst of
    selection, resize, or scroll events; it reflects the latest usable range.
+   A primary mouse drag beginning in an existing read-only registered selection
+   clears that old range before the browser chooses its text-drag path, so the
+   press starts a fresh selection. Editable controls retain native selected-text
+   dragging for moving text within the composer or another field.
 3. **Context menu over selected text.** Right-clicking inside a non-empty,
    registered selection opens direct **Copy text**, **Copy source**, **Quote
    reply**, and **New session** rows, omitting actions whose destination is not
