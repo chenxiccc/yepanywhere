@@ -7,6 +7,11 @@ but the primary 100-point candidate screen was not computable from the
 specialized cohort alone and no coherent production edit fit the remaining
 60-minute candidate budget.
 
+2026-08-29 follow-up: the ranked pointers below were triaged into an opened
+perf sprint and are in progress —
+[`gaps/perf-sprint-system-observed-followups.md`](../../gaps/perf-sprint-system-observed-followups.md)
+holds the selection, order, and dependency plans.
+
 This is the first report under YA's one-sprint performance guidance. It is
 deliberately explicit about missing evidence: the current revision's baseline
 is not an optimization win, an endpoint-only comparison is not the weighted
