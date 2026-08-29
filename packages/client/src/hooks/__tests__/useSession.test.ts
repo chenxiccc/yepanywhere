@@ -69,6 +69,7 @@ let sessionStreamHandler:
   | ((data: { eventType: string; [key: string]: unknown }) => void)
   | null = null;
 let sessionStreamSessionId: string | null | undefined;
+let sessionStreamErrorHandler: (() => void | Promise<void>) | null = null;
 
 let streamingContentOptions:
   | {
@@ -223,6 +224,7 @@ vi.mock("../useSessionStream", () => ({
   useSessionStream: vi.fn((sessionId, options) => {
     sessionStreamSessionId = sessionId;
     sessionStreamHandler = options.onMessage;
+    sessionStreamErrorHandler = options.onError;
     return { connected: true, reconnect: vi.fn() };
   }),
 }));
@@ -276,6 +278,7 @@ describe("useSession completion reconciliation", () => {
     sessionMessagesOptions = undefined;
     sessionStreamHandler = null;
     sessionStreamSessionId = undefined;
+    sessionStreamErrorHandler = null;
     streamingContentOptions = undefined;
     sessionMessagesMock.messages = [];
     sessionMessagesMock.loading = false;
@@ -873,6 +876,99 @@ describe("useSession completion reconciliation", () => {
     });
     expect(result.current.processState).toBe("idle");
     expect(fetchNewMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps idle activity newer than a phone-wake runtime snapshot", async () => {
+    let resolveMetadata:
+      | ((value: {
+          session: Record<string, never>;
+          ownership: { owner: "self"; processId: string };
+          processState: "in-turn";
+          pendingInputRequest: null;
+        }) => void)
+      | undefined;
+    apiMocks.getSessionMetadata.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveMetadata = resolve;
+        }),
+    );
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    let wakeReconciliation: void | Promise<void>;
+    act(() => {
+      wakeReconciliation = fileActivityOptions?.onReconnect?.();
+    });
+
+    act(() => {
+      fileActivityOptions?.onProcessStateChange?.({
+        type: "process-state-changed",
+        sessionId: "sess-1",
+        projectId: PROJECT_ID,
+        activity: "idle",
+        timestamp: "2026-08-29T10:40:00.202Z",
+      });
+    });
+    expect(result.current.processState).toBe("idle");
+
+    await act(async () => {
+      resolveMetadata?.({
+        session: {},
+        ownership: { owner: "self", processId: "proc-1" },
+        processState: "in-turn",
+        pendingInputRequest: null,
+      });
+      await wakeReconciliation;
+    });
+
+    expect(result.current.processState).toBe("idle");
+  });
+
+  it("keeps newer live activity over an older failed stream check", async () => {
+    let rejectMetadata: ((reason?: unknown) => void) | undefined;
+    apiMocks.getSessionMetadata.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectMetadata = reject;
+        }),
+    );
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    let streamRecovery: void | Promise<void>;
+    act(() => {
+      streamRecovery = sessionStreamErrorHandler?.();
+    });
+
+    act(() => {
+      fileActivityOptions?.onProcessStateChange?.({
+        type: "process-state-changed",
+        sessionId: "sess-1",
+        projectId: PROJECT_ID,
+        activity: "in-turn",
+        timestamp: "2026-08-29T10:40:01.000Z",
+      });
+    });
+
+    await act(async () => {
+      rejectMetadata?.(new Error("connection replaced"));
+      await streamRecovery;
+    });
+
+    expect(result.current.status).toMatchObject({
+      owner: "self",
+      processId: "proc-1",
+    });
+    expect(result.current.processState).toBe("in-turn");
   });
 
   it("reconciles a replayed busy navigation hint with retained idle state", async () => {

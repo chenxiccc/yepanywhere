@@ -65,6 +65,11 @@ import { getStreamingEnabled } from "./useStreamingEnabled";
 
 export type ProcessState = "idle" | "in-turn" | "waiting-input";
 
+interface RuntimeSnapshotToken {
+  generation: number;
+  lifecycleObservationRevision: number;
+}
+
 // Re-export types from useSessionMessages
 export type { AgentContent, AgentContentMap } from "./useSessionMessages";
 
@@ -569,6 +574,15 @@ export function useSession(
       });
     };
   }, [backgroundEffectsPaused, sessionId]);
+  // Runtime metadata is a recovery snapshot, while activity/stream events are
+  // live observations. A snapshot may only publish lifecycle fields if no live
+  // observation arrived after it started; overlapping snapshots are
+  // latest-started-wins.
+  const lifecycleObservationRevisionRef = useRef(0);
+  const runtimeSnapshotGenerationRef = useRef(0);
+  const noteLifecycleObservation = useCallback(() => {
+    lifecycleObservationRevisionRef.current += 1;
+  }, []);
   // Use initial status if provided (from navigation state) to connect stream immediately
   const [status, setStatus] = useState<SessionStatus>(
     initialStatus ?? { owner: "none" },
@@ -580,6 +594,29 @@ export function useSession(
   const hasOptimisticInitialStatus = initialStatus !== undefined;
   const [pendingInputRequest, setPendingInputRequest] =
     useState<InputRequest | null>(null);
+  const setObservedStatus = useCallback<typeof setStatus>(
+    (nextStatus) => {
+      noteLifecycleObservation();
+      setStatus(nextStatus);
+    },
+    [noteLifecycleObservation],
+  );
+  const setObservedProcessState = useCallback<typeof setProcessState>(
+    (nextProcessState) => {
+      noteLifecycleObservation();
+      setProcessState(nextProcessState);
+    },
+    [noteLifecycleObservation],
+  );
+  const setObservedPendingInputRequest = useCallback<
+    typeof setPendingInputRequest
+  >(
+    (nextPendingInputRequest) => {
+      noteLifecycleObservation();
+      setPendingInputRequest(nextPendingInputRequest);
+    },
+    [noteLifecycleObservation],
+  );
   const [error, setError] = useState<Error | null>(null);
   const reconciledTranscriptRef = useRef<{
     sessionId: string;
@@ -732,6 +769,7 @@ export function useSession(
   );
 
   const noteStreamProgressLiveness = useCallback(() => {
+    noteLifecycleObservation();
     const observedAtMs = Date.now();
     const ref = streamProgressLivenessRef.current;
     const elapsedMs = observedAtMs - ref.lastUpdateMs;
@@ -758,7 +796,7 @@ export function useSession(
         }
       }, STREAM_LIVENESS_UPDATE_MS - elapsedMs);
     }
-  }, [publishStreamProgressLiveness]);
+  }, [noteLifecycleObservation, publishStreamProgressLiveness]);
 
   useEffect(() => {
     return () => {
@@ -864,8 +902,10 @@ export function useSession(
   useEffect(() => {
     void sessionId;
     hasHandledConnectedEventRef.current = false;
+    runtimeSnapshotGenerationRef.current += 1;
+    noteLifecycleObservation();
     setSessionLiveness(null);
-  }, [sessionId]);
+  }, [noteLifecycleObservation, sessionId]);
 
   // Tab visibility is one "away" signal: hiding schedules the background recap;
   // returning (visible) cancels it if it has not fired yet.
@@ -949,8 +989,25 @@ export function useSession(
     [sessionId],
   );
 
+  const beginRuntimeSnapshot = useCallback((): RuntimeSnapshotToken => {
+    runtimeSnapshotGenerationRef.current += 1;
+    return {
+      generation: runtimeSnapshotGenerationRef.current,
+      lifecycleObservationRevision: lifecycleObservationRevisionRef.current,
+    };
+  }, []);
+
+  const isRuntimeSnapshotCurrent = useCallback(
+    (token: RuntimeSnapshotToken): boolean =>
+      token.generation === runtimeSnapshotGenerationRef.current &&
+      token.lifecycleObservationRevision ===
+        lifecycleObservationRevisionRef.current,
+    [],
+  );
+
   const reconcileSessionRuntime = useCallback(
     async (options?: { ignoreIfLiveSnapshotHandled?: boolean }) => {
+      const snapshotToken = beginRuntimeSnapshot();
       const data = await api.getSessionMetadata(projectId, sessionId);
       if (
         options?.ignoreIfLiveSnapshotHandled &&
@@ -959,6 +1016,10 @@ export function useSession(
         return;
       }
       reportProviderRuntimeStatus(sessionId, data.providerRuntimeStatus);
+      setDeferredMessages(data.deferredMessages ?? []);
+      if (!isRuntimeSnapshotCurrent(snapshotToken)) {
+        return;
+      }
       const metadataProcessState = parseProcessState(data.processState);
       setStatus(data.ownership);
       if (metadataProcessState) {
@@ -978,9 +1039,15 @@ export function useSession(
       ) {
         setPendingInputRequest(null);
       }
-      setDeferredMessages(data.deferredMessages ?? []);
     },
-    [projectId, reportProviderRuntimeStatus, sessionId, setDeferredMessages],
+    [
+      beginRuntimeSnapshot,
+      isRuntimeSnapshotCurrent,
+      projectId,
+      reportProviderRuntimeStatus,
+      sessionId,
+      setDeferredMessages,
+    ],
   );
 
   // Handle initial load completion from useSessionMessages
@@ -1583,6 +1650,7 @@ export function useSession(
   const handleSessionStatusChange = useCallback(
     (event: SessionStatusEvent) => {
       if (event.sessionId !== sessionId) return;
+      noteLifecycleObservation();
 
       const ownershipDropped =
         status.owner !== "none" && event.ownership.owner === "none";
@@ -1606,7 +1674,7 @@ export function useSession(
         throttledFetch();
       }
     },
-    [sessionId, status.owner, throttledFetch],
+    [noteLifecycleObservation, sessionId, status.owner, throttledFetch],
   );
 
   // Listen for process state changes via activity bus as a backup for session stream
@@ -1622,6 +1690,7 @@ export function useSession(
         event.activity === "in-turn" ||
         event.activity === "waiting-input"
       ) {
+        noteLifecycleObservation();
         logSessionUiTrace("activity-process-state", {
           sessionId,
           activity: event.activity,
@@ -1665,6 +1734,7 @@ export function useSession(
     [
       projectId,
       reportProviderRuntimeStatus,
+      noteLifecycleObservation,
       sessionId,
       setDeferredMessages,
       throttledFetch,
@@ -2045,6 +2115,7 @@ export function useSession(
           statusData.state === "in-turn" ||
           statusData.state === "waiting-input"
         ) {
+          noteLifecycleObservation();
           if (statusData.state !== "in-turn") {
             flushPendingStreamMessage();
           }
@@ -2096,6 +2167,7 @@ export function useSession(
             heartbeatData.liveness.state,
           );
           if (heartbeatProcessState) {
+            noteLifecycleObservation();
             setProcessState(heartbeatProcessState);
             if (heartbeatProcessState !== "waiting-input") {
               setPendingInputRequest(null);
@@ -2138,6 +2210,7 @@ export function useSession(
           sessionId?: string;
           providerRuntimeStatus?: ProviderRuntimeStatus;
         };
+        noteLifecycleObservation();
         logSessionUiTrace("stream-complete", { sessionId });
         reportProviderRuntimeStatus(
           completeData.sessionId ?? sessionId,
@@ -2216,6 +2289,7 @@ export function useSession(
           connectedData.state === "in-turn" ||
           connectedData.state === "waiting-input"
         ) {
+          noteLifecycleObservation();
           setProcessState(connectedData.state as ProcessState);
         }
         // Restore pending input request if state is waiting-input, clear if not
@@ -2379,6 +2453,7 @@ export function useSession(
       handleStreamEvent,
       noteStreamActivity,
       noteStreamProgressLiveness,
+      noteLifecycleObservation,
       clearStreaming,
       removePendingMessage,
       streamingMarkdownCallbacks,
@@ -2404,10 +2479,14 @@ export function useSession(
   // If process died (idle timeout), transition to idle state
   // Uses lightweight metadata endpoint to avoid re-fetching all messages
   const handleStreamError = useCallback(async () => {
+    const snapshotToken = beginRuntimeSnapshot();
     try {
       const data = await api.getSessionMetadata(projectId, sessionId);
       reportProviderRuntimeStatus(sessionId, data.providerRuntimeStatus);
       setDeferredMessages(data.deferredMessages ?? []);
+      if (!isRuntimeSnapshotCurrent(snapshotToken)) {
+        return;
+      }
       const metadataProcessState = parseProcessState(data.processState);
       if (data.ownership.owner !== "self") {
         setStatus({ owner: "none" });
@@ -2428,12 +2507,22 @@ export function useSession(
         }
       }
     } catch {
+      if (!isRuntimeSnapshotCurrent(snapshotToken)) {
+        return;
+      }
       // If session fetch fails, assume process is dead
       setStatus({ owner: "none" });
       setProcessState("idle");
       setPendingInputRequest(null);
     }
-  }, [projectId, sessionId, reportProviderRuntimeStatus, setDeferredMessages]);
+  }, [
+    beginRuntimeSnapshot,
+    isRuntimeSnapshotCurrent,
+    projectId,
+    reportProviderRuntimeStatus,
+    sessionId,
+    setDeferredMessages,
+  ]);
 
   // Only connect to session stream when we own the session
   // External sessions are tracked via the activity stream instead
@@ -2504,9 +2593,9 @@ export function useSession(
     sessionWatchConnected,
     sessionUpdatesConnected,
     lastStreamActivityAt, // Last stream message timestamp for engagement tracking
-    setStatus,
-    setProcessState,
-    setPendingInputRequest,
+    setStatus: setObservedStatus,
+    setProcessState: setObservedProcessState,
+    setPendingInputRequest: setObservedPendingInputRequest,
     setPermissionMode,
     pendingMessages, // Messages waiting for server confirmation
     addPendingMessage, // Add to pending queue, returns tempId

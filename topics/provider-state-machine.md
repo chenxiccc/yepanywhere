@@ -38,6 +38,16 @@ Codex's durable `task_complete` event normalizes to the same hidden
 catch-up to settle stale active presentation without inferring completion from
 assistant text.
 
+Session-detail runtime snapshots obey event-versus-snapshot freshness. A
+metadata request started for reconnect, phone wake, initial navigation-hint
+reconciliation, or stream-error recovery may update lifecycle fields only when
+no ownership, process-state, pending-input, liveness, or local lifecycle
+observation arrived after that request started. Among overlapping runtime
+snapshots, only the newest-started request may update lifecycle fields. This
+keeps an older `in-turn` snapshot from restoring thinking/Stop UI after a newer
+idle event, while a later reconnect or visibility refresh can still heal a
+missed event.
+
 `terminated` is a derived/diagnostic condition for unhealthy termination; it is
 shown through liveness status (`needs-attention`) and server recovery workflows
 rather than as a first-class interactive state.
