@@ -743,8 +743,31 @@ function mapClaudeSupportedEffortLevels(
   return supported.length > 0 ? supported : undefined;
 }
 
+function normalizedSlashCommandNameValue(name: string): string {
+  return name.trim().replace(/^\/+/, "").toLowerCase();
+}
+
 function normalizedSlashCommandName(command: SlashCommand): string {
-  return command.name.trim().replace(/^\/+/, "").toLowerCase();
+  return normalizedSlashCommandNameValue(command.name);
+}
+
+export function filterClaudeRemoteSlashCommands(
+  commands: string[],
+  terminalCommands: unknown,
+): string[] {
+  if (
+    !Array.isArray(terminalCommands) ||
+    !terminalCommands.every((command) => typeof command === "string")
+  ) {
+    return commands;
+  }
+
+  const terminalNames = new Set(
+    terminalCommands.map(normalizedSlashCommandNameValue),
+  );
+  return commands.filter(
+    (command) => !terminalNames.has(normalizedSlashCommandNameValue(command)),
+  );
 }
 
 export function withClaudeGoalAlias(commands: SlashCommand[]): SlashCommand[] {
@@ -797,6 +820,18 @@ function mapClaudeSdkModel(model: ClaudeSdkModelInfo): ModelInfo {
   };
 }
 
+function claudeModelFamily(
+  modelId: string,
+): "opus" | "sonnet" | "haiku" | "fable" | undefined {
+  const name = modelId.toLowerCase();
+  for (const family of ["opus", "sonnet", "haiku", "fable"] as const) {
+    if (new RegExp(`(?:^|[-/])${family}(?:[-/]|$)`).test(name)) {
+      return family;
+    }
+  }
+  return undefined;
+}
+
 export function mergeClaudeModels(models: ModelInfo[]): ModelInfo[] {
   const byId = new Map<string, ModelInfo>();
 
@@ -815,6 +850,19 @@ export function mergeClaudeModels(models: ModelInfo[]): ModelInfo[] {
           id: "default",
           name: fallback?.name ?? model.name,
           description: fallback?.description ?? model.description,
+        }),
+      );
+      continue;
+    }
+    if (model.id !== "fable" && claudeModelFamily(model.id) === "fable") {
+      const fallback = byId.get("fable");
+      byId.set(
+        "fable",
+        enrichClaudeModel({
+          ...fallback,
+          ...model,
+          id: "fable",
+          name: fallback?.name ?? model.name,
         }),
       );
       continue;
@@ -1155,13 +1203,7 @@ export class ClaudeProvider implements AgentProvider {
    */
   yaModelIdForReported(reported: string | undefined): string | undefined {
     if (!reported) return undefined;
-    const name = reported.toLowerCase();
-    for (const family of ["opus", "sonnet", "haiku", "fable"] as const) {
-      if (new RegExp(`(?:^|[-/])${family}(?:[-/]|$)`).test(name)) {
-        return family;
-      }
-    }
-    return undefined;
+    return claudeModelFamily(reported);
   }
 
   /**
@@ -2382,7 +2424,10 @@ export class ClaudeProvider implements AgentProvider {
       );
       return {
         ...sdkMessage,
-        slash_command_inventory: (sdkMessage.slash_commands as string[]).map(
+        slash_command_inventory: filterClaudeRemoteSlashCommands(
+          sdkMessage.slash_commands as string[],
+          sdkMessage.terminal_slash_commands,
+        ).map(
           (name): SlashCommand => ({
             name,
             description: "",

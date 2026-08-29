@@ -51,6 +51,12 @@ shell-startup and test-hermeticity rules for the local `BASH_ENV` bridge.
   expanded provider-text — not the literal `/goal ...` — when the user submits.
   If the SDK begins reporting `/goal` natively, the YA alias must step aside so
   the native command (and its arguments) reach Claude unaltered.
+- Claude system-init command inventory excludes every command named in
+  `terminal_slash_commands`, because those commands require the local terminal
+  and cannot work from YA's remote UI. Older SDKs that omit the field retain
+  their full init inventory. Rich `supportedCommands()` and
+  `commands_changed` inventories remain provider-curated and do not need this
+  fallback filter.
 - Non-Claude providers should not get a YA-emulated `/goal` from this path.
   They should show goal-like slash commands only when their provider command
   inventory or another provider-native capability reports native support, or
@@ -65,6 +71,12 @@ shell-startup and test-hermeticity rules for the local `BASH_ENV` bridge.
   enough replay, catch-up, durable transcript refresh, and liveness metadata to
   show the interesting agent text, tool runs, task/progress updates, and turn
   boundaries that an already-open tab saw.
+- Claude background-task retention follows the SDK's full
+  `background_tasks_changed` replacement snapshot once that level signal has
+  appeared. Ambient housekeeping tasks do not retain an idle provider process,
+  and a later snapshot can clear stale edge-derived state. Before the first
+  snapshot, task lifecycle edges and Stop-hook summaries remain the
+  compatibility fallback for older Claude Code releases.
 - Local YA-owned Claude provider processes should make the canonical session id
   visible to later Bash tool shells as `AGENTCTL_SESSION_ID` once the SDK init
   message reports it. This is a child-shell `BASH_ENV` bridge for `agentctl`
@@ -106,6 +118,9 @@ shell-startup and test-hermeticity rules for the local `BASH_ENV` bridge.
   auth/probe-failure fallback must describe the current Opus generation and
   retain the provider-native capability controls that are known without a
   handshake.
+- When the live catalog spells the current Fable model as a concrete extended
+  id such as `claude-fable-5[1m]`, YA transfers its live capabilities to the
+  stable `fable` selection rather than showing a duplicate concrete row.
 - Claude's primary model catalog remains the provider-native, latest-oriented
   experience. Previous concrete versions and custom exact ids appear only
   after a server-persisted, individual opt-in in Providers settings; projected

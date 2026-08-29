@@ -11,6 +11,11 @@ type TaskPatchLike = {
   is_backgrounded?: unknown;
 };
 
+type BackgroundTaskLike = {
+  task_id?: unknown;
+  ambient?: unknown;
+};
+
 interface RetainedTask {
   status: string;
   isBackgrounded?: boolean;
@@ -34,6 +39,27 @@ function readTaskPatch(message: SDKMessage): TaskPatchLike | null {
   return patch && typeof patch === "object" ? patch : null;
 }
 
+function readBackgroundTasks(
+  message: SDKMessage,
+): Array<{ taskId: string; ambient: boolean }> | null {
+  if (!Array.isArray(message.tasks)) {
+    return null;
+  }
+
+  const tasks: Array<{ taskId: string; ambient: boolean }> = [];
+  for (const task of message.tasks) {
+    if (!task || typeof task !== "object") {
+      return null;
+    }
+    const { task_id: taskId, ambient } = task as BackgroundTaskLike;
+    if (typeof taskId !== "string" || !taskId) {
+      return null;
+    }
+    tasks.push({ taskId, ambient: ambient === true });
+  }
+  return tasks;
+}
+
 function isStopHookInput(input: unknown): input is StopHookLike {
   return (
     !!input &&
@@ -46,6 +72,7 @@ export class ClaudeProviderRetentionTracker {
   private stopBackgroundTaskCount = 0;
   private stopSessionCronCount = 0;
   private retainedTasks = new Map<string, RetainedTask>();
+  private backgroundTaskSnapshotSeen = false;
   private lastUpdatedAt: Date | null = null;
 
   constructor(private readonly onChange?: () => void) {}
@@ -92,12 +119,15 @@ export class ClaudeProviderRetentionTracker {
     }
 
     if (backgroundTasks !== null) {
-      this.stopBackgroundTaskCount = backgroundTasks.length;
+      this.stopBackgroundTaskCount = this.backgroundTaskSnapshotSeen
+        ? 0
+        : backgroundTasks.length;
     }
     if (sessionCrons !== null) {
       this.stopSessionCronCount = sessionCrons.length;
     }
     if (
+      !this.backgroundTaskSnapshotSeen &&
       backgroundTasks !== null &&
       sessionCrons !== null &&
       backgroundTasks.length === 0 &&
@@ -114,7 +144,14 @@ export class ClaudeProviderRetentionTracker {
     }
 
     switch (message.subtype) {
+      case "background_tasks_changed":
+        this.observeBackgroundTasksChanged(message);
+        break;
       case "task_started":
+        if (message.ambient === true) {
+          this.clearTaskFromMessage(message);
+          break;
+        }
         this.retainTaskFromMessage(message, "running");
         break;
       case "task_progress":
@@ -129,7 +166,30 @@ export class ClaudeProviderRetentionTracker {
     }
   }
 
+  private observeBackgroundTasksChanged(message: SDKMessage): void {
+    const tasks = readBackgroundTasks(message);
+    if (!tasks) {
+      return;
+    }
+
+    const previous = this.snapshotKey();
+    this.backgroundTaskSnapshotSeen = true;
+    this.stopBackgroundTaskCount = 0;
+    this.retainedTasks = new Map(
+      tasks
+        .filter((task) => !task.ambient)
+        .map((task) => [
+          task.taskId,
+          { status: "running", isBackgrounded: true },
+        ]),
+    );
+    this.markUpdated(previous);
+  }
+
   private retainTaskFromMessage(message: SDKMessage, status: string): void {
+    if (this.backgroundTaskSnapshotSeen) {
+      return;
+    }
     const taskId = readTaskId(message);
     if (!taskId) {
       return;
@@ -144,6 +204,9 @@ export class ClaudeProviderRetentionTracker {
   }
 
   private observeTaskUpdated(message: SDKMessage): void {
+    if (this.backgroundTaskSnapshotSeen) {
+      return;
+    }
     const taskId = readTaskId(message);
     const patch = readTaskPatch(message);
     if (!taskId || !patch) {
@@ -177,6 +240,9 @@ export class ClaudeProviderRetentionTracker {
   }
 
   private clearTaskFromMessage(message: SDKMessage): void {
+    if (this.backgroundTaskSnapshotSeen) {
+      return;
+    }
     const taskId = readTaskId(message);
     if (!taskId) {
       return;

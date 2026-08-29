@@ -614,6 +614,36 @@ Previous-model registry review:
 6. Use read-only catalog and lifecycle checks routinely. Do not spend tokens
    on live model turns without explicit approval.
 
+Current source refresh, 2026-08-29:
+
+- `@anthropic-ai/claude-agent-sdk` was refreshed from `0.3.223` to `0.3.251`;
+  its SDK-bundled executable reports Claude Code `2.1.251`. The independently
+  installed `claude` also reports `2.1.251`, but YA continues to resolve the
+  SDK-bundled executable first.
+- An authenticated no-turn handshake returns `default`, `opus[1m]`,
+  `claude-fable-5[1m]`, `sonnet`, and `haiku`. YA now transfers the concrete
+  Fable row's live capabilities to its stable `fable` selection, avoiding a
+  duplicate picker row; the other stable aliases and fallback order remain
+  unchanged.
+- System init now identifies terminal-only slash commands. YA omits those from
+  its remote command inventory while retaining the older-SDK fallback when the
+  field is absent. The richer `supportedCommands()` result remains the primary
+  provider-curated inventory.
+- Claude now emits a full background-task replacement snapshot and marks
+  housekeeping tasks as ambient. Provider retention uses the nonambient
+  snapshot once observed, so a live-update watcher or missed terminal edge
+  cannot indefinitely retain an idle session; older task-edge and Stop-hook
+  evidence remains the pre-snapshot compatibility path.
+- The changed PDF Read placement is already accepted by YA's nested
+  tool-result media materializer. New queued-turn, reply-correlation, usage,
+  and pricing fields pass through as additive metadata; the updated SDK types,
+  server provider tests, and shared Claude schema tests require no further
+  compatibility changes.
+
+Status: Claude Code 2.1.251 / SDK 0.3.251 package, command inventory,
+background-task retention, model catalog, and message compatibility is
+refreshed.
+
 Current source refresh, 2026-08-06:
 
 - `@anthropic-ai/claude-agent-sdk` was refreshed from `0.3.220` to `0.3.223`;

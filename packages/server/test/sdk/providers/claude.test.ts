@@ -3,6 +3,7 @@ import {
   ClaudeProvider,
   claudeProvider,
   evaluateClaudeSessionOptionsUpdate,
+  filterClaudeRemoteSlashCommands,
   formatClaudeLoginCommand,
   getClaudeAutoCompactOverrideEnv,
   getClaudeSessionLaunchOptions,
@@ -276,10 +277,10 @@ describe("ClaudeProvider model list", () => {
     });
   });
 
-  it("preserves SDK-reported model capability flags", () => {
+  it("merges the live Fable row into the stable fable alias", () => {
     const models = mergeClaudeModels([
       {
-        id: "claude-fable-5",
+        id: "claude-fable-5[1m]",
         name: "Fable 5",
         description: "SDK-reported Fable",
         supportsEffort: true,
@@ -290,15 +291,17 @@ describe("ClaudeProvider model list", () => {
       },
     ]);
 
-    expect(models.find((model) => model.id === "claude-fable-5")).toMatchObject(
-      {
-        contextWindow: 1_000_000,
-        supportsAdaptiveThinking: true,
-        supportsFastMode: false,
-        supportsAutoMode: true,
-        supportedEffortLevels: ["low", "medium", "high"],
-      },
-    );
+    expect(models.map((model) => model.id)).not.toContain("claude-fable-5[1m]");
+    expect(models.find((model) => model.id === "fable")).toMatchObject({
+      name: "Fable",
+      description: "SDK-reported Fable",
+      contextWindow: 1_000_000,
+      supportsAdaptiveThinking: true,
+      supportsFastMode: false,
+      supportsAutoMode: true,
+      supportedEffortLevels: ["low", "medium", "high"],
+      defaultEffortLevel: "high",
+    });
   });
 
   it("merges the live Opus 5 extended row into the stable opus alias", () => {
@@ -426,6 +429,18 @@ describe("Claude provider liveness probe", () => {
 });
 
 describe("Claude provider slash commands", () => {
+  it("hides terminal-only commands from remote command inventories", () => {
+    expect(
+      filterClaudeRemoteSlashCommands(
+        ["compact", "exit", "statusline", "review"],
+        ["/EXIT", "statusline"],
+      ),
+    ).toEqual(["compact", "review"]);
+    expect(
+      filterClaudeRemoteSlashCommands(["compact", "exit"], undefined),
+    ).toEqual(["compact", "exit"]);
+  });
+
   it("adds /goal as a /loop alias when /loop is advertised and /goal is not", () => {
     const commands = withClaudeGoalAlias([
       { name: "compact", description: "Compact conversation" },
