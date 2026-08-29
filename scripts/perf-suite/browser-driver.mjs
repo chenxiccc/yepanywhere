@@ -1579,13 +1579,14 @@ export async function measureBrowserMode({
           await Promise.all(
             livePages.map(async ({ mode, pages }) => {
               const trials = await Promise.all(
-                pages.map((page) =>
-                  measureBrowserInteractionTrace(
+                pages.map(async (page) => {
+                  await twoAnimationFrames(page);
+                  return measureBrowserInteractionTrace(
                     page,
                     scenario,
                     scenario.interactionTrace,
-                  ),
-                ),
+                  );
+                }),
               );
               mode.interactionTrace = {
                 aggregate: summarizeInteractionTrials(trials),
