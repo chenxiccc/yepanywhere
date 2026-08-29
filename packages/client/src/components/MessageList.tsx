@@ -2387,13 +2387,16 @@ export const MessageList = memo(function MessageList({
           progressiveRenderCycleKey;
       }
       startTransition(() => {
-        setProgressiveEntryCount((current) =>
-          getNextProgressiveEntryCount(
+        setProgressiveEntryCount((current) => {
+          if (progressiveRenderPauseSignal?.current) {
+            return current;
+          }
+          return getNextProgressiveEntryCount(
             visibleTimelineEntries,
             current ?? progressiveInitialEntryCount,
             PROGRESSIVE_RENDER_ITEM_BATCH_TARGET,
-          ),
-        );
+          );
+        });
       });
     }, resumeDelayMs);
 
@@ -2418,6 +2421,9 @@ export const MessageList = memo(function MessageList({
     }
 
     const timer = setTimeout(() => {
+      if (progressiveRenderPauseSignal?.current) {
+        return;
+      }
       if (retainedProgressiveWindowActive) {
         setRetainedProgressiveWindowKey(null);
       } else {
@@ -2435,6 +2441,7 @@ export const MessageList = memo(function MessageList({
     progressiveHydrationActive,
     progressiveRenderCycleKey,
     progressiveRenderPaused,
+    progressiveRenderPauseSignal,
     retainedProgressiveWindowActive,
     visibleTimelineEntries.length,
   ]);
