@@ -887,6 +887,7 @@ describe("session sandbox", () => {
     await writer.initialize();
     await writer.setSessionSandbox("replayable-session", {
       level: "project-write",
+      networkFirewall: false,
       stateKey,
       projectPath,
       projectId,
@@ -898,6 +899,7 @@ describe("session sandbox", () => {
     const metadata = reloaded.getMetadata("replayable-session");
     expect(metadata).toMatchObject({
       sandboxLevel: "project-write",
+      sandboxNetworkFirewall: false,
       sandboxStateKey: stateKey,
       sandboxProjectPath: projectPath,
       workingProjectId: projectId,

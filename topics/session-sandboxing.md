@@ -533,8 +533,12 @@ mechanism. Availability then applies the local-auth prerequisite, and every
 launch rechecks it. A launch reserves that prerequisite until the process is
 registered, and the authenticated auth routes return 409 rather than disabling
 auth or opening localhost access while a launch is pending or any such process
-is active. A requested confined session must never launch with only part of
-the claimed boundary.
+is active. One supervisor launch transaction owns that reservation and injects
+the settled auth requirement into every real/provider create, start, and fork
+path. One process-to-metadata serializer owns level, firewall selection, state
+key, project identity, and provider identity for ordinary persistence,
+reactivation, and provider-created helper forks. A requested confined session
+must never launch with only part of the claimed boundary.
 
 The server persists the requested level, project-scoped state key, canonical
 project path, and effective backend status. It does not expose or persist the

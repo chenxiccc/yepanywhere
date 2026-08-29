@@ -27,6 +27,7 @@ import { getProjectName } from "../projects/paths.js";
 import {
   getSessionSandboxSettingsError,
   prepareSessionSandbox,
+  type PrepareSessionSandboxOptions,
 } from "../session-sandbox.js";
 import { getProvider } from "../sdk/providers/index.js";
 import { CacheMissBillingMonitor } from "../services/CacheMissBillingMonitor.js";
@@ -86,6 +87,7 @@ import {
   thinkingConfigsEqual,
 } from "./SessionActivationCoordinator.js";
 import { HeartbeatSweepScheduler, earliestDueAt } from "./heartbeatSchedule.js";
+import { persistedSandboxFromProcess } from "./sessionSandboxMetadata.js";
 import {
   type QueuedRequestInfo,
   type QueuedResponse,
@@ -148,6 +150,17 @@ const ACTIVE_HEARTBEAT_DOUBT_STATUSES = new Set([
   "long-silent-unverified",
 ]);
 const RESUME_COMPACT_WAIT_MS = 3 * 60 * 1000;
+
+type SessionSandboxLaunchOptions = Omit<
+  PrepareSessionSandboxOptions,
+  "authEnforced"
+>;
+
+interface SessionSandboxLaunchTransaction {
+  options: (
+    options: SessionSandboxLaunchOptions,
+  ) => PrepareSessionSandboxOptions;
+}
 
 export type ResumeMode = "full" | "compact-first";
 
@@ -759,20 +772,23 @@ export class Supervisor {
     );
   }
 
-  private async withSessionSandboxAuthReservation<T>(
+  private async withSessionSandboxLaunchTransaction<T>(
     level: SessionSandboxLevel | undefined,
-    action: (authEnforced: boolean) => Promise<T>,
+    action: (transaction: SessionSandboxLaunchTransaction) => Promise<T>,
   ): Promise<T> {
     const authEnforced =
       level === "project-write" &&
       this.isSessionSandboxAuthEnforced?.() === true;
+    const transaction: SessionSandboxLaunchTransaction = {
+      options: (options) => ({ ...options, authEnforced }),
+    };
     if (!authEnforced) {
-      return action(false);
+      return action(transaction);
     }
 
     this.pendingSessionSandboxAuthReservations++;
     try {
-      return await action(true);
+      return await action(transaction);
     } finally {
       this.pendingSessionSandboxAuthReservations--;
     }
@@ -1132,27 +1148,27 @@ export class Supervisor {
     modelSettings?: ModelSettings,
     resumeSessionId?: string,
   ): Promise<Process> {
-    return this.withSessionSandboxAuthReservation(
+    return this.withSessionSandboxLaunchTransaction(
       modelSettings?.sandboxLevel,
-      (authEnforced) =>
-        this.createRealSessionWithAuthReservation(
+      (sandboxLaunch) =>
+        this.createRealSessionWithinSandboxLaunch(
           projectPath,
           projectId,
           permissionMode,
           modelSettings,
           resumeSessionId,
-          authEnforced,
+          sandboxLaunch,
         ),
     );
   }
 
-  private async createRealSessionWithAuthReservation(
+  private async createRealSessionWithinSandboxLaunch(
     projectPath: string,
     projectId: UrlProjectId,
     permissionMode: PermissionMode | undefined,
     modelSettings: ModelSettings | undefined,
     resumeSessionId: string | undefined,
-    authEnforced: boolean,
+    sandboxLaunch: SessionSandboxLaunchTransaction,
   ): Promise<Process> {
     if (!this.realSdk) {
       throw new Error("realSdk is not available");
@@ -1165,17 +1181,18 @@ export class Supervisor {
       { supportsNativePromptSuggestions: true },
     );
     const tempSessionId = resumeSessionId ?? randomUUID();
-    const sessionSandbox = await prepareSessionSandbox({
-      level: modelSettings?.sandboxLevel,
-      networkFirewall: modelSettings?.sandboxNetworkFirewall,
-      provider: "claude",
-      projectPath,
-      executor: modelSettings?.executor,
-      stateKey: modelSettings?.sandboxStateKey,
-      resumeSessionId,
-      stateRoot: this.sandboxStateRoot,
-      authEnforced,
-    });
+    const sessionSandbox = await prepareSessionSandbox(
+      sandboxLaunch.options({
+        level: modelSettings?.sandboxLevel,
+        networkFirewall: modelSettings?.sandboxNetworkFirewall,
+        provider: "claude",
+        projectPath,
+        executor: modelSettings?.executor,
+        stateKey: modelSettings?.sandboxStateKey,
+        resumeSessionId,
+        stateRoot: this.sandboxStateRoot,
+      }),
+    );
     // Start session WITHOUT an initial message - agent will wait
     const result = await this.realSdk.startSession({
       cwd: projectPath,
@@ -1764,29 +1781,29 @@ export class Supervisor {
     permissionMode?: PermissionMode,
     modelSettings?: ModelSettings,
   ): Promise<Process> {
-    return this.withSessionSandboxAuthReservation(
+    return this.withSessionSandboxLaunchTransaction(
       modelSettings?.sandboxLevel,
-      (authEnforced) =>
-        this.startRealSessionWithAuthReservation(
+      (sandboxLaunch) =>
+        this.startRealSessionWithinSandboxLaunch(
           projectPath,
           projectId,
           message,
           resumeSessionId,
           permissionMode,
           modelSettings,
-          authEnforced,
+          sandboxLaunch,
         ),
     );
   }
 
-  private async startRealSessionWithAuthReservation(
+  private async startRealSessionWithinSandboxLaunch(
     projectPath: string,
     projectId: UrlProjectId,
     message: UserMessage,
     resumeSessionId: string | undefined,
     permissionMode: PermissionMode | undefined,
     modelSettings: ModelSettings | undefined,
-    authEnforced: boolean,
+    sandboxLaunch: SessionSandboxLaunchTransaction,
   ): Promise<Process> {
     const tempSessionId = resumeSessionId ?? randomUUID();
 
@@ -1805,17 +1822,18 @@ export class Supervisor {
       modelSettings?.promptSuggestionMode,
       { supportsNativePromptSuggestions: true },
     );
-    const sessionSandbox = await prepareSessionSandbox({
-      level: modelSettings?.sandboxLevel,
-      networkFirewall: modelSettings?.sandboxNetworkFirewall,
-      provider: "claude",
-      projectPath,
-      executor: modelSettings?.executor,
-      stateKey: modelSettings?.sandboxStateKey,
-      resumeSessionId,
-      stateRoot: this.sandboxStateRoot,
-      authEnforced,
-    });
+    const sessionSandbox = await prepareSessionSandbox(
+      sandboxLaunch.options({
+        level: modelSettings?.sandboxLevel,
+        networkFirewall: modelSettings?.sandboxNetworkFirewall,
+        provider: "claude",
+        projectPath,
+        executor: modelSettings?.executor,
+        stateKey: modelSettings?.sandboxStateKey,
+        resumeSessionId,
+        stateRoot: this.sandboxStateRoot,
+      }),
+    );
     const result = await this.realSdk.startSession({
       cwd: projectPath,
       resumeSessionId,
@@ -1963,10 +1981,10 @@ export class Supervisor {
     retryProviderStartupFailure = false,
     requireProviderSessionId = false,
   ): Promise<Process> {
-    return this.withSessionSandboxAuthReservation(
+    return this.withSessionSandboxLaunchTransaction(
       modelSettings?.sandboxLevel,
-      (authEnforced) =>
-        this.createProviderSessionWithAuthReservation(
+      (sandboxLaunch) =>
+        this.createProviderSessionWithinSandboxLaunch(
           projectPath,
           projectId,
           permissionMode,
@@ -1975,12 +1993,12 @@ export class Supervisor {
           resumeSessionId,
           retryProviderStartupFailure,
           requireProviderSessionId,
-          authEnforced,
+          sandboxLaunch,
         ),
     );
   }
 
-  private async createProviderSessionWithAuthReservation(
+  private async createProviderSessionWithinSandboxLaunch(
     projectPath: string,
     projectId: UrlProjectId,
     permissionMode: PermissionMode | undefined,
@@ -1989,7 +2007,7 @@ export class Supervisor {
     resumeSessionId: string | undefined,
     retryProviderStartupFailure: boolean,
     requireProviderSessionId: boolean,
-    authEnforced: boolean,
+    sandboxLaunch: SessionSandboxLaunchTransaction,
   ): Promise<Process> {
     const activeProvider = provider ?? this.provider;
     if (!activeProvider) {
@@ -2017,7 +2035,7 @@ export class Supervisor {
       modelSettings,
     );
     const tempSessionId = resumeSessionId ?? randomUUID();
-    const sessionSandbox = await prepareSessionSandbox({
+    const sessionSandboxOptions = sandboxLaunch.options({
       level: modelSettings?.sandboxLevel,
       networkFirewall: modelSettings?.sandboxNetworkFirewall,
       provider: activeProvider.name,
@@ -2026,19 +2044,8 @@ export class Supervisor {
       stateKey: modelSettings?.sandboxStateKey,
       resumeSessionId,
       stateRoot: this.sandboxStateRoot,
-      authEnforced,
     });
-    const sessionSandboxOptions = {
-      level: modelSettings?.sandboxLevel,
-      networkFirewall: modelSettings?.sandboxNetworkFirewall,
-      provider: activeProvider.name,
-      projectPath,
-      executor: modelSettings?.executor,
-      stateKey: modelSettings?.sandboxStateKey,
-      resumeSessionId,
-      stateRoot: this.sandboxStateRoot,
-      authEnforced,
-    } as const;
+    const sessionSandbox = await prepareSessionSandbox(sessionSandboxOptions);
 
     // Start session WITHOUT an initial message - agent will wait
     const start = activeProvider.startSession({
@@ -2205,10 +2212,10 @@ export class Supervisor {
     retryProviderStartupFailure = false,
     requireProviderSessionId = false,
   ): Promise<Process> {
-    return this.withSessionSandboxAuthReservation(
+    return this.withSessionSandboxLaunchTransaction(
       modelSettings?.sandboxLevel,
-      (authEnforced) =>
-        this.startProviderSessionWithAuthReservation(
+      (sandboxLaunch) =>
+        this.startProviderSessionWithinSandboxLaunch(
           projectPath,
           projectId,
           message,
@@ -2218,12 +2225,12 @@ export class Supervisor {
           provider,
           retryProviderStartupFailure,
           requireProviderSessionId,
-          authEnforced,
+          sandboxLaunch,
         ),
     );
   }
 
-  private async startProviderSessionWithAuthReservation(
+  private async startProviderSessionWithinSandboxLaunch(
     projectPath: string,
     projectId: UrlProjectId,
     message: UserMessage,
@@ -2233,7 +2240,7 @@ export class Supervisor {
     provider: AgentProvider | undefined,
     retryProviderStartupFailure: boolean,
     requireProviderSessionId: boolean,
-    authEnforced: boolean,
+    sandboxLaunch: SessionSandboxLaunchTransaction,
   ): Promise<Process> {
     const activeProvider = provider ?? this.provider;
     if (!activeProvider) {
@@ -2264,7 +2271,7 @@ export class Supervisor {
       modelSettings,
     );
     const tempSessionId = resumeSessionId ?? randomUUID();
-    const sessionSandbox = await prepareSessionSandbox({
+    const sessionSandboxOptions = sandboxLaunch.options({
       level: modelSettings?.sandboxLevel,
       networkFirewall: modelSettings?.sandboxNetworkFirewall,
       provider: activeProvider.name,
@@ -2273,19 +2280,8 @@ export class Supervisor {
       stateKey: modelSettings?.sandboxStateKey,
       resumeSessionId,
       stateRoot: this.sandboxStateRoot,
-      authEnforced,
     });
-    const sessionSandboxOptions = {
-      level: modelSettings?.sandboxLevel,
-      networkFirewall: modelSettings?.sandboxNetworkFirewall,
-      provider: activeProvider.name,
-      projectPath,
-      executor: modelSettings?.executor,
-      stateKey: modelSettings?.sandboxStateKey,
-      resumeSessionId,
-      stateRoot: this.sandboxStateRoot,
-      authEnforced,
-    } as const;
+    const sessionSandbox = await prepareSessionSandbox(sessionSandboxOptions);
 
     const start = activeProvider.startSession({
       cwd: projectPath,
@@ -2823,14 +2819,14 @@ export class Supervisor {
     sandboxStateKey?: string;
     sessionSandbox?: Awaited<ReturnType<typeof prepareSessionSandbox>>;
   }> {
-    return this.withSessionSandboxAuthReservation(
+    return this.withSessionSandboxLaunchTransaction(
       options.sandboxLevel,
-      (authEnforced) =>
-        this.forkSessionWithAuthReservation(options, authEnforced),
+      (sandboxLaunch) =>
+        this.forkSessionWithinSandboxLaunch(options, sandboxLaunch),
     );
   }
 
-  private async forkSessionWithAuthReservation(
+  private async forkSessionWithinSandboxLaunch(
     options: {
       sessionId: string;
       projectPath: string;
@@ -2842,7 +2838,7 @@ export class Supervisor {
       sandboxNetworkFirewall?: boolean;
       sandboxStateKey?: string;
     },
-    authEnforced: boolean,
+    sandboxLaunch: SessionSandboxLaunchTransaction,
   ): Promise<{
     sessionId: string;
     sandboxStateKey?: string;
@@ -2857,15 +2853,16 @@ export class Supervisor {
     if (typeof provider.forkSession !== "function") {
       throw new Error(`${provider.name} does not support transcript fork`);
     }
-    const sessionSandbox = await prepareSessionSandbox({
-      level: options.sandboxLevel,
-      networkFirewall: options.sandboxNetworkFirewall,
-      provider: provider.name,
-      projectPath: options.projectPath,
-      stateKey: options.sandboxStateKey,
-      stateRoot: this.sandboxStateRoot,
-      authEnforced,
-    });
+    const sessionSandbox = await prepareSessionSandbox(
+      sandboxLaunch.options({
+        level: options.sandboxLevel,
+        networkFirewall: options.sandboxNetworkFirewall,
+        provider: provider.name,
+        projectPath: options.projectPath,
+        stateKey: options.sandboxStateKey,
+        stateRoot: this.sandboxStateRoot,
+      }),
+    );
     const fork = await provider.forkSession({
       sessionId: options.sessionId,
       cwd: options.projectPath,
@@ -2935,11 +2932,8 @@ export class Supervisor {
       process.sandboxStateKey
     ) {
       await this.sessionMetadataService.setSessionSandbox(childSessionId, {
+        ...persistedSandboxFromProcess(process, providerName),
         level: "project-write",
-        stateKey: process.sandboxStateKey,
-        projectPath: process.sandboxProjectPath ?? process.projectPath,
-        projectId: process.projectId,
-        provider: providerName,
       });
     }
   }
@@ -5071,11 +5065,8 @@ export class Supervisor {
     }
     try {
       await this.sessionMetadataService.setSessionSandbox(process.sessionId, {
-        provider: process.provider,
+        ...persistedSandboxFromProcess(process),
         level: "project-write",
-        stateKey: process.sandboxStateKey,
-        projectPath: process.sandboxProjectPath ?? process.projectPath,
-        projectId: process.projectId,
       });
     } catch (error) {
       await process.abort();

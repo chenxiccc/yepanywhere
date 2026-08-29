@@ -4683,6 +4683,7 @@ describe("Supervisor", () => {
       // Only the recap floor and the fork-archival path touch the metadata
       // service here; back the stub with a swappable recap row list.
       let persistedRecaps: unknown[] = [];
+      const setSessionSandbox = vi.fn(async () => undefined);
       const metadataStub = {
         getMetadata: () => undefined,
         recordEffectiveLaunchSettings: async () => ({
@@ -4700,6 +4701,7 @@ describe("Supervisor", () => {
         setProvider: async () => {},
         setExecutor: async () => {},
         setRequestedModel: async () => {},
+        setSessionSandbox,
         addRecapMessage: async () => {},
       } as unknown as ConstructorParameters<
         typeof Supervisor
@@ -4778,6 +4780,49 @@ describe("Supervisor", () => {
         text: "forked summary",
       });
       expect(forkSession).toHaveBeenCalled();
+
+      Object.assign(process, {
+        sandboxEnforcement: {
+          requested: "project-write",
+          effective: "project-write",
+          state: "enforced",
+          networkFirewall: false,
+        },
+        sandboxStateKey: "project-sandbox",
+        sandboxProjectPath: "/tmp/test",
+      });
+      const sandboxPersistence = supervisorWithMetadata as unknown as {
+        persistProcessSandboxOrAbort: (p: typeof process) => Promise<void>;
+        archiveHelperFork: (
+          childSessionId: string,
+          sourceSessionId: string,
+          title: string,
+          providerName: "claude",
+          p: typeof process,
+        ) => Promise<void>;
+      };
+      await sandboxPersistence.persistProcessSandboxOrAbort(process);
+      await sandboxPersistence.archiveHelperFork(
+        "sandbox-helper-fork",
+        process.sessionId,
+        "Sandbox helper",
+        "claude",
+        process,
+      );
+      expect(setSessionSandbox).toHaveBeenCalledWith(
+        process.sessionId,
+        expect.objectContaining({
+          level: "project-write",
+          networkFirewall: false,
+        }),
+      );
+      expect(setSessionSandbox).toHaveBeenCalledWith(
+        "sandbox-helper-fork",
+        expect.objectContaining({
+          level: "project-write",
+          networkFirewall: false,
+        }),
+      );
       expect(events).toContainEqual(
         expect.objectContaining({
           type: "session-metadata-changed",

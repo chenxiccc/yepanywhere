@@ -19,6 +19,7 @@ import { getSessionSandboxSettingsError } from "../session-sandbox.js";
 import type { RecoveredSessionLaunchSettings } from "../sessions/types.js";
 import type { PermissionMode } from "../sdk/types.js";
 import type { Process } from "./Process.js";
+import { persistedSandboxFromProcess } from "./sessionSandboxMetadata.js";
 
 /** Launch and live configuration settings for a session. */
 export interface ModelSettings {
@@ -444,12 +445,7 @@ export class SessionActivationCoordinator {
     }
     if (Object.hasOwn(updates, "sandboxLevel")) {
       await service.setSessionSandbox(process.sessionId, {
-        level: process.sandboxEnforcement?.effective ?? "none",
-        networkFirewall: process.sandboxEnforcement?.networkFirewall,
-        stateKey: process.sandboxStateKey,
-        projectPath: process.sandboxProjectPath ?? process.projectPath,
-        projectId: process.projectId,
-        provider: process.provider,
+        ...persistedSandboxFromProcess(process),
       });
       wroteMetadata = true;
     }
