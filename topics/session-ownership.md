@@ -163,6 +163,12 @@ defensible equilibrium: the false positive's cost is low and bounded.
 
 - Ownership is mtime recency, never proof of process liveness. UI must not
   upgrade "recently written" to "a live process is steering this."
+- A persisted provider transcript remains viewable without a live provider
+  attachment. Session detail and metadata reads may enrich the disk projection
+  from an owned process, but an unavailable optional process control such as
+  dynamic command discovery falls back to static provider facts rather than
+  failing the read. Resume, fork, and send actions keep their own attachment
+  and concurrent-writer gates.
 - YA must stay a non-appending reader of live provider transcripts; the only
   write path is fork-to-a-new-file.
 - The blue pending-tool banner is a heuristic inference from a dangling tool

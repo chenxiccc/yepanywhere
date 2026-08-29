@@ -175,8 +175,21 @@ async function getSessionSlashCommands(
   provider: ProviderName | undefined,
 ) {
   if (process?.supportsDynamicCommands) {
-    const commands = await process.supportedCommands();
-    if (commands) return commands;
+    try {
+      const commands = await process.supportedCommands();
+      if (commands) return commands;
+    } catch (error) {
+      getLogger().warn(
+        {
+          event: "session_dynamic_commands_unavailable",
+          sessionId: process.sessionId,
+          processId: process.id,
+          provider,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Falling back to static commands for session read",
+      );
+    }
   }
   return getStaticSlashCommandsForProvider(provider);
 }

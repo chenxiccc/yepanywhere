@@ -2104,6 +2104,71 @@ describe("Sessions metadata route", () => {
     expect(json.processState).toBe("idle");
   });
 
+  it("keeps metadata viewable when dynamic command discovery disconnects", async () => {
+    const project = { ...createProject(), provider: "codex" as const };
+    const supportedCommands = vi.fn(async () => {
+      throw new Error("Provider worker is disconnected");
+    });
+    const warn = vi
+      .spyOn(getLogger(), "warn")
+      .mockImplementation(() => undefined);
+
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          id: "proc-1",
+          sessionId: "sess-1",
+          permissionMode: "default",
+          modeVersion: 0,
+          state: { type: "idle", since: new Date("2026-03-10T09:47:00.000Z") },
+          provider: "codex",
+          supportsDynamicCommands: true,
+          supportedCommands,
+          getDeferredQueueSummary: vi.fn(() => []),
+          getProviderRuntimeStatus: vi.fn(() => null),
+        })),
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSessionSummary: vi.fn(async () => createSummary()),
+          }) as unknown as ISessionReader,
+      ),
+      sessionMetadataService: {
+        getMetadata: vi.fn(() => undefined),
+        getProvider: vi.fn(() => "codex"),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/metadata`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(supportedCommands).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "session_dynamic_commands_unavailable",
+        sessionId: "sess-1",
+        processId: "proc-1",
+        provider: "codex",
+        error: "Provider worker is disconnected",
+      }),
+      "Falling back to static commands for session read",
+    );
+    const json = await response.json();
+    expect(json.session.provider).toBe("codex");
+    expect(json.slashCommands).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "compact" }),
+        expect.objectContaining({ name: "status" }),
+      ]),
+    );
+  });
+
   it("returns static Codex slash commands for stopped sessions", async () => {
     const project = { ...createProject(), provider: "codex" as const };
 
