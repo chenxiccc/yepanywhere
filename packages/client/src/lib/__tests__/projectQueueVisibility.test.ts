@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   PROJECT_QUEUE_CAPABILITY,
   PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
-  getProjectQueueAffordanceState,
   serverSupportsProjectQueue,
   serverSupportsProjectQueueNewSessionShortcutSetting,
+  shouldShowProjectQueueAffordance,
 } from "../projectQueueVisibility";
 
 describe("serverSupportsProjectQueue", () => {
@@ -64,66 +64,99 @@ describe("serverSupportsProjectQueueNewSessionShortcutSetting", () => {
   });
 });
 
-describe("getProjectQueueAffordanceState", () => {
-  it("is unavailable without a known project", () => {
-    expect(getProjectQueueAffordanceState({ projectId: null })).toBe(
-      "unavailable",
-    );
+describe("shouldShowProjectQueueAffordance", () => {
+  it("hides without a known project", () => {
+    expect(shouldShowProjectQueueAffordance({ projectId: null })).toBe(false);
   });
 
-  it("is unblocked when the project has no blocking work", () => {
+  it("shows when project queue backlog exists", () => {
     expect(
-      getProjectQueueAffordanceState({
-        projectId: "project-1",
-        activeProjectSessionIds: [],
-        projectQueueBlockingCount: 0,
-      }),
-    ).toBe("unblocked");
-  });
-
-  it("is blocked when project queue backlog exists", () => {
-    expect(
-      getProjectQueueAffordanceState({
+      shouldShowProjectQueueAffordance({
         projectId: "project-1",
         projectQueueItemCount: 1,
       }),
-    ).toBe("blocked");
+    ).toBe(true);
   });
 
-  it("is blocked while the current session has active work", () => {
+  it("hides when normal send is equivalent", () => {
     expect(
-      getProjectQueueAffordanceState({
+      shouldShowProjectQueueAffordance({
         projectId: "project-1",
-        currentSessionBlocksProjectQueue: true,
+        currentSessionId: "session-1",
+        activeProjectSessionIds: [],
+      }),
+    ).toBe(false);
+  });
+
+  it("hides when normal session queue is equivalent", () => {
+    expect(
+      shouldShowProjectQueueAffordance({
+        projectId: "project-1",
+        currentSessionId: "session-1",
         activeProjectSessionIds: ["session-1"],
       }),
-    ).toBe("blocked");
+    ).toBe(false);
   });
 
-  it("is blocked while the current session has queued work", () => {
+  it("hides when project blocking count only reflects the current session", () => {
     expect(
-      getProjectQueueAffordanceState({
+      shouldShowProjectQueueAffordance({
         projectId: "project-1",
-        currentSessionHasSessionQueueBacklog: true,
-      }),
-    ).toBe("blocked");
-  });
-
-  it("is blocked when project blocking count reports work", () => {
-    expect(
-      getProjectQueueAffordanceState({
-        projectId: "project-1",
+        currentSessionId: "session-1",
+        currentSessionBlocksProjectQueue: true,
         projectQueueBlockingCount: 1,
       }),
-    ).toBe("blocked");
+    ).toBe(false);
   });
 
-  it("is blocked when another project session is active", () => {
+  it("hides when the project has no queue-blocking work", () => {
     expect(
-      getProjectQueueAffordanceState({
+      shouldShowProjectQueueAffordance({
         projectId: "project-1",
+        currentSessionId: "session-1",
+        activeProjectSessionIds: [],
+        projectQueueBlockingCount: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it("shows when the current active session already has backlog", () => {
+    expect(
+      shouldShowProjectQueueAffordance({
+        projectId: "project-1",
+        currentSessionId: "session-1",
+        currentSessionHasSessionQueueBacklog: true,
+        activeProjectSessionIds: ["session-1"],
+      }),
+    ).toBe(true);
+  });
+
+  it("shows when project blocking count indicates another blocker", () => {
+    expect(
+      shouldShowProjectQueueAffordance({
+        projectId: "project-1",
+        currentSessionId: "session-1",
+        currentSessionBlocksProjectQueue: false,
+        projectQueueBlockingCount: 1,
+      }),
+    ).toBe(true);
+    expect(
+      shouldShowProjectQueueAffordance({
+        projectId: "project-1",
+        currentSessionId: "session-1",
+        currentSessionBlocksProjectQueue: true,
+        projectQueueBlockingCount: 2,
+      }),
+    ).toBe(true);
+  });
+
+  it("shows when other project sessions are active", () => {
+    expect(
+      shouldShowProjectQueueAffordance({
+        projectId: "project-1",
+        currentSessionId: "session-1",
         activeProjectSessionIds: ["session-2"],
       }),
-    ).toBe("blocked");
+    ).toBe(true);
   });
 });

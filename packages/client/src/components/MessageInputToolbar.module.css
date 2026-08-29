@@ -2,10 +2,6 @@
   flex: 0 0 auto;
 }
 
-.projectQueueUnblocked {
-  --project-queue-button-bg: var(--app-yep-green-dark);
-}
-
 .fileViewerControllerActive :global(.composer-status-ages) {
   margin-left: 0;
 }

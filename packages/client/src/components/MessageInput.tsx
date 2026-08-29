@@ -236,8 +236,6 @@ interface Props {
     text: string,
     metadata?: MessageSubmissionMetadata,
   ) => void;
-  /** Whether Project Queue delivery must wait behind known project work. */
-  projectQueueBlocked?: boolean;
   disabled?: boolean;
   placeholder?: string;
   mode?: PermissionMode;
@@ -408,7 +406,6 @@ export function MessageInput({
   onQueue,
   onProjectQueue,
   onProjectQueueNewSession,
-  projectQueueBlocked = true,
   disabled,
   placeholder,
   mode = "default",
@@ -3256,7 +3253,6 @@ export function MessageInput({
       onProjectQueueNewSession && !forkSummaryMode
         ? handleProjectQueueNewSessionPointerDelivery
         : undefined,
-    projectQueueBlocked,
     onSteer: hasActiveDualActions ? handleSteerPointerDelivery : undefined,
     primaryActionKind: effectivePrimaryActionKind,
     sendOverride: forkSummaryMode
@@ -3907,17 +3903,10 @@ export function MessageInput({
                 <div className="message-input-keyboard-secondary-slot message-input-keyboard-project-queue-slot">
                   <button
                     type="button"
-                    className={`message-input-keyboard-action message-input-keyboard-secondary project-queue-mode${
-                      projectQueueBlocked
-                        ? ""
-                        : ` ${styles.projectQueueUnblocked}`
-                    }`}
+                    className="message-input-keyboard-action message-input-keyboard-secondary project-queue-mode"
                     onPointerDown={(event) => event.preventDefault()}
                     onClick={handleProjectQueuePointerDelivery}
                     disabled={disabled}
-                    data-project-queue-state={
-                      projectQueueBlocked ? "blocked" : "unblocked"
-                    }
                     aria-label={describePrefixedDelivery(
                       t("toolbarProjectQueueLabel"),
                     )}

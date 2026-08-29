@@ -130,7 +130,7 @@ import {
 import { requiresAttachmentOnlyServerUpdate } from "../lib/attachmentSubmission";
 import {
   serverSupportsProjectQueue,
-  getProjectQueueAffordanceState,
+  shouldShowProjectQueueAffordance,
 } from "../lib/projectQueueVisibility";
 import {
   useActiveProjectSessionIds,
@@ -1121,12 +1121,12 @@ export function NewSessionForm({
     currentProjectSelection?.projectQueueBlockingCount ?? null;
   const showProjectQueueAction =
     supportsProjectQueue &&
-    getProjectQueueAffordanceState({
+    shouldShowProjectQueueAffordance({
       projectId: projectQueueTargetProjectId,
       activeProjectSessionIds,
       projectQueueBlockingCount,
       projectQueueItemCount,
-    }) === "blocked";
+    });
   const isDetachedProject =
     !hasCustomProjectPath && currentProjectSelection === null;
   const projectSummaryTitle =

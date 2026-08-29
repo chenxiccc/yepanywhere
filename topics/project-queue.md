@@ -182,12 +182,10 @@ enable the cross-session shortcut.
 
 The two toolbar actions must remain glanceably distinct wherever they render,
 including the ordinary composer, compact keyboard-open row, and Toolbar
-Settings specimen. The current-session action uses dark green when the project
-has no known blockers or earlier Project Queue items, and the standard Project
-Queue purple while delivery must wait behind project work. The new-session
-action uses a darker violet and a prominent high-contrast `+` badge; the small
-mark must not be the only perceptible difference between two otherwise
-identical buttons.
+Settings specimen. The current-session action uses the standard Project Queue
+purple. The new-session action uses a darker violet and a prominent
+high-contrast `+` badge; the small mark must not be the only perceptible
+difference between two otherwise identical buttons.
 
 Project Queue UI must also be capability-gated on `/api/version` advertising
 `projectQueue`. The active-composer new-session shortcut and its Toolbar
@@ -207,13 +205,19 @@ resumes global dispatch and moves that item to the head of its own project's
 queue. The ordinary scheduler still decides when it may launch; Resume is not
 Force start. Failed items retain their explicit Retry flow instead.
 
-When enabled by user preference, the current-session action remains visible for
-every known project, including while the project and current session are idle.
-Dark green means the client knows of no active/blocking project work and no
-earlier Project Queue item. Purple means delivery must wait behind the current
-session, another session, external or worker-owned work, a session queue, or
-existing Project Queue backlog. Capability and presence settings still hide
-the action when Project Queue is unavailable or the user has not opted in.
+When the button is visible by user preference, the UI should still suppress it
+when Project Queue adds no useful semantics:
+
+- Hide when the project is fully idle, has no Project Queue backlog, and normal
+  send/start is equivalent.
+- Hide when the only active thing is the current session and it has no
+  server-visible normal queued/deferred backlog; normal queue is enough.
+- Show when the current session already has normal queued/deferred work,
+  because Project Queue then means "after this session backlog drains."
+- Show when any other session, external session, or worker queue entry in the
+  project is active.
+- Show when the project already has Project Queue backlog, so a normal send or
+  start does not accidentally jump ahead of accepted queued project work.
 
 The dedicated new-session form follows the same rule: hide its Project Queue
 action when the selected project is idle and has no Project Queue backlog; show
@@ -232,7 +236,7 @@ An active session composer's additional "queue as new session" action has
 useful semantics even while the project is idle, but it is present only when
 the separate `projectQueueNewSessionShortcut` toolbar control is enabled and
 supported. The neighboring current-session Project Queue action retains the
-always-present, state-colored rule above.
+activity/backlog visibility rule above.
 
 The new-session initial-turn composer is part of the Project Queue contract.
 When it queues a new session, the durable prompt/copy source is the text
@@ -245,13 +249,13 @@ shape (`target.type === "new-session"`); neither uses a client-held draft
 queue. The active-session action inherits that session's selected provider,
 model, executor, permission mode, and thinking settings for the future session.
 
-Current-session Project Queue action color should use both exact active session
-ids, when available, and project-level Project Queue blocking-count summaries.
-The count fallback covers cases such as a fresh client after server restart
-where a project has queue-blocking work but the current session composer has
-not yet seen every active sibling session in its local inbox tiers. Do not
-derive this fallback from owned-process counts alone; idle retained YA
-processes must not turn the action purple.
+Current-session Project Queue action visibility should use both exact active
+session ids, when available, and project-level Project Queue blocking-count
+summaries. The count fallback covers cases such as a fresh client after server
+restart where a project has queue-blocking work but the current session
+composer has not yet seen every active sibling session in its local inbox
+tiers. Do not derive this fallback from owned-process counts alone; idle
+retained YA processes should not expose the current-session action.
 
 When the current-session Project Queue action is visible and the Project Queue
 Ctrl+Enter preference is enabled, Ctrl+Enter activates that same

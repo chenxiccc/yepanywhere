@@ -20,16 +20,14 @@ async function dismissOnboardingIfVisible(page: Page) {
   await expect(dialog).not.toBeVisible();
 }
 
-async function expectIdleProjectQueueAction(page: Page) {
+async function expectNoIdleProjectQueueAction(page: Page) {
   const action = page.getByRole("button", {
     name: "Queue for Project Queue",
   });
-  await expect(action).toBeVisible({ timeout: 10_000 });
-  await expect(action).toHaveAttribute("data-project-queue-state", "unblocked");
-  await expect(action).toHaveCSS("background-color", "rgb(4, 120, 87)");
+  await expect(action).toHaveCount(0);
 }
 
-test("keeps the current-session Project Queue action visible while idle", async ({
+test("hides the current-session Project Queue action while idle", async ({
   page,
   baseURL,
 }) => {
@@ -49,7 +47,7 @@ test("keeps the current-session Project Queue action visible while idle", async 
   await page
     .locator("[data-composer-input]")
     .fill("Queue this after the project is idle");
-  await expectIdleProjectQueueAction(page);
+  await expectNoIdleProjectQueueAction(page);
   if (captureDir) {
     await page.screenshot({
       animations: "disabled",
@@ -58,7 +56,7 @@ test("keeps the current-session Project Queue action visible while idle", async 
   }
 
   await page.setViewportSize({ width: 375, height: 812 });
-  await expectIdleProjectQueueAction(page);
+  await expectNoIdleProjectQueueAction(page);
   if (captureDir) {
     await page.screenshot({
       animations: "disabled",
