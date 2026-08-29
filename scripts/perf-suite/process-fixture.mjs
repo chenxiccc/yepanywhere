@@ -948,23 +948,59 @@ export async function startServer({
   }
 }
 
-export async function stopServer(child, providerHostRuntimeDir = null) {
+function processGroupAlive(processGroupId) {
   try {
-    if (child.exitCode !== null) return;
+    process.kill(-processGroupId, 0);
+    return true;
+  } catch (error) {
+    if (error.code === "ESRCH") return false;
+    if (error.code === "EPERM") return true;
+    throw error;
+  }
+}
+
+async function waitForProcessGroupExit(processGroupId, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (processGroupAlive(processGroupId)) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return false;
+    await wait(Math.min(25, remaining));
+  }
+  return true;
+}
+
+export async function stopServer(
+  child,
+  providerHostRuntimeDir = null,
+  gracefulTimeoutMs = 8_000,
+) {
+  try {
+    if (process.platform === "win32") {
+      if (child.exitCode !== null) return;
+      child.kill("SIGTERM");
+      const exited = await Promise.race([
+        new Promise((resolve) => child.once("exit", () => resolve(true))),
+        wait(gracefulTimeoutMs).then(() => false),
+      ]);
+      if (!exited) child.kill("SIGKILL");
+      return;
+    }
+
+    if (!child.pid || !processGroupAlive(child.pid)) return;
     try {
       process.kill(-child.pid, "SIGTERM");
     } catch (error) {
       if (error.code !== "ESRCH") throw error;
     }
-    const exited = await Promise.race([
-      new Promise((resolve) => child.once("exit", () => resolve(true))),
-      wait(8_000).then(() => false),
-    ]);
+    const exited = await waitForProcessGroupExit(child.pid, gracefulTimeoutMs);
     if (!exited) {
       try {
         process.kill(-child.pid, "SIGKILL");
       } catch (error) {
         if (error.code !== "ESRCH") throw error;
+      }
+      if (!(await waitForProcessGroupExit(child.pid, 1_000))) {
+        throw new Error(`Server process group ${child.pid} survived SIGKILL`);
       }
     }
   } finally {

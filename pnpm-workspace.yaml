@@ -1,6 +1,14 @@
 packages:
   - "packages/*"
 
+# scripts/biome.cjs intentionally uses Biome's static musl binary on Linux so
+# lint and formatting also work on hosts with an older glibc. pnpm otherwise
+# installs only the current libc's optional package.
+supportedArchitectures:
+  libc:
+    - current
+    - musl
+
 # pnpm settings live here, not under a "pnpm" key in package.json: pnpm 11
 # stopped reading that key, and a pnpm 11 invocation of an install in this
 # repo reports all three of these as ignored. Silently losing

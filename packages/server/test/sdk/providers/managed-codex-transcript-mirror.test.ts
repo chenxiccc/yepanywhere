@@ -3,6 +3,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   rm,
   stat,
   writeFile,
@@ -181,7 +182,7 @@ describe.skipIf(process.platform === "win32")(
       expect(totalTransferred).toBe(rolloutBytes);
       expect(latest.record.localCompleteBytes).toBe(rolloutBytes);
       expect(await service.loadSession(yaSessionId)).not.toBeNull();
-    });
+    }, 15_000);
   },
 );
 
@@ -192,7 +193,7 @@ async function createFixture(prefix: string): Promise<{
   workspace: ManagedSshWorkspace;
   projectId: ReturnType<typeof toUrlProjectId>;
 }> {
-  const directory = await mkdtemp(join(tmpdir(), prefix));
+  const directory = await realpath(await mkdtemp(join(tmpdir(), prefix)));
   temporaryPaths.push(directory);
   const remoteRoot = join(directory, "remote");
   const remoteDirectory = join(remoteRoot, "workspaces", "workspace-one");

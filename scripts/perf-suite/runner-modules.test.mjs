@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import http from "node:http";
 import path from "node:path";
 import test from "node:test";
@@ -13,6 +14,7 @@ import { deterministicPayload, validateScenario } from "./core.mjs";
 import {
   assertLiveCohortParent,
   harnessSourceFiles,
+  stopServer,
 } from "./process-fixture.mjs";
 import {
   evaluateMetricTargets,
@@ -213,6 +215,40 @@ test("cohort admission requires a matching live parent lease", () => {
       }),
     /does not match/,
   );
+});
+
+test("server teardown reaps a process group after its leader exits", {
+  skip: process.platform === "win32",
+}, async () => {
+  const child = spawn(
+    process.execPath,
+    [
+      "-e",
+      [
+        'const { spawn } = require("node:child_process");',
+        'const worker = spawn(process.execPath, ["-e", "process.on(\'SIGTERM\', () => {}); setInterval(() => {}, 1000)"], { stdio: "ignore" });',
+        'worker.once("spawn", () => process.stdout.write("ready\\n"));',
+        'process.on("SIGTERM", () => process.exit(0));',
+        "setInterval(() => {}, 1000);",
+      ].join("\n"),
+    ],
+    { detached: true, stdio: ["ignore", "pipe", "inherit"] },
+  );
+
+  try {
+    await new Promise((resolve, reject) => {
+      child.once("error", reject);
+      child.stdout.once("data", resolve);
+    });
+    await stopServer(child, null, 100);
+    assert.throws(() => process.kill(-child.pid, 0), { code: "ESRCH" });
+  } finally {
+    try {
+      process.kill(-child.pid, "SIGKILL");
+    } catch {
+      // stopServer or the process-group assertion remains the primary result.
+    }
+  }
 });
 
 test("built-client server readiness uses the selected response marker", async () => {
