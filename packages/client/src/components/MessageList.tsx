@@ -128,7 +128,8 @@ import { LinkifiedText } from "./ui/LinkifiedText";
 
 const EMPTY_TRANSCRIPT_DISPLAY_OBJECTS: readonly TranscriptDisplayObject[] = [];
 const PROGRESSIVE_INITIAL_RENDER_ITEM_TARGET = 120;
-const PROGRESSIVE_RENDER_ITEM_BATCH_TARGET = 12;
+const PROGRESSIVE_RENDER_ITEM_BATCH_TARGET = 90;
+const PROGRESSIVE_RETAINED_RENDER_ITEM_BATCH_TARGET = 12;
 const PROGRESSIVE_RENDER_BATCH_DELAY_MS = 32;
 const PROGRESSIVE_RETAINED_RESUME_DELAY_MS = 1_500;
 const PROGRESSIVE_RENDER_REVEAL_DELAY_MS = 180;
@@ -2394,7 +2395,9 @@ export const MessageList = memo(function MessageList({
           return getNextProgressiveEntryCount(
             visibleTimelineEntries,
             current ?? progressiveInitialEntryCount,
-            PROGRESSIVE_RENDER_ITEM_BATCH_TARGET,
+            retainedProgressiveWindowActive
+              ? PROGRESSIVE_RETAINED_RENDER_ITEM_BATCH_TARGET
+              : PROGRESSIVE_RENDER_ITEM_BATCH_TARGET,
           );
         });
       });
