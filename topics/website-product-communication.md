@@ -104,6 +104,12 @@ runtime aliases grouped under a single public integration. This build-time
 coverage check prevents a shipped provider from disappearing from the website;
 it is an editorial completeness check, not runtime capability negotiation.
 
+Claude Gateway is an advanced opt-in route within the public Claude integration
+and must be distinguished from ordinary first-party Claude routing. The legacy
+Claude + Ollama provider remains visible publicly only as deprecation guidance
+for previously configured installations and existing sessions; do not promote
+it as a current experimental choice for new setups.
+
 Pi is a shipped experimental provider. Public copy names its headless RPC
 sessions, durable history, tools, models, thinking, compaction, and fork support
 while stating that its tools currently run without a Yep Anywhere approval

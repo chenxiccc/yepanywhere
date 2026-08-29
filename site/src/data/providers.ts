@@ -21,11 +21,15 @@ export const providers = [
     name: "Claude Code",
     status: "stable",
     summary:
-      "The primary integration, with the complete Yep Anywhere workflow.",
+      "The primary integration, with an advanced opt-in route for compatible LLM gateways.",
     notes:
-      "Sessions, streaming, approvals, diffs, steering, recaps, and model controls.",
+      "Sessions, streaming, approvals, diffs, steering, recaps, and model controls; gateway routing stays separate from regular Claude sessions.",
     runtimeIds: ["claude", "claude-gateway"],
-    sourceRefs: ["packages/server/src/sdk/providers/claude.ts", "README.md"],
+    sourceRefs: [
+      "packages/server/src/sdk/providers/claude.ts",
+      "packages/server/src/sdk/providers/claude-gateway.ts",
+      "README.md",
+    ],
   },
   {
     id: "codex",
@@ -67,14 +71,17 @@ export const providers = [
   },
   {
     id: "ollama",
-    name: "Claude + Ollama",
+    name: "Claude + Ollama (legacy)",
     status: "experimental",
     summary:
-      "Run local Ollama models through Yep Anywhere's Claude-compatible path.",
+      "Read or resume existing Claude + Ollama sessions during its deprecation period.",
     notes:
-      "Requires a reachable Ollama 0.14+ installation and has provider-specific limits.",
+      "Hidden unless previously configured or used; choose Claude Gateway for new compatible endpoints.",
     runtimeIds: ["claude-ollama"],
-    sourceRefs: ["packages/server/src/sdk/providers/claude-ollama.ts"],
+    sourceRefs: [
+      "packages/server/src/sdk/providers/claude-ollama.ts",
+      "topics/claude.md",
+    ],
   },
   {
     id: "gemini",

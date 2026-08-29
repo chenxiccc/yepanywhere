@@ -6,12 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Added
-- Document the experimental Linux provider host as a separately usable layer,
-  including its foreground launch, stable same-user local protocol,
-  authenticated Hono adapter, and bounded single-worker turn semantics.
-
 ### Changed
+- State directly that every Claude Code and Codex session appears in Yep
+  Anywhere, including sessions started in their CLI, VS Code, and first-party
+  desktop interfaces.
+- Present Claude Gateway as the advanced route for compatible endpoints and
+  Claude + Ollama as legacy compatibility rather than a current experimental
+  integration.
 - Classify Source Control as stable and complete its public description with
   working-tree and commit navigation, tracked-file search and blame,
   line-comment review bundles sent to agents, and the deliberately bounded

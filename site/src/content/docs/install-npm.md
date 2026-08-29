@@ -20,7 +20,7 @@ yepanywhere
 ```
 
 Open `http://localhost:3400` in a browser. Yep Anywhere detects installed
-Claude Code and Codex applications and reads their existing compatible session
+Claude Code and Codex applications and reads all of their existing session
 history.
 
 ## Install from source

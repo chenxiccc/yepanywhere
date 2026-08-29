@@ -40,18 +40,27 @@ and [Codex access through a ChatGPT plan](https://help.openai.com/en/articles/11
 | --- | --- |
 | OpenCode | Start/resume, history, permissions/questions, tools, thinking, and images; capability parity varies |
 | Grok Build | ACP-based sessions with approvals, suggestions, effort, and steering where upstream supports them |
-| Claude + Ollama | Local Ollama models through a Claude-compatible path; requires Ollama 0.14+ |
 | Gemini CLI | Direct and experimental ACP paths with narrower approval, steering, and history behavior |
 | pi | Headless RPC sessions with streaming, tool rendering, model/thinking controls, compaction, forks, and durable history; tools currently run without a Yep Anywhere approval bridge |
 
 Experimental means the integration ships and can be used, but it may require
 extra setup, expose fewer controls, or change as its upstream protocol evolves.
 
+## Advanced and legacy Claude routes
+
+**Claude Gateway** is an advanced opt-in route for an operator-configured,
+Anthropic-compatible endpoint. Gateway sessions remain separate from regular
+Claude sessions and use only the models advertised by that endpoint.
+
+**Claude + Ollama** is retained only for previously configured installations
+and existing sessions during its deprecation period. Use Claude Gateway for new
+compatible endpoints.
+
 ## Session interoperability
 
-Compatible Claude Code and Codex sessions started in a terminal, VS Code, or a
-first-party desktop application appear in Yep Anywhere history. You can inspect
-them and resume supported sessions without importing them into a new database.
+Every Claude Code and Codex session appears in Yep Anywhere history, including
+sessions started in a terminal, VS Code, or a first-party desktop application.
+You can inspect and resume them without importing them into a new database.
 
 Yep Anywhere URLs retain a stable YA session id. Provider-native resume handles
 remain an implementation detail unless a provider contract explicitly exposes

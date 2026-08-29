@@ -10,8 +10,8 @@ so browser disconnects do not by themselves stop active work.
 ## Start and resume
 
 Use **New session** to choose a project, provider, model, permission mode, and
-thinking controls. Existing compatible provider sessions appear in the session
-inbox and can be opened or resumed with their history.
+thinking controls. Every existing Claude Code and Codex session appears in the
+session inbox and can be opened or resumed with its history.
 
 The inbox groups sessions by attention and activity so a waiting approval does
 not disappear among recent but idle work. Star or archive sessions to keep the
@@ -55,7 +55,7 @@ project—not merely the current session—to become quiet.
 ## Search, recaps, and activity
 
 Session search helps locate older work. Recaps summarize bounded activity when
-you return to compatible long-running sessions. The global activity view shows
+you return to long-running sessions. The global activity view shows
 what active agents are doing across sessions without requiring every transcript
 to remain open.
 

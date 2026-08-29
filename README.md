@@ -52,8 +52,9 @@ See the [complete feature catalog](https://yepanywhere.com/features) and
 | Claude Code | Full | Yes | Yes | Primary provider, full feature support |
 | Codex | Full | Yes | Yes | Full support including diffs and approvals |
 
-OpenCode, Grok Build, Claude + Ollama, Gemini, and pi integrations are
-experimental; capabilities vary. See the
+OpenCode, Grok Build, Gemini, and pi integrations are experimental. Claude
+Gateway is an advanced opt-in route, while Claude + Ollama remains available
+only for legacy compatibility. Capabilities vary. See the
 [provider guide](https://yepanywhere.com/docs/providers).
 
 ## Screenshots
@@ -133,49 +134,6 @@ pnpm build
 
 Then restart the server with `pnpm start`.
 
-## Voice Input and STT Keys
-
-Browser-native voice input works without extra configuration. To use
-server-mediated STT, export the provider key in the Yep Anywhere server
-environment before starting the app:
-
-```bash
-export YEP_STT_XAI_API_KEY="xai-..."
-export YEP_STT_DEEPGRAM_API_KEY="deepgram-..."
-```
-
-Providing `YEP_STT_XAI_API_KEY` auto-enables the `ya-grok` backend; providing
-`YEP_STT_DEEPGRAM_API_KEY` auto-enables the `ya-deepgram` backend. These
-`YEP_<MODULE>_<NAME>` secrets are consumed by Yep Anywhere and stripped from
-child agent environments. The STT-specific xAI key is preferred over a general
-`XAI_API_KEY`, which lets speech transcription use different billing from any
-Grok model or CLI usage.
-
-Local STT backends are opt-in and use the committed pixi `stt` environment:
-
-```bash
-# Enable one or more local backends before starting the server:
-export YEP_VOICE_BACKENDS=ya-whisper
-export YEP_VOICE_BACKENDS=ya-whisper,ya-parakeet
-export YEP_VOICE_BACKENDS=ya-whisper,ya-parakeet,ya-nemo
-```
-
-When `ya-whisper`, `ya-parakeet`, or `ya-nemo` is enabled, startup
-creates/updates the pixi environment if needed, installs the matching local STT
-Python requirements, and downloads the selected model on first load. `ya-nemo`
-uses the heavier optional `stt-bootstrap-nemo` add-on. If setup and model
-validation succeed, the STT backend menu includes the local backend; otherwise
-the server logs repair hints and hides the unavailable option.
-
-If you already exported xAI's standard `XAI_API_KEY`, Yep Anywhere will also use
-it for Grok STT and scrub it from child agent environments. Grok Build does not
-receive `XAI_API_KEY` by default, avoiding accidental pay-as-you-go provider
-billing; Settings > Providers has an explicit opt-in to pass that key to Grok
-Build. For backend behavior and retention details, see the
-[server-mediated STT topic](topics/pluggable-speech-recognition.md); for the
-broader environment variable table, see
-[topics/ya-env-vars.md](topics/ya-env-vars.md).
-
 ## Remote Access
 
 **Easiest:** Use our free public relay when you want passworded,
@@ -199,7 +157,7 @@ Anywhere server from the phone.
 
 **Self-hosted web access:** Prefer to run your own public infrastructure? Use
 Caddy or any reverse proxy with SSL termination. See the
-[remote access docs](docs/project/remote-access.md) for details.
+[remote access guide](https://yepanywhere.com/docs/remote-access) for details.
 
 ## Why not just use the terminal?
 

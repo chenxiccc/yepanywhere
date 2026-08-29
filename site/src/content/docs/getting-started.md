@@ -52,9 +52,10 @@ or recheck Yep Anywhere.
 ## Start or resume a session
 
 Use **New session** to choose a project, provider, model, and permission mode.
-You can also open a session that already exists in the CLI or a compatible
-first-party tool. Yep Anywhere uses its own stable session URL while retaining
-the provider's native resume identity behind the scenes.
+You can also open every Claude Code and Codex session that already exists in a
+CLI, VS Code, or a first-party desktop application. Yep Anywhere uses its own
+stable session URL while retaining the provider's native resume identity behind
+the scenes.
 
 The ordinary workflow is intentionally familiar:
 
