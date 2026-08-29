@@ -49,6 +49,7 @@ interface WorkerCapabilities {
   steer: boolean;
   setMaxThinkingTokens: boolean;
   setEffort: boolean;
+  effortUpdatesActiveTurn?: boolean;
   setSessionOptions: boolean;
   interrupt: boolean;
   supportedModels: boolean;
@@ -1115,6 +1116,9 @@ class HostedAgentSession {
         : {}),
       ...(capabilities.setEffort
         ? { setEffort: (effort) => this.rpc("setEffort", [effort]) }
+        : {}),
+      ...(capabilities.effortUpdatesActiveTurn
+        ? { effortUpdatesActiveTurn: true }
         : {}),
       ...(capabilities.setSessionOptions
         ? {

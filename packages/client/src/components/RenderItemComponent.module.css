@@ -130,3 +130,12 @@
   border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
   border-left: 3px solid var(--accent-secondary, #6b7280);
 }
+
+/*
+ * Provider tool output is primary transcript content even when its call is
+ * unavailable. Keep its expanded body readable instead of inheriting the
+ * quieter metadata treatment used by local-command details.
+ */
+.toolOutputDetails pre {
+  color: var(--text-primary);
+}

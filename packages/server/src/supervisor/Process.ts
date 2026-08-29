@@ -872,6 +872,8 @@ export interface ProcessConstructorOptions extends ProcessOptions {
   setMaxThinkingTokensFn?: (tokens: number | null) => Promise<void>;
   /** Function to change effort without restarting the provider process. */
   setEffortFn?: (effort?: EffortLevel) => Promise<void>;
+  /** Whether effort changes can be published into an active provider turn. */
+  effortUpdatesActiveTurn?: boolean;
   /** Function to interrupt current turn gracefully (SDK 0.2.7+) */
   interruptFn?: () => Promise<undefined | boolean>;
   /**
@@ -1038,6 +1040,7 @@ export class Process {
     | null;
   /** Function to change effort without restarting the provider process. */
   private setEffortFn: ((effort?: EffortLevel) => Promise<void>) | null;
+  private effortUpdatesActiveTurn: boolean;
 
   /** Function to interrupt current turn gracefully (SDK 0.2.7+) */
   private interruptFn: (() => Promise<undefined | boolean>) | null;
@@ -1193,6 +1196,7 @@ export class Process {
     this._effort = options.effort;
     this.setMaxThinkingTokensFn = options.setMaxThinkingTokensFn ?? null;
     this.setEffortFn = options.setEffortFn ?? null;
+    this.effortUpdatesActiveTurn = options.effortUpdatesActiveTurn === true;
     this.interruptFn = options.interruptFn ?? null;
     this.steerFn = options.steerFn ?? null;
     this.supportedModelsFn = options.supportedModelsFn ?? null;
@@ -2063,9 +2067,9 @@ export class Process {
   }
 
   /**
-   * Select a new effort without interrupting provider work. An idle process can
-   * apply it immediately; an active or waiting process holds the latest choice
-   * until the provider reports the turn boundary.
+   * Select a new effort without interrupting provider work. Providers with an
+   * active-turn settings control apply it immediately; other active or waiting
+   * processes hold the latest choice until the provider reports the boundary.
    */
   async setEffort(effort?: EffortLevel): Promise<boolean> {
     if (!this.setEffortFn) {
@@ -2076,6 +2080,7 @@ export class Process {
     if (
       (this._state.type === "in-turn" ||
         this._state.type === "waiting-input") &&
+      !this.effortUpdatesActiveTurn &&
       !this.effortBoundaryBlocked
     ) {
       getLogger().info(

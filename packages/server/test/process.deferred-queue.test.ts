@@ -17,6 +17,32 @@ describe("Process", () => {
   });
 
   describe("effort boundary", () => {
+    it("publishes effort immediately when the provider supports active turns", async () => {
+      const controller = createControllableIterator();
+      const setEffort = vi.fn(async () => {});
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "active-effort-session",
+        provider: "codex",
+        setEffortFn: setEffort,
+        effortUpdatesActiveTurn: true,
+        idleTimeoutMs: 10_000,
+      });
+      controller.push({
+        type: "system",
+        subtype: "init",
+        session_id: "active-effort-session",
+      });
+      await waitFor(() => expect(process.state.type).toBe("in-turn"));
+
+      await expect(process.setEffort("high")).resolves.toBe(true);
+
+      expect(setEffort).toHaveBeenCalledWith("high");
+      expect(process.appliedEffort).toBe("high");
+      controller.finish();
+    });
+
     it("retains a failed effort selection and blocks deferred delivery", async () => {
       const errorLog = vi
         .spyOn(getLogger(), "error")

@@ -90,6 +90,8 @@ import type {
   ToolRequestUserInputResponse,
   TurnInterruptParams,
   TurnInterruptResponse,
+  TurnSettingsUpdateParams,
+  TurnSettingsUpdateResponse,
   TurnStartParams,
   TurnStartResponse,
   TurnSteerParams,
@@ -369,6 +371,7 @@ interface TokenUsageSnapshot {
 interface CodexTurnRuntimeState {
   threadId: string;
   resolvedModel: string;
+  turnModelOverride: string | null;
   latestTokenUsage?: TokenUsageSnapshot;
   activeTurnId: string | null;
   activePermissionMode: PermissionMode;
@@ -619,6 +622,13 @@ type NormalizedThreadItem =
       status: string;
       content_items?: unknown[] | null;
       success?: boolean | null;
+    }
+  | {
+      id: string;
+      type: "function_call_output";
+      name: string;
+      namespace?: string | null;
+      output: unknown;
     }
   | { id: string; type: "web_search"; query: string }
   | {
@@ -1630,6 +1640,7 @@ export class CodexProvider implements AgentProvider {
     const runtimeState: CodexTurnRuntimeState = {
       threadId: options.resumeSessionId ?? "",
       resolvedModel: options.model ?? "default",
+      turnModelOverride: options.model ?? null,
       activeTurnId: null,
       activePermissionMode: this.normalizePermissionMode(
         options.permissionMode,
@@ -1688,6 +1699,30 @@ export class CodexProvider implements AgentProvider {
       }
     })();
 
+    const updateActiveTurnSettings = async (
+      settings: Pick<TurnSettingsUpdateParams, "model" | "effort">,
+    ): Promise<void> => {
+      const client = activeClient;
+      const threadId = runtimeState.threadId;
+      const turnId = runtimeState.activeTurnId;
+      if (!client || !threadId || !turnId) return;
+
+      const response = await client.request<TurnSettingsUpdateResponse>(
+        "turn/settings/update",
+        {
+          threadId,
+          turnId,
+          ...settings,
+        } satisfies TurnSettingsUpdateParams,
+      );
+      if (response.status === "targetUnavailable") {
+        log.debug(
+          { threadId, turnId, settings },
+          "Codex active turn ended before its settings update; retaining the selection for the next turn",
+        );
+      }
+    };
+
     return {
       iterator,
       queue,
@@ -1734,7 +1769,23 @@ export class CodexProvider implements AgentProvider {
         );
       },
       setEffort: async (effort) => {
+        if (effort !== undefined) {
+          await updateActiveTurnSettings({
+            effort: this.mapEffortToReasoningEffort(
+              effort,
+              options.thinking,
+              runtimeState.turnModelOverride ?? runtimeState.resolvedModel,
+            ),
+          });
+        }
         runtimeState.turnEffortOverride = effort ?? null;
+      },
+      effortUpdatesActiveTurn: true,
+      setModel: async (model) => {
+        if (model !== undefined) {
+          await updateActiveTurnSettings({ model });
+        }
+        runtimeState.turnModelOverride = model ?? null;
       },
       setSessionOptions: async (requested) =>
         inactiveProviderSessionOptionsResult(
@@ -2715,6 +2766,7 @@ export class CodexProvider implements AgentProvider {
             options,
             turnPolicy,
             runtimeState.workspaceWriteSandboxPolicy,
+            runtimeState.turnModelOverride,
             runtimeState.turnEffortOverride,
             message.uuid,
           );
@@ -2777,7 +2829,7 @@ export class CodexProvider implements AgentProvider {
               {
                 sessionId,
                 turnId: overloadError.codexTurnId,
-                model: options.model ?? runtimeState.resolvedModel,
+                model: turnStartParams.model ?? runtimeState.resolvedModel,
                 retryAttempt: overloadRetryAttempt,
                 retryDelayMs,
               },
@@ -2794,6 +2846,7 @@ export class CodexProvider implements AgentProvider {
               options,
               turnPolicy,
               runtimeState.workspaceWriteSandboxPolicy,
+              runtimeState.turnModelOverride,
               runtimeState.turnEffortOverride,
             );
             notificationBarrierSequence =
@@ -2807,7 +2860,7 @@ export class CodexProvider implements AgentProvider {
                 sessionId,
                 turnId: turnResult.turn.id,
                 turnStatus: turnResult.turn.status,
-                model: options.model ?? runtimeState.resolvedModel,
+                model: retryTurnStartParams.model ?? runtimeState.resolvedModel,
                 retryAttempt: overloadRetryAttempt,
                 approvalPolicy: turnPolicy.approvalPolicy,
                 sandboxPolicy: retryTurnStartParams.sandboxPolicy,
@@ -3434,13 +3487,14 @@ export class CodexProvider implements AgentProvider {
     options: StartSessionOptions,
     turnPolicy: CodexThreadPolicy | null = null,
     workspaceWriteSandboxPolicy: CodexSandboxPolicy | null = null,
+    modelOverride: string | null = options.model ?? null,
     effortOverride: EffortLevel | null | undefined = options.effort,
     clientUserMessageId?: string,
   ): TurnStartParams {
     return {
       threadId,
       ...(clientUserMessageId ? { clientUserMessageId } : {}),
-      model: options.model ?? null,
+      model: modelOverride,
       ...(options.serviceTier ? { serviceTier: options.serviceTier } : {}),
       input,
       effort:
@@ -3449,7 +3503,7 @@ export class CodexProvider implements AgentProvider {
           : this.mapEffortToReasoningEffort(
               effortOverride,
               options.thinking,
-              options.model,
+              modelOverride ?? undefined,
             ),
       ...this.buildTurnPermissionParams(
         turnPolicy,
@@ -5132,6 +5186,18 @@ export class CodexProvider implements AgentProvider {
         return { id, type: "agent_message", text };
       }
 
+      case "function_call_output": {
+        const name = this.getOptionalString(itemRecord.name);
+        if (!name) return null;
+        return {
+          id,
+          type: "function_call_output",
+          name,
+          namespace: this.getOptionalString(itemRecord.namespace),
+          output: itemRecord.output,
+        };
+      }
+
       case "command_execution": {
         const commandActions =
           (Array.isArray(itemRecord.commandActions)
@@ -5914,7 +5980,9 @@ export class CodexProvider implements AgentProvider {
     // Message/reasoning item ids are the provider ids persisted in rollout.
     const uuid = this.isToolBackedThreadItem(item)
       ? this.buildItemToolUuid(item.id)
-      : item.type === "agent_message" || item.type === "reasoning"
+      : item.type === "agent_message" ||
+          item.type === "reasoning" ||
+          item.type === "function_call_output"
         ? item.id
         : `${item.id}-${turnId}`;
 
@@ -5965,6 +6033,35 @@ export class CodexProvider implements AgentProvider {
           turnId,
           itemId: item.id,
           phase: isComplete ? "completed" : "started",
+          sourceEvent,
+        });
+        return [message];
+      }
+
+      case "function_call_output": {
+        if (!isComplete) return [];
+        const normalized = normalizeCodexToolOutputWithContext(item.output);
+        const message = withCodexTimestamp(
+          {
+            type: "system",
+            subtype: "tool_output",
+            session_id: sessionId,
+            uuid,
+            content: normalized.content,
+            codexToolName: item.name,
+            ...(item.namespace ? { codexToolNamespace: item.namespace } : {}),
+            ...(normalized.structured !== undefined
+              ? { toolUseResult: normalized.structured }
+              : {}),
+          } as SDKMessage,
+          observedAt,
+        );
+        attachToolResultMediaCandidates(message, normalized.mediaCandidates);
+        logSdkCorrelationDebug(sessionId, message, {
+          eventKind: "tool_result",
+          turnId,
+          itemId: item.id,
+          phase: "completed",
           sourceEvent,
         });
         return [message];

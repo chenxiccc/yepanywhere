@@ -81,6 +81,7 @@ export interface ProviderSessionReadyMetadata {
     steer: boolean;
     setMaxThinkingTokens: boolean;
     setEffort: boolean;
+    effortUpdatesActiveTurn?: boolean;
     setSessionOptions: boolean;
     interrupt: boolean;
     supportedModels: boolean;
@@ -230,6 +231,7 @@ export class ProviderSessionOwner {
         steer: Boolean(session.steer),
         setMaxThinkingTokens: Boolean(session.setMaxThinkingTokens),
         setEffort: Boolean(session.setEffort),
+        effortUpdatesActiveTurn: session.effortUpdatesActiveTurn === true,
         setSessionOptions: Boolean(session.setSessionOptions),
         interrupt: Boolean(session.interrupt),
         supportedModels: Boolean(session.supportedModels),

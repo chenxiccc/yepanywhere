@@ -270,7 +270,7 @@ describe("Codex Normalization", () => {
     });
   });
 
-  it("does not invent a tool exchange for standalone function outputs", () => {
+  it("shows standalone function outputs without inventing a tool exchange", () => {
     const entries: CodexSessionEntry[] = [
       {
         type: "response_item",
@@ -295,8 +295,16 @@ describe("Codex Normalization", () => {
 
     const result = normalizeSession(buildLoadedSession(entries));
 
-    expect(result.messages).toHaveLength(1);
-    const content = result.messages[0]?.message?.content;
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[0]).toMatchObject({
+      type: "system",
+      subtype: "tool_output",
+      content: "new message",
+      codexToolName: "notifications",
+      codexToolNamespace: "slack",
+    });
+    expect(result.messages[0]?.message).toBeUndefined();
+    const content = result.messages[1]?.message?.content;
     expect(Array.isArray(content) ? content[0] : content).toEqual({
       type: "text",
       text: "visible reply",

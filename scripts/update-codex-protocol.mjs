@@ -50,6 +50,10 @@ const SUBSET_EXPORTS = [
   { name: "ThreadForkParams", file: "v2/ThreadForkParams.ts" },
   { name: "ThreadRollbackParams", file: "v2/ThreadRollbackParams.ts" },
   { name: "TurnStartParams", file: "v2/TurnStartParams.ts" },
+  {
+    name: "TurnSettingsUpdateParams",
+    file: "v2/TurnSettingsUpdateParams.ts",
+  },
   { name: "TurnSteerParams", file: "v2/TurnSteerParams.ts" },
   { name: "TurnInterruptParams", file: "v2/TurnInterruptParams.ts" },
   { name: "UserInput", file: "v2/UserInput.ts" },
@@ -62,6 +66,10 @@ const SUBSET_EXPORTS = [
   { name: "ThreadForkResponse", file: "v2/ThreadForkResponse.ts" },
   { name: "ThreadRollbackResponse", file: "v2/ThreadRollbackResponse.ts" },
   { name: "TurnStartResponse", file: "v2/TurnStartResponse.ts" },
+  {
+    name: "TurnSettingsUpdateResponse",
+    file: "v2/TurnSettingsUpdateResponse.ts",
+  },
   { name: "TurnSteerResponse", file: "v2/TurnSteerResponse.ts" },
   { name: "TurnInterruptResponse", file: "v2/TurnInterruptResponse.ts" },
   { name: "ThreadCompactStartParams", file: "v2/ThreadCompactStartParams.ts" },

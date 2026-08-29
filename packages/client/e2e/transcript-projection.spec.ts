@@ -1,4 +1,5 @@
 import type { Page, TestInfo } from "@playwright/test";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { e2ePaths, expect, test } from "./fixtures.js";
 
@@ -74,11 +75,19 @@ async function attachTranscriptScreenshots(
       body: await transcript.screenshot({ animations: "disabled" }),
       contentType: "image/png",
     });
+    const captureDir = process.env.YEP_E2E_UI_CAPTURE_DIR;
+    if (captureDir) {
+      mkdirSync(captureDir, { recursive: true });
+      await page.screenshot({
+        animations: "disabled",
+        path: join(captureDir, `${viewportName}-${position}.png`),
+      });
+    }
   }
 }
 
 for (const specimen of [
-  { name: "desktop", width: 1920, height: 1080 },
+  { name: "desktop", width: 1000, height: 600 },
   { name: "mobile", width: 375, height: 812 },
 ] as const) {
   test(`renders the deterministic transcript projection at ${specimen.name} width`, async ({
@@ -99,12 +108,13 @@ for (const specimen of [
     });
     await page.goto(`${baseURL}/projects/${projectId}/sessions/${sessionId}`);
     await dismissOnboardingIfVisible(page);
-    await waitForCompletedTranscript(page);
+    const list = await waitForCompletedTranscript(page);
 
     const rows = await topLevelRenderRows(page);
     expect(rows).toEqual([
       { id: "specimen-user-1", type: "user_prompt" },
       { id: "specimen-assistant-1-1", type: "text" },
+      { id: "specimen-tool-output-1", type: "system" },
       { id: "specimen-compact-1", type: "system" },
       { id: "specimen-assistant-2", type: "text" },
       {
@@ -113,6 +123,17 @@ for (const specimen of [
       },
     ]);
     expect(new Set(rows.map((row) => row.id)).size).toBe(rows.length);
+
+    const toolOutput = list.locator(
+      '[data-render-id="specimen-tool-output-1"]',
+    );
+    await expect(toolOutput).toContainText(
+      "Tool output from slack.notifications",
+    );
+    await toolOutput.locator("summary").click();
+    await expect(toolOutput).toContainText(
+      "new message from the release channel",
+    );
 
     const widths = await page.evaluate(() => {
       const transcript =

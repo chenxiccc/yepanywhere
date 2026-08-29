@@ -333,6 +333,8 @@ export interface AgentSession {
   setEffort?: (
     effort?: import("@yep-anywhere/shared").EffortLevel,
   ) => Promise<void>;
+  /** This provider can publish effort changes into the active turn. */
+  effortUpdatesActiveTurn?: boolean;
   /**
    * Request provider-owned generation changes for this live session. Results
    * are explicit because some controls are launch-only or provider-unknown.

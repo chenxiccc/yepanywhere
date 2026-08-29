@@ -1180,6 +1180,29 @@ describe("compileTranscriptProjection", () => {
     });
   });
 
+  it("renders standalone Codex tool output as an unpaired system row", () => {
+    const messages: Message[] = [
+      {
+        uuid: "function-output-1",
+        type: "system",
+        subtype: "tool_output",
+        content: "new message",
+        codexToolName: "notifications",
+        codexToolNamespace: "slack",
+      },
+    ];
+
+    expect(compileTranscriptProjection(messages)).toMatchObject([
+      {
+        type: "system",
+        id: "function-output-1",
+        subtype: "tool_output",
+        content: "slack.notifications",
+        details: ["new message"],
+      },
+    ]);
+  });
+
   it("renders durable Claude local-command stdout system rows", () => {
     const messages: Message[] = [
       {

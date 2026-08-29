@@ -160,6 +160,44 @@ describe("normalizeCodexToolInvocation", () => {
 });
 
 describe("normalizeCodexToolOutputWithContext", () => {
+  it("renders text-only function output items as their text", () => {
+    const output = [
+      { type: "input_text", text: "first line\n" },
+      { type: "input_text", text: "second line" },
+    ];
+
+    const normalized = normalizeCodexToolOutputWithContext(output);
+
+    expect(normalized.content).toBe("first line\nsecond line");
+    expect(normalized.structured).toEqual(output);
+  });
+
+  it("renders serialized text-only function output items as their text", () => {
+    const output = [
+      { type: "input_text", text: "first line\n" },
+      { type: "input_text", text: "second line" },
+    ];
+
+    const normalized = normalizeCodexToolOutputWithContext(
+      JSON.stringify(output),
+    );
+
+    expect(normalized.content).toBe("first line\nsecond line");
+    expect(normalized.structured).toEqual(output);
+  });
+
+  it("keeps mixed function output items as a structured envelope", () => {
+    const output = [
+      { type: "input_text", text: "caption" },
+      { type: "encrypted_content", data: "opaque" },
+    ];
+
+    const normalized = normalizeCodexToolOutputWithContext(output);
+
+    expect(normalized.content).toBe(JSON.stringify(output, null, 2));
+    expect(normalized.structured).toEqual(output);
+  });
+
   it("omits inline image data from structured tool output", () => {
     const output = [
       {

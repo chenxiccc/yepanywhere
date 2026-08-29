@@ -989,10 +989,13 @@ function convertCodexResponseItem(
 
     case "function_call_output": {
       if (!payload.call_id) {
-        // Codex 0.150 can persist standalone named outputs as model context.
-        // Without a paired call, projecting one as a tool_result would invent
-        // a user-visible tool exchange that never happened.
-        return null;
+        return convertStandaloneCodexToolOutputPayload(
+          payload.name,
+          payload.namespace,
+          payload.output,
+          uuid,
+          entry.timestamp,
+        );
       }
       if (closedToolResultIds.has(payload.call_id)) {
         return null;
@@ -1407,6 +1410,30 @@ function convertCodexToolCallOutputPayload(
     ...(structured !== undefined && {
       toolUseResult: structured,
     }),
+    timestamp,
+  };
+  attachToolResultMediaCandidates(message, normalized.mediaCandidates);
+  return message;
+}
+
+function convertStandaloneCodexToolOutputPayload(
+  name: string | undefined,
+  namespace: string | undefined,
+  output: unknown,
+  uuid: string,
+  timestamp: string,
+): Message {
+  const normalized = normalizeCodexToolOutputWithContext(output);
+  const message: Message = {
+    uuid,
+    type: "system",
+    subtype: "tool_output",
+    content: normalized.content,
+    ...(name ? { codexToolName: name } : {}),
+    ...(namespace ? { codexToolNamespace: namespace } : {}),
+    ...(normalized.structured !== undefined
+      ? { toolUseResult: normalized.structured }
+      : {}),
     timestamp,
   };
   attachToolResultMediaCandidates(message, normalized.mediaCandidates);

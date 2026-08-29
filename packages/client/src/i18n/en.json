@@ -1429,6 +1429,8 @@
   "toolResultMediaUnavailable": "image unavailable",
   "toolResultMediaUnnamed": "tool result image {number}",
   "toolResultMediaUnsupportedMedia": "The returned image format is unsupported.",
+  "toolOutput": "Tool output",
+  "toolOutputFrom": "Tool output from {tool}",
   "turnImageGalleryCount": "{current} of {count}",
   "turnImageGalleryCollapse": "Collapse gallery",
   "turnImageGalleryExpand": "Expand gallery",

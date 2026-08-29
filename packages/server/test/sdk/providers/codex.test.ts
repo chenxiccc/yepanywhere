@@ -923,6 +923,104 @@ describe("CodexProvider app-server lifecycle", () => {
     }
   });
 
+  it("updates model and effort during a live turn and retains both", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-settings-"));
+    const logPath = join(tempDir, "fake-codex-requests.jsonl");
+    const codexPath = createFakeCodexCommand(
+      tempDir,
+      "fake-codex-settings",
+      buildFakeCodexPermissionAppServer(logPath, 2),
+    );
+    const testProvider = new CodexProvider({ codexPath });
+    const session = await testProvider.startSession({
+      cwd: tempDir,
+      initialMessage: { text: "live settings turn" },
+      effort: "low",
+    });
+
+    try {
+      const firstTurn = consumeCodexTurn(session.iterator);
+      await waitForFakeCodexRequest(logPath, "turn/start");
+      expect(session.effortUpdatesActiveTurn).toBe(true);
+      expect(session.setModel).toBeTypeOf("function");
+
+      await session.setEffort?.("high");
+      await session.setModel?.("gpt-5.4");
+      await firstTurn;
+
+      session.queue.push({ text: "retained settings turn" });
+      await consumeCodexTurn(session.iterator);
+
+      const requests = readFakeCodexRequests(logPath);
+      expect(
+        requests
+          .filter((request) => request.method === "turn/settings/update")
+          .map((request) => request.params),
+      ).toEqual([
+        {
+          threadId: "thread-policy",
+          turnId: "turn-1",
+          effort: "high",
+        },
+        {
+          threadId: "thread-policy",
+          turnId: "turn-1",
+          model: "gpt-5.4",
+        },
+      ]);
+      expect(
+        requests
+          .filter((request) => request.method === "turn/start")
+          .map((request) => ({
+            model: request.params?.model,
+            effort: request.params?.effort,
+          })),
+      ).toEqual([
+        { model: null, effort: "low" },
+        { model: "gpt-5.4", effort: "high" },
+      ]);
+    } finally {
+      await session.abort();
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("retains a setting when the live turn target is unavailable", async () => {
+    const tempDir = mkdtempSync(
+      join(tmpdir(), "codex-provider-settings-race-"),
+    );
+    const logPath = join(tempDir, "fake-codex-requests.jsonl");
+    const codexPath = createFakeCodexCommand(
+      tempDir,
+      "fake-codex-settings-race",
+      buildFakeCodexPermissionAppServer(logPath, 1, "targetUnavailable"),
+    );
+    const testProvider = new CodexProvider({ codexPath });
+    const session = await testProvider.startSession({
+      cwd: tempDir,
+      initialMessage: { text: "racing settings turn" },
+    });
+
+    try {
+      const firstTurn = consumeCodexTurn(session.iterator);
+      await waitForFakeCodexRequest(logPath, "turn/start");
+      await session.setModel?.("gpt-5.4");
+      await firstTurn;
+
+      session.queue.push({ text: "fallback settings turn" });
+      await consumeCodexTurn(session.iterator);
+
+      expect(
+        readFakeCodexRequests(logPath)
+          .filter((request) => request.method === "turn/start")
+          .map((request) => request.params?.model),
+      ).toEqual([null, "gpt-5.4"]);
+    } finally {
+      await session.abort();
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("discovers and dispatches Codex skills with canonical text and metadata", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-skills-"));
     const logPath = join(tempDir, "fake-codex-requests.jsonl");
@@ -2592,13 +2690,20 @@ process.stdin.on("data", (chunk) => {
 `;
 }
 
-function buildFakeCodexPermissionAppServer(logPath: string): string {
+function buildFakeCodexPermissionAppServer(
+  logPath: string,
+  liveSettingsUpdates = 0,
+  liveSettingsStatus: "applied" | "targetUnavailable" = "applied",
+): string {
   return `#!/usr/bin/env node
 import { appendFileSync } from "node:fs";
 
 const logPath = ${JSON.stringify(logPath)};
 let buffer = "";
 let turnSequence = 0;
+const liveSettingsUpdates = ${JSON.stringify(liveSettingsUpdates)};
+const liveSettingsStatus = ${JSON.stringify(liveSettingsStatus)};
+let observedSettingsUpdates = 0;
 let effectiveApprovalPolicy = "on-request";
 const configuredWorkspaceWritePolicy = {
   type: "workspaceWrite",
@@ -2689,10 +2794,32 @@ function handleMessage(message) {
       respond(message.id, {
         turn: {
           id: \`turn-\${turnSequence}\`,
-          status: "completed",
+          status:
+            turnSequence === 1 && liveSettingsUpdates > 0
+              ? "inProgress"
+              : "completed",
           error: null,
         },
       });
+      break;
+    }
+    case "turn/settings/update": {
+      observedSettingsUpdates += 1;
+      respond(message.id, { status: liveSettingsStatus });
+      if (observedSettingsUpdates === liveSettingsUpdates) {
+        write({
+          method: "turn/completed",
+          params: {
+            threadId: "thread-policy",
+            turn: {
+              id: message.params.turnId,
+              items: [],
+              status: "completed",
+              error: null,
+            },
+          },
+        });
+      }
       break;
     }
     default:
@@ -4165,6 +4292,50 @@ describe("CodexProvider Event Normalization", () => {
         type: "assistant",
         uuid: "async-message-1",
         message: { role: "assistant", content: "Asynchronous update" },
+      },
+    ]);
+  });
+
+  it("shows live standalone function outputs without inventing a call", () => {
+    const provider = createTestProvider() as unknown as {
+      normalizeThreadItem: (item: unknown) => Record<string, unknown> | null;
+      convertItemToSDKMessages: (
+        item: unknown,
+        sessionId: string,
+        turnId: string,
+        sourceEvent: "item/started" | "item/completed",
+      ) => Array<Record<string, unknown>>;
+    };
+
+    const normalized = provider.normalizeThreadItem({
+      id: "function-output-1",
+      type: "functionCallOutput",
+      name: "notifications",
+      namespace: "slack",
+      output: [{ type: "input_text", text: "new message" }],
+    });
+
+    expect(normalized).toMatchObject({
+      id: "function-output-1",
+      type: "function_call_output",
+      name: "notifications",
+      namespace: "slack",
+    });
+    expect(
+      provider.convertItemToSDKMessages(
+        normalized,
+        "session-1",
+        "turn-1",
+        "item/completed",
+      ),
+    ).toMatchObject([
+      {
+        type: "system",
+        subtype: "tool_output",
+        uuid: "function-output-1",
+        content: "new message",
+        codexToolName: "notifications",
+        codexToolNamespace: "slack",
       },
     ]);
   });

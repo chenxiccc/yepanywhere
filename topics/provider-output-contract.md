@@ -151,6 +151,24 @@ they rely only on the fields below.
   `isSubagent`, `orphanedToolUseIds` — documented in
   `AppMessageExtensions`.
 
+### Standalone tool output
+
+A provider output that has no call id is visible context, but it is not a
+`tool_result`: there is no honest `tool_use_id` with which to pair it. Codex
+`function_call_output` records without `call_id` and live
+`functionCallOutput` items therefore normalize to a `system/tool_output`
+message. The row names the provider tool with its optional namespace and keeps
+the output expandable on its own. It must never attach to the preceding tool
+call by position or a fabricated id.
+
+The provider item id is the row identity in both live and persisted paths when
+Codex supplies it. `codexToolName` and `codexToolNamespace` retain the display
+name, top-level `content` holds the readable output, and `toolUseResult` keeps
+the structured value. For Codex function outputs whose structured value is a
+nonempty array of only `input_text` items, readable content is the concatenated
+text. Mixed, image, audio, resource, and encrypted arrays retain their
+structured JSON envelope (with the ordinary inline-media sanitization rules).
+
 ## Command execution metadata (exit code, runtime)
 
 Command-like tool results (Bash and shell-session polls such as Codex

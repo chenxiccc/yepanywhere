@@ -356,6 +356,27 @@ function processMessage(
       return;
     }
 
+    if (subtype === "tool_output") {
+      const toolName =
+        typeof msg.codexToolName === "string" ? msg.codexToolName : "";
+      const namespace =
+        typeof msg.codexToolNamespace === "string"
+          ? msg.codexToolNamespace
+          : "";
+      const qualifiedName = [namespace, toolName].filter(Boolean).join(".");
+      const output = typeof msg.content === "string" ? msg.content : "";
+      items.push({
+        type: "system",
+        id: msgId,
+        subtype,
+        content: qualifiedName,
+        details: output ? [output] : [],
+        sourceMessages: [msg],
+        isSubagent: msg.isSubagent,
+      });
+      return;
+    }
+
     // Render compact_boundary as a visible system message
     if (
       subtype === "compact_boundary" ||

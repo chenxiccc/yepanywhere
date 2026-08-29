@@ -224,15 +224,18 @@ const COMPACT_EMPTY_DETAIL =
 function CollapsibleSystemMessage({
   item,
   icon,
+  label,
 }: {
   item: Extract<RenderItem, { type: "system" }>;
   icon: string;
+  label?: string;
 }) {
   const details = (item.details ?? [])
     .map(systemDetailToText)
     .map((text) => text.trim())
     .filter(Boolean);
   const isCompactBoundary = item.subtype === "compact_boundary";
+  const isToolOutput = item.subtype === "tool_output";
   const variantClass = isCompactBoundary
     ? "system-message-compact-boundary"
     : "system-message-local-command";
@@ -248,7 +251,7 @@ function CollapsibleSystemMessage({
       <div className={`system-message ${variantClass}`}>
         <span className="system-message-icon">{icon}</span>
         <span className="system-message-text">
-          <LinkifiedText text={item.content} />
+          <LinkifiedText text={label ?? item.content} />
         </span>
       </div>
     );
@@ -268,10 +271,14 @@ function CollapsibleSystemMessage({
         </span>
         <span className="system-message-icon">{icon}</span>
         <span className="system-message-text">
-          <LinkifiedText text={item.content} />
+          <LinkifiedText text={label ?? item.content} />
         </span>
       </summary>
-      <div className="system-message-details">
+      <div
+        className={`system-message-details${
+          isToolOutput ? ` ${styles.toolOutputDetails}` : ""
+        }`}
+      >
         {resolvedDetails.map((detail, index) => (
           <pre
             className="system-message-detail"
@@ -954,6 +961,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
   onToggleConversationThinkingPreview,
   onDismissConversationThinkingPreview,
 }: Props) {
+  const { t } = useI18n();
   const staticAgeNowMsRef = useRef(Date.now());
   const timestampMs = getLatestMessageTimestampMs(item.sourceMessages);
   const hasTimestamp =
@@ -1132,6 +1140,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
         const isWarning = item.subtype === "warning";
         const isConfigAck = item.subtype === "config_ack";
         const isLocalCommand = item.subtype === "local_command";
+        const isToolOutput = item.subtype === "tool_output";
         const isSubagentActivity = item.subtype === "subagent_activity";
         const isNoModelTurn = item.subtype === "no_model_turn";
         const isHighlightedConfigAck =
@@ -1143,13 +1152,31 @@ export const RenderItemComponent = memo(function RenderItemComponent({
               ? "✓"
               : isLocalCommand
                 ? "/"
-                : isSubagentActivity
-                  ? "↳"
-                  : isNoModelTurn
-                    ? "∅"
-                    : "⟳";
-        if (item.subtype === "compact_boundary" || isLocalCommand) {
-          return <CollapsibleSystemMessage item={item} icon={icon} />;
+                : isToolOutput
+                  ? "<"
+                  : isSubagentActivity
+                    ? "↳"
+                    : isNoModelTurn
+                      ? "∅"
+                      : "⟳";
+        if (
+          item.subtype === "compact_boundary" ||
+          isLocalCommand ||
+          isToolOutput
+        ) {
+          return (
+            <CollapsibleSystemMessage
+              item={item}
+              icon={icon}
+              label={
+                isToolOutput
+                  ? item.content
+                    ? t("toolOutputFrom", { tool: item.content })
+                    : t("toolOutput")
+                  : undefined
+              }
+            />
+          );
         }
         return (
           <div

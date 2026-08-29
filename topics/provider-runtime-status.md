@@ -43,18 +43,27 @@ Changing models while `retrying` is an explicit recovery override. Interrupt
 the provider-owned retry wait first so its model-control RPC cannot remain
 blocked behind that wait, then apply the new model through the retained session
 before releasing queued messages. Clear the retry status only after the
-interrupt is accepted and the model applies. A model change during an ordinary active turn
-remains a next-turn setting and must not truncate useful output. If a provider
-can change models dynamically but cannot interrupt a retrying request, YA must
-restart that provider process rather than leave the old-model retry clock in
-control.
+interrupt is accepted and the model applies. A model change during an ordinary
+active turn must not truncate useful output. Codex 0.151 and later publishes a
+non-default model through its experimental `turn/settings/update` control; the
+selection also seeds later turns. Providers without an active-turn control
+retain the selection for the next turn. If a provider can change models
+dynamically but cannot interrupt a retrying request, YA must restart that
+provider process rather than leave the old-model retry clock in control.
 
-Likewise, changing Claude effort during an ordinary active turn is a
-next-turn setting. YA accepts the selection immediately, applies it at the
-provider idle boundary before queued work, and never interrupts the current
-turn. Manual stop remains independently available; treating a configuration
-choice as a stop can discard nearly completed, already-paid-for reasoning on a
-high-cost turn.
+Changing Claude effort during an ordinary active turn remains a next-turn
+setting. YA accepts the selection immediately, applies it at the provider idle
+boundary before queued work, and never interrupts the current turn. Codex
+0.151 and later instead publishes a non-default effort through
+`turn/settings/update` while preserving the same no-interrupt rule, then
+retains it for later turns. Codex may have already captured child sessions or
+other work under the old settings; an `applied` response promises publication,
+not retroactive replacement. If the turn ends first and answers
+`targetUnavailable`, the selection still applies to the next turn. Clearing a
+model or effort override also takes effect at the next turn because Codex
+treats `null` as "leave this running turn unchanged." Manual stop remains
+independently available; treating a configuration choice as a stop can discard
+nearly completed, already-paid-for reasoning on a high-cost turn.
 
 Effort control writes are serialized and latest-selection-wins: a slower older
 provider call cannot overwrite a newer choice. At a turn boundary, failure to
@@ -333,6 +342,9 @@ Coverage should prove:
 - changing models during retry interrupts the held wait before model control,
   applies the model before queued delivery, and clears the retry status;
 - changing models during an ordinary active turn does not interrupt it;
+- Codex publishes active-turn model and effort selections through
+  `turn/settings/update`, retains them for later turns, and falls back to the
+  next turn when the live target is unavailable;
 - Codex `willRetry: false` errors become terminal status with the right reason;
 - terminal status survives `result`, idle transition, and idle process reap;
 - the Supervisor serves retained terminal status without a live process;
