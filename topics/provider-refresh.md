@@ -163,6 +163,60 @@ older installs may continue to work when YA does not need newer protocol fields,
 and version-sensitive behavior should be capability- or version-gated where
 possible.
 
+Current source refresh, 2026-08-29:
+
+- Installed Codex is `0.151.0`; the official `rust-v0.151.0` source is commit
+  `d8673cb68e349c208659b986697773d3145dbb14`. Root compatibility and
+  expected-protocol markers now record `0.151.0`.
+- Regeneration adds `CyberAccessProgram`, `MisalignmentErrorDetails`,
+  `MisalignmentSteer`, and `TurnToolOutput`, and changes seven files in YA's
+  checked-in app-server subset. `TurnStartParams` gains `turnTrigger`,
+  `toolOutput`, `serviceTierForTurn`, and `cyberAccessProgram`; all are optional
+  and YA sends none.
+- `CodexErrorInfo` adds `rateLimitExceeded`. Codex classifies it as retryable,
+  so it usually arrives as an intermediate retry, but a terminal one previously
+  normalized to `unknown`. YA now maps it to `rate_limit` alongside
+  `usageLimitExceeded` and `sessionBudgetExceeded`.
+- `TurnError` adds `misalignment`, carrying an open-ended `errorType`, the
+  substantive `detailedExplanation`, and a `steer` message. App-server fills
+  `additionalDetails` only for retryable stream errors and leaves it null for
+  terminal ones, so the two never coexist: YA reads `additionalDetails` first
+  and falls back to the explanation, keeping retry diagnostics unchanged while
+  making a misalignment block's reason visible. Offering Codex's continuation
+  steer remains a separate interaction design.
+- `ThreadItem` adds a `functionCallOutput` variant with no call id, the live
+  counterpart of the standalone persisted outputs seen in 0.150.0. YA still
+  declines to invent an orphaned tool result, so both forms remain unrendered;
+  showing them as their own visible block is captured in
+  `gaps/codex-orphaned-tool-results-hidden.md`.
+- Core MCP results now always convert to content items, so a text-only MCP tool
+  result persists as a single `input_text` item instead of a serialized JSON
+  string. The durable schema's item union accepted only `input_text` and
+  `input_image`; it now also accepts `input_audio` and `encrypted_content`,
+  which the same upstream path can produce. Rendering such an array as a JSON
+  envelope predates 0.151 and is captured in
+  `gaps/codex-mcp-text-results-render-as-json.md`.
+- The experimental request list adds `thread/turns/list`, `thread/items/list`,
+  `thread/revert`, and `turn/settings/update`. Full-history hydration is now
+  documented as deprecated for paginated threads; YA already sends
+  `excludeTurns` under the experimental capability and reads rollouts itself,
+  so no resume or fork change is required. Mid-turn settings publication is a
+  product decision rather than compatibility work and is captured in
+  `gaps/codex-mid-turn-settings-update.md`.
+- The current account's no-token `model/list` returns the same eight
+  account-visible models and consumed metadata as 0.150.1, with Sol default and
+  `priority` its only service tier. The generated `Model` type is unchanged
+  between the two tags.
+- All 2,373,786 lines across 1,012 local Codex rollouts validate after the
+  schema widening, with no malformed lines. No local 0.151.0 rollout exists yet
+  — every rollout written since 2026-08-28 reports `0.150.1` — so the new item
+  and content-item shapes are grounded in the tagged source rather than a local
+  sample. Re-run the census once a 0.151.0 session has written one.
+
+Status: Codex 0.151.0 app-server protocol, error taxonomy, error-detail
+surfacing, and persisted tool-output schema compatibility is refreshed. The
+model catalog required no change.
+
 Current no-op refresh, 2026-08-27:
 
 - Installed Codex is `0.150.1`; the official `rust-v0.150.1` source is commit
@@ -1069,7 +1123,7 @@ The server package currently pins provider-adjacent packages as follows:
 
 | package | current/wanted | latest observed | role |
 |---|---:|---:|---|
-| `@anthropic-ai/claude-agent-sdk` | `0.3.223` | `0.3.223` | Active Claude provider dependency |
+| `@anthropic-ai/claude-agent-sdk` | `0.3.251` | `0.3.251` | Active Claude provider dependency |
 | `@agentclientprotocol/sdk` | `0.12.0` | `0.24.0` | Active ACP client dependency for Grok/Gemini |
 
 Treat both rows as provider-refresh inputs.

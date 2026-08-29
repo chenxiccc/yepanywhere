@@ -5635,6 +5635,52 @@ describe("CodexProvider Event Normalization", () => {
     });
   });
 
+  it("surfaces a misalignment explanation as the codex error detail", () => {
+    const provider = createTestProvider() as unknown as {
+      convertNotificationToSDKMessages: (
+        notification: { method: string; params?: unknown },
+        sessionId: string,
+        usageByTurnId: Map<string, unknown>,
+        liveEventState: ReturnType<typeof createLiveEventState>,
+      ) => Array<Record<string, unknown>>;
+    };
+
+    const messages = provider.convertNotificationToSDKMessages(
+      {
+        method: "error",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          willRetry: false,
+          error: {
+            message:
+              "This request was blocked due to a misalignment policy violation.",
+            codexErrorInfo: "misalignmentPolicyViolation",
+            misalignment: {
+              errorType: "some_new_category",
+              detailedExplanation:
+                "The requested change would disable an audit control.",
+              steer: { message: "Continue without disabling the control." },
+            },
+          },
+        },
+      },
+      "session-1",
+      new Map(),
+      createLiveEventState(),
+    );
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({
+      type: "error",
+      error: "This request was blocked due to a misalignment policy violation.",
+      codexErrorInfo: "misalignmentPolicyViolation",
+      codexAdditionalDetails:
+        "The requested change would disable an audit control.",
+      codexWillRetry: false,
+    });
+  });
+
   it("preserves synthetic app-server process exit errors without turn ids", () => {
     const provider = createTestProvider() as unknown as {
       convertNotificationToSDKMessages: (

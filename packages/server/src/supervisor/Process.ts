@@ -585,6 +585,7 @@ function normalizeCodexTerminalReason(
       return "overloaded";
     case "usageLimitExceeded":
     case "sessionBudgetExceeded":
+    case "rateLimitExceeded":
       return "rate_limit";
     case "internalServerError":
       return "server_error";

@@ -93,6 +93,37 @@ export function asCodexErrorNotification(
   return params as CodexErrorNotification;
 }
 
+/**
+ * Read the explanatory detail string that belongs with a Codex turn error.
+ *
+ * App-server fills `additionalDetails` only on retryable stream errors; for a
+ * terminal error it leaves that field null and, since Codex 0.151, carries the
+ * substantive explanation of a misalignment block in `misalignment` instead.
+ * The two therefore never arrive together, and preferring `additionalDetails`
+ * keeps existing retry diagnostics unchanged while making the misalignment
+ * explanation visible wherever YA already shows the detail string.
+ *
+ * `misalignment.steer` is deliberately not read here: submitting it is a
+ * continuation affordance, not a detail string.
+ */
+export function readCodexTurnErrorDetail(error: unknown): string | null {
+  if (!error || typeof error !== "object") return null;
+  const record = error as Record<string, unknown>;
+  const additionalDetails = record.additionalDetails;
+  if (typeof additionalDetails === "string" && additionalDetails.trim()) {
+    return additionalDetails;
+  }
+  const misalignment =
+    record.misalignment && typeof record.misalignment === "object"
+      ? (record.misalignment as Record<string, unknown>)
+      : null;
+  const explanation = misalignment?.detailedExplanation;
+  if (typeof explanation === "string" && explanation.trim()) {
+    return explanation;
+  }
+  return null;
+}
+
 export function asCodexThreadTokenUsageUpdatedNotification(
   params: unknown,
 ): ThreadTokenUsageUpdatedNotification | null {

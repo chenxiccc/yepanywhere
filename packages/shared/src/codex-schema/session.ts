@@ -185,9 +185,37 @@ export type CodexFunctionCallPayload = z.infer<
   typeof CodexFunctionCallPayloadSchema
 >;
 
+/**
+ * Audio content block a tool call can return.
+ */
+export const CodexInputAudioContentSchema = z
+  .object({
+    type: z.literal("input_audio"),
+    audio_url: z.string().optional(),
+  })
+  .passthrough();
+
+/**
+ * Opaque encrypted content block a tool call can return.
+ */
+export const CodexEncryptedContentSchema = z
+  .object({
+    type: z.literal("encrypted_content"),
+    encrypted_content: z.string().optional(),
+  })
+  .passthrough();
+
+/**
+ * Content items a tool call can return. Codex 0.151 always converts an MCP
+ * result into these items, so a plain-text result now persists as a single
+ * `input_text` item rather than a serialized JSON string, and the audio and
+ * encrypted variants reach durable transcripts too.
+ */
 export const CodexFunctionCallOutputContentItemSchema = z.union([
   CodexInputTextContentSchema,
   CodexInputImageContentSchema,
+  CodexInputAudioContentSchema,
+  CodexEncryptedContentSchema,
 ]);
 
 export type CodexFunctionCallOutputContentItem = z.infer<

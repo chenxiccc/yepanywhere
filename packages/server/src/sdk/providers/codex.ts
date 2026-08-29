@@ -129,6 +129,7 @@ import {
   asCodexTurnPlanUpdatedNotification,
   isCodexLiveDeltaNotificationMethod,
   isCodexLiveDeltaSuppressionEnabled,
+  readCodexTurnErrorDetail,
 } from "./codex-notification-guards.js";
 import {
   captureCodexSummaryTextFromNotification,
@@ -2611,7 +2612,7 @@ export class CodexProvider implements AgentProvider {
             session_id: sessionId,
             error: turn.error.message,
             codexErrorInfo: turn.error.codexErrorInfo ?? null,
-            codexAdditionalDetails: turn.error.additionalDetails ?? null,
+            codexAdditionalDetails: readCodexTurnErrorDetail(turn.error),
             codexWillRetry: false,
             codexTurnId: turn.id,
             codexFailureTrace: provider.snapshotCodexFailureTrace(failureTrace),
@@ -4030,7 +4031,8 @@ export class CodexProvider implements AgentProvider {
           phase: "completed",
           errorMessage: params?.turn.error?.message,
           codexErrorInfo: params?.turn.error?.codexErrorInfo ?? undefined,
-          additionalDetails: params?.turn.error?.additionalDetails ?? undefined,
+          additionalDetails:
+            readCodexTurnErrorDetail(params?.turn.error) ?? undefined,
           openaiRequestId: this.extractOpenAIRequestId(
             params?.turn.error,
             params?.turn.error?.additionalDetails,
@@ -4065,7 +4067,7 @@ export class CodexProvider implements AgentProvider {
             fallbackError?.codexErrorInfo ??
             undefined,
           additionalDetails:
-            params?.error.additionalDetails ??
+            readCodexTurnErrorDetail(params?.error) ??
             this.getOptionalString(fallbackError?.additionalDetails) ??
             undefined,
           openaiRequestId: this.extractOpenAIRequestId(
@@ -4933,7 +4935,7 @@ export class CodexProvider implements AgentProvider {
             fallbackError?.codexErrorInfo ??
             null,
           codexAdditionalDetails:
-            params?.error.additionalDetails ??
+            readCodexTurnErrorDetail(params?.error) ??
             this.getOptionalString(fallbackError?.additionalDetails) ??
             null,
           codexWillRetry: willRetry,

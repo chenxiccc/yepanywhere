@@ -13,6 +13,7 @@ import {
   asCodexTurnCompletedNotification,
   isCodexLiveDeltaNotificationMethod,
   isCodexLiveDeltaSuppressionEnabled,
+  readCodexTurnErrorDetail,
 } from "../../../src/sdk/providers/codex-notification-guards.js";
 
 describe("Codex notification guards", () => {
@@ -161,5 +162,42 @@ describe("Codex notification guards", () => {
         item: { call_id: "call-1" },
       }),
     ).toBe(null);
+  });
+
+  it("reads the turn error detail from additionalDetails or a misalignment", () => {
+    expect(
+      readCodexTurnErrorDetail({
+        message: "Reconnecting... 2/5",
+        additionalDetails: "stream disconnected before completion",
+      }),
+    ).toBe("stream disconnected before completion");
+
+    expect(
+      readCodexTurnErrorDetail({
+        message: "This request was blocked.",
+        additionalDetails: null,
+        misalignment: {
+          errorType: "some_new_category",
+          detailedExplanation: "The requested change would disable a control.",
+          steer: { message: "Continue without disabling the control." },
+        },
+      }),
+    ).toBe("The requested change would disable a control.");
+
+    // A blank explanation is not a detail, and neither is the steer message.
+    expect(
+      readCodexTurnErrorDetail({
+        message: "This request was blocked.",
+        misalignment: {
+          detailedExplanation: "   ",
+          steer: { message: "Continue anyway." },
+        },
+      }),
+    ).toBe(null);
+
+    expect(readCodexTurnErrorDetail({ message: "Codex turn failed" })).toBe(
+      null,
+    );
+    expect(readCodexTurnErrorDetail(null)).toBe(null);
   });
 });

@@ -326,6 +326,40 @@ describe("Process", () => {
       controller.finish();
     });
 
+    it("normalizes a terminal Codex rate limit to the rate_limit reason", async () => {
+      const controller = createControllableIterator();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "codex",
+        idleTimeoutMs: 100,
+      });
+
+      controller.push({
+        type: "error",
+        uuid: "codex-error-turn-1",
+        session_id: "sess-1",
+        error: "Rate limit exceeded.",
+        codexErrorInfo: "rateLimitExceeded",
+        codexWillRetry: false,
+        codexTurnId: "turn-1",
+      });
+
+      await waitFor(() => {
+        expect(process.getInfo().providerRuntimeStatus?.kind).toBe("terminal");
+      });
+      expect(process.getInfo().providerRuntimeStatus).toMatchObject({
+        kind: "terminal",
+        provider: "codex",
+        reason: "rate_limit",
+        message: "Rate limit exceeded.",
+        turnId: "turn-1",
+      });
+
+      controller.finish();
+    });
+
     it("records automatic Codex retries until provider progress resumes", async () => {
       const controller = createControllableIterator();
       const process = new Process(controller.iterator, {
