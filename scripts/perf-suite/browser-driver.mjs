@@ -577,17 +577,202 @@ async function measureSidebarSwitches(
       throw new Error(`sidebar target omitted session: ${targetPath}`);
     const marker = `[${sessionId}:assistant:${expectedAssistantTurnIndex}]`;
     await resetInteractionProbe(page);
-    const startedAtMs = await page.evaluate(() => performance.now());
+    const { markIndex, startedAtMs } = await page.evaluate((pathName) => {
+      const interaction = window.__yaPerfInteraction;
+      const activeLayer = document.querySelector(
+        '[data-session-dom-linger="active"]',
+      );
+      if (activeLayer) {
+        let layerId = interaction.sessionLayerIds.get(activeLayer);
+        if (!layerId) {
+          layerId = interaction.nextSessionLayerId;
+          interaction.nextSessionLayerId += 1;
+          interaction.sessionLayerIds.set(activeLayer, layerId);
+        }
+        interaction.lastSessionLayerIdByPath[pathName] = layerId;
+      }
+      const atMs = performance.now();
+      window.__YA_RELOAD_PERF_PROBE__?.mark("sidebar_switch_route_click", {
+        pathName,
+      });
+      return {
+        markIndex: (window.__yaPerfMarks ?? []).length - 1,
+        startedAtMs: atMs,
+      };
+    }, fromPath);
     await links.nth(targetIndex).click();
     await page.waitForURL((url) => url.pathname === targetPath);
     await page.waitForFunction(
       (expectedMarker) => document.body?.innerText.includes(expectedMarker),
       marker,
     );
+    const readableAtMs = await page.evaluate(() => performance.now());
     await twoAnimationFrames(page);
     const finishedAtMs = await page.evaluate(() => performance.now());
     const probe = await interactionProbeResult(page);
     const nextPaintMs = round(finishedAtMs - startedAtMs);
+    const diagnostics = await page.evaluate(
+      ({
+        endAtMs,
+        marksFromIndex,
+        readableAtMs,
+        targetPath,
+        targetSessionId,
+      }) => {
+        const interaction = window.__yaPerfInteraction;
+        const activeLayer = document.querySelector(
+          '[data-session-dom-linger="active"]',
+        );
+        let activeLayerId = null;
+        if (activeLayer) {
+          activeLayerId = interaction.sessionLayerIds.get(activeLayer) ?? null;
+          if (!activeLayerId) {
+            activeLayerId = interaction.nextSessionLayerId;
+            interaction.nextSessionLayerId += 1;
+            interaction.sessionLayerIds.set(activeLayer, activeLayerId);
+          }
+        }
+        const previousLayerId =
+          interaction.lastSessionLayerIdByPath[targetPath] ?? null;
+        if (activeLayerId) {
+          interaction.lastSessionLayerIdByPath[targetPath] = activeLayerId;
+        }
+
+        const allMarks = window.__yaPerfMarks ?? [];
+        const marks = allMarks.slice(marksFromIndex);
+        const loadStart = marks.find(
+          (mark) =>
+            mark.name === "session_initial_load_start" &&
+            mark.detail?.sessionId === targetSessionId,
+        );
+        const snapshotLookupStart = marks.find(
+          (mark) =>
+            mark.name === "session_snapshot_lookup_start" &&
+            mark.detail?.sessionId === targetSessionId,
+        );
+        const snapshotLookupComplete = snapshotLookupStart
+          ? marks.find(
+              (mark) =>
+                mark.name === "session_snapshot_lookup_complete" &&
+                mark.detail?.sessionId === targetSessionId &&
+                mark.atMs >= snapshotLookupStart.atMs,
+            )
+          : null;
+        const snapshotHydration = snapshotLookupComplete
+          ? marks.find(
+              (mark) =>
+                mark.name === "session_snapshot_hydration_installed" &&
+                mark.detail?.sessionId === targetSessionId &&
+                mark.atMs >= snapshotLookupComplete.atMs,
+            )
+          : null;
+        const stateQueued = loadStart
+          ? marks.find(
+              (mark) =>
+                mark.name === "session_initial_messages_state_queued" &&
+                mark.atMs >= loadStart.atMs,
+            )
+          : null;
+        const commit = stateQueued
+          ? marks.find(
+              (mark) =>
+                mark.name === "message_list_commit_effect" &&
+                mark.atMs >= stateQueued.atMs,
+            )
+          : null;
+        const preprocessEnd = commit
+          ? marks
+              .filter(
+                (mark) =>
+                  mark.name === "message_list_preprocess_end" &&
+                  mark.atMs >= stateQueued.atMs &&
+                  mark.atMs <= commit.atMs,
+              )
+              .at(-1)
+          : null;
+        const groupEnd = commit
+          ? marks
+              .filter(
+                (mark) =>
+                  mark.name === "message_list_group_end" &&
+                  mark.atMs >= stateQueued.atMs &&
+                  mark.atMs <= commit.atMs,
+              )
+              .at(-1)
+          : null;
+        const latestBackgroundEffects = new Map();
+        for (const mark of allMarks) {
+          if (
+            mark.name === "session_background_effects_changed" &&
+            typeof mark.detail?.sessionId === "string"
+          ) {
+            latestBackgroundEffects.set(mark.detail.sessionId, mark.detail);
+          }
+        }
+        const activeSessionConsumerCount = [
+          ...latestBackgroundEffects.values(),
+        ].filter(
+          (detail) => detail.mounted === true && detail.paused !== true,
+        ).length;
+        const duration = (start, end) =>
+          typeof start === "number" && typeof end === "number"
+            ? Math.round((end - start) * 10) / 10
+            : null;
+        return {
+          activeSessionConsumerCount:
+            latestBackgroundEffects.size > 0
+              ? activeSessionConsumerCount
+              : null,
+          dom: {
+            activeLayers: document.querySelectorAll(
+              '[data-session-dom-linger="active"]',
+            ).length,
+            layerCount: document.querySelectorAll("[data-session-dom-linger]")
+              .length,
+            parkedLayers: document.querySelectorAll(
+              '[data-session-dom-linger="parked"]',
+            ).length,
+            reused:
+              previousLayerId !== null && previousLayerId === activeLayerId,
+          },
+          phaseProfile: {
+            commitToReadableMs: duration(commit?.atMs, readableAtMs),
+            groupMs:
+              typeof groupEnd?.detail?.durationMs === "number"
+                ? groupEnd.detail.durationMs
+                : null,
+            loadStartToStateQueuedMs: duration(
+              loadStart?.atMs,
+              stateQueued?.atMs,
+            ),
+            preprocessMs:
+              typeof preprocessEnd?.detail?.durationMs === "number"
+                ? preprocessEnd.detail.durationMs
+                : null,
+            remounted: Boolean(loadStart),
+            restoredFromSnapshot:
+              loadStart?.detail?.restoredFromSnapshot === true,
+            snapshotHit: snapshotLookupComplete?.detail?.hit === true,
+            snapshotLookupMs: duration(
+              snapshotLookupStart?.atMs,
+              snapshotLookupComplete?.atMs,
+            ),
+            snapshotMessagesIdentityPreserved:
+              snapshotHydration?.detail?.messagesIdentityPreserved === true,
+            routeClickToLoadStartMs: duration(marks[0]?.atMs, loadStart?.atMs),
+            stateQueuedToCommitMs: duration(stateQueued?.atMs, commit?.atMs),
+            readableToNextPaintMs: duration(readableAtMs, endAtMs),
+          },
+        };
+      },
+      {
+        endAtMs: finishedAtMs,
+        marksFromIndex: markIndex,
+        readableAtMs,
+        targetPath,
+        targetSessionId: sessionId,
+      },
+    );
     await recordSemanticMeasurement(
       page,
       "performance-sprint.sidebar-switch-next-paint",
@@ -595,6 +780,7 @@ async function measureSidebarSwitches(
     );
     switches.push({
       cache: (await clientTelemetry(page)).transcriptMemory,
+      ...diagnostics,
       fromPath,
       longTasks: summarizeLongTasks(probe.longTasks),
       nextPaintMs,
@@ -833,6 +1019,11 @@ export async function measureBrowserMode({
   );
   const modes = [];
   const livePages = [];
+  const causalArm = scenario.interactionTrace?.alternateCausalArms
+    ? repetition % 2 === 0
+      ? "idle"
+      : "activity"
+    : null;
   const workingSetSessionCount =
     scenario.browserWorkingSetSessions ?? config.fixture.workingSetSessions;
   const detailsByProjectMap = new Map();
@@ -900,10 +1091,13 @@ export async function measureBrowserMode({
             };
             window.__yaPerfInteraction = {
               keySamples: [],
+              lastSessionLayerIdByPath: {},
               longTasks: [],
+              nextSessionLayerId: 1,
               rowChangeAtMs: null,
               rowCountBefore: 0,
               rowObserver: null,
+              sessionLayerIds: new WeakMap(),
             };
             new PerformanceObserver((entries) => {
               for (const entry of entries.getEntries()) {
@@ -1202,15 +1396,24 @@ export async function measureBrowserMode({
                   scenario.interactionTrace,
                   scenario.initialTurns - 1,
                 );
-                await wait(scenario.interactionTrace.idleBeforeSecondSwitchMs);
-                const idle = await measureBrowserInteractionTrace(
-                  page,
-                  scenario,
-                  scenario.interactionTrace,
-                  scenario.initialTurns - 1,
-                );
+                let idle = null;
+                if (causalArm !== "activity") {
+                  await wait(
+                    scenario.interactionTrace.idleBeforeSecondSwitchMs,
+                  );
+                  idle = await measureBrowserInteractionTrace(
+                    page,
+                    scenario,
+                    scenario.interactionTrace,
+                    scenario.initialTurns - 1,
+                  );
+                }
                 mode.interactionTraceBeforeAppend ??= [];
-                mode.interactionTraceBeforeAppend.push({ fresh, idle });
+                mode.interactionTraceBeforeAppend.push({
+                  causalArm,
+                  fresh,
+                  ...(idle && { idle }),
+                });
               }
               return prepareClientAppendProfile(
                 page,
@@ -1281,7 +1484,7 @@ export async function measureBrowserMode({
           delete mode.liveMilestones;
           delete mode.liveProfiles;
         }
-        if (scenario.interactionTrace?.enabled) {
+        if (scenario.interactionTrace?.enabled && causalArm !== "idle") {
           await Promise.all(
             livePages.map(async ({ mode, pages }) => {
               const trials = await Promise.all(
@@ -1295,6 +1498,7 @@ export async function measureBrowserMode({
               );
               mode.interactionTrace = {
                 aggregate: summarizeInteractionTrials(trials),
+                causalArm,
                 trials,
               };
             }),

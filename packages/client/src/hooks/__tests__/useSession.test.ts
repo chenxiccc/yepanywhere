@@ -47,6 +47,7 @@ const updateSession = vi.fn();
 
 let fileActivityOptions:
   | {
+      enabled?: boolean;
       onSessionStatusChange?: (event: SessionStatusEvent) => void;
       onSessionUpdated?: (event: SessionUpdatedEvent) => void;
       onFileChange?: (event: FileChangeEvent) => void;
@@ -62,10 +63,12 @@ let sessionWatchOptions:
       onReconnect?: () => void;
     }
   | undefined;
+let sessionWatchTarget: { sessionId: string } | null | undefined;
 
 let sessionStreamHandler:
   | ((data: { eventType: string; [key: string]: unknown }) => void)
   | null = null;
+let sessionStreamSessionId: string | null | undefined;
 
 let streamingContentOptions:
   | {
@@ -217,14 +220,16 @@ vi.mock("../useFileActivity", () => ({
 }));
 
 vi.mock("../useSessionStream", () => ({
-  useSessionStream: vi.fn((_sessionId, options) => {
+  useSessionStream: vi.fn((sessionId, options) => {
+    sessionStreamSessionId = sessionId;
     sessionStreamHandler = options.onMessage;
     return { connected: true, reconnect: vi.fn() };
   }),
 }));
 
 vi.mock("../useSessionWatchStream", () => ({
-  useSessionWatchStream: vi.fn((_target, options) => {
+  useSessionWatchStream: vi.fn((target, options) => {
+    sessionWatchTarget = target;
     sessionWatchOptions = options;
     return { connected: false };
   }),
@@ -267,8 +272,10 @@ describe("useSession completion reconciliation", () => {
     installLocalStorageMock();
     fileActivityOptions = undefined;
     sessionWatchOptions = undefined;
+    sessionWatchTarget = undefined;
     sessionMessagesOptions = undefined;
     sessionStreamHandler = null;
+    sessionStreamSessionId = undefined;
     streamingContentOptions = undefined;
     sessionMessagesMock.messages = [];
     sessionMessagesMock.loading = false;
@@ -676,6 +683,34 @@ describe("useSession completion reconciliation", () => {
       await Promise.resolve();
     });
     expect(apiMocks.getAgentMappings).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases live session consumers while the session DOM is parked", () => {
+    const { rerender } = renderHook(
+      ({ paused }) =>
+        useSession(
+          PROJECT_ID,
+          "sess-1",
+          { owner: "self", processId: "proc-1" },
+          undefined,
+          { backgroundEffectsPaused: paused },
+        ),
+      { initialProps: { paused: false } },
+    );
+
+    expect(fileActivityOptions?.enabled).toBe(true);
+    expect(sessionStreamSessionId).toBe("sess-1");
+
+    rerender({ paused: true });
+
+    expect(fileActivityOptions?.enabled).toBe(false);
+    expect(sessionStreamSessionId).toBeNull();
+    expect(sessionWatchTarget).toBeNull();
+
+    rerender({ paused: false });
+
+    expect(fileActivityOptions?.enabled).toBe(true);
+    expect(sessionStreamSessionId).toBe("sess-1");
   });
 
   it("routes agent context usage through the action wrapper", () => {

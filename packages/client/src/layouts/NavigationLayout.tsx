@@ -4,6 +4,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -36,6 +37,7 @@ export interface NavigationLayoutContext {
 
 const NOOP = () => {};
 const SESSION_DOM_LINGER_TTL_MS = 60_000;
+const SESSION_DOM_LINGER_MAX_PARKED_ELEMENTS = 5_000;
 const NON_TEXT_INPUT_TYPES = new Set([
   "button",
   "checkbox",
@@ -59,6 +61,7 @@ interface SessionRouteLocationSnapshot {
 
 interface SessionDomLingerRoute {
   key: string;
+  sourceKey: string;
   projectId: string;
   sessionId: string;
   location: SessionRouteLocationSnapshot;
@@ -387,6 +390,7 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
         sessionId,
         search: location.search,
       }),
+      sourceKey,
       projectId,
       sessionId,
       location: {
@@ -403,70 +407,123 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
     location.state,
     sourceKey,
   ]);
-  const [lingerRoute, setLingerRoute] = useState<SessionDomLingerRoute | null>(
-    () => currentSessionRoute,
-  );
-  const sessionLayerRef = useRef<HTMLDivElement | null>(null);
+  const [parkedSessionRoute, setParkedSessionRoute] =
+    useState<SessionDomLingerRoute | null>(null);
+  const [committedActiveSessionRoute, setCommittedActiveSessionRoute] =
+    useState(currentSessionRoute);
+  const sessionLayerRefs = useRef(new Map<string, HTMLDivElement>());
+  const transitioningFromSessionRoute =
+    sessionDomLingerEnabled &&
+    committedActiveSessionRoute &&
+    committedActiveSessionRoute.key !== currentSessionRoute?.key &&
+    committedActiveSessionRoute.sourceKey === sourceKey &&
+    (!currentSessionRoute ||
+      (committedActiveSessionRoute.projectId ===
+        currentSessionRoute.projectId &&
+        committedActiveSessionRoute.sessionId !==
+          currentSessionRoute.sessionId))
+      ? committedActiveSessionRoute
+      : null;
+  const parkedSessionCandidate =
+    transitioningFromSessionRoute ?? parkedSessionRoute;
+  const renderedParkedSessionRoute =
+    sessionDomLingerEnabled &&
+    parkedSessionCandidate &&
+    parkedSessionCandidate.key !== currentSessionRoute?.key &&
+    parkedSessionCandidate.sourceKey === sourceKey &&
+    (!currentSessionRoute ||
+      parkedSessionCandidate.projectId === currentSessionRoute.projectId)
+      ? { ...parkedSessionCandidate, status: "parked" as const }
+      : null;
+  const renderedSessionRoutes = currentSessionRoute
+    ? [currentSessionRoute, renderedParkedSessionRoute].filter(
+        (route): route is SessionDomLingerRoute => route !== null,
+      )
+    : renderedParkedSessionRoute
+      ? [renderedParkedSessionRoute]
+      : [];
+  const sessionLayerVisible = Boolean(currentSessionRoute);
 
-  useEffect(() => {
-    if (!sessionDomLingerEnabled) {
-      setLingerRoute(currentSessionRoute);
-      return;
-    }
-    if (currentSessionRoute) {
-      setLingerRoute(currentSessionRoute);
-      return;
-    }
-    setLingerRoute((previous) => {
-      if (!previous || previous.status === "parked") {
-        return previous;
+  useLayoutEffect(() => {
+    const previousActiveRoute = committedActiveSessionRoute;
+    setCommittedActiveSessionRoute(currentSessionRoute);
+    setParkedSessionRoute((previousParkedRoute) => {
+      if (!sessionDomLingerEnabled) {
+        return null;
       }
-      const now = Date.now();
-      return {
-        ...previous,
-        status: "parked",
-        parkedAtMs: now,
-        expiresAtMs: now + SESSION_DOM_LINGER_TTL_MS,
-      };
+
+      let nextParkedRoute = previousParkedRoute;
+      if (
+        previousActiveRoute &&
+        previousActiveRoute.key !== currentSessionRoute?.key &&
+        previousActiveRoute.sourceKey === sourceKey &&
+        (!currentSessionRoute ||
+          (previousActiveRoute.projectId === currentSessionRoute.projectId &&
+            previousActiveRoute.sessionId !== currentSessionRoute.sessionId))
+      ) {
+        const now = Date.now();
+        nextParkedRoute = {
+          ...previousActiveRoute,
+          status: "parked",
+          parkedAtMs: now,
+          expiresAtMs: now + SESSION_DOM_LINGER_TTL_MS,
+        };
+      }
+
+      if (!nextParkedRoute) {
+        return null;
+      }
+      if (
+        nextParkedRoute.key === currentSessionRoute?.key ||
+        nextParkedRoute.sourceKey !== sourceKey ||
+        (currentSessionRoute &&
+          nextParkedRoute.projectId !== currentSessionRoute.projectId)
+      ) {
+        return null;
+      }
+      if (currentSessionRoute) {
+        const element = sessionLayerRefs.current.get(nextParkedRoute.key);
+        if (
+          !element ||
+          element.querySelectorAll("*").length >
+            SESSION_DOM_LINGER_MAX_PARKED_ELEMENTS
+        ) {
+          return null;
+        }
+      }
+      return nextParkedRoute;
     });
-  }, [currentSessionRoute, sessionDomLingerEnabled]);
+  }, [
+    committedActiveSessionRoute,
+    currentSessionRoute,
+    sessionDomLingerEnabled,
+    sourceKey,
+  ]);
 
   useEffect(() => {
-    if (lingerRoute?.status !== "parked") {
+    if (parkedSessionRoute?.status !== "parked") {
       return;
     }
-    const timeoutMs = Math.max(0, (lingerRoute.expiresAtMs ?? 0) - Date.now());
+    const timeoutMs = Math.max(
+      0,
+      (parkedSessionRoute.expiresAtMs ?? 0) - Date.now(),
+    );
     const timer = window.setTimeout(() => {
-      setLingerRoute((previous) =>
-        previous?.key === lingerRoute.key && previous.status === "parked"
+      setParkedSessionRoute((previous) =>
+        previous?.key === parkedSessionRoute.key && previous.status === "parked"
           ? null
           : previous,
       );
     }, timeoutMs);
     return () => window.clearTimeout(timer);
-  }, [lingerRoute]);
+  }, [parkedSessionRoute]);
 
-  const parkedSessionRoute =
-    sessionDomLingerEnabled && !currentSessionRoute ? lingerRoute : null;
-  const renderedSessionRoute = currentSessionRoute ?? parkedSessionRoute;
-  const sessionLayerVisible = Boolean(
-    currentSessionRoute &&
-      renderedSessionRoute &&
-      currentSessionRoute.key === renderedSessionRoute.key,
-  );
-  const sessionLayerParked = Boolean(
-    renderedSessionRoute && !sessionLayerVisible,
-  );
-
-  useEffect(() => {
-    const element = sessionLayerRef.current as
-      | (HTMLDivElement & { inert?: boolean })
-      | null;
-    if (!element) {
-      return;
+  useLayoutEffect(() => {
+    for (const [key, element] of sessionLayerRefs.current) {
+      (element as HTMLDivElement & { inert?: boolean }).inert =
+        key !== currentSessionRoute?.key;
     }
-    element.inert = sessionLayerParked;
-  }, [sessionLayerParked]);
+  }, [currentSessionRoute?.key]);
 
   const sidebarFeedsEnabled = isContentFrameRoute
     ? sidebarOpen
@@ -557,23 +614,29 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
         >
           <NavigationLayoutReactContext.Provider value={context}>
             <div className="navigation-route-stack">
-              {renderedSessionRoute && sessionElement && (
-                <div
-                  key={renderedSessionRoute.key}
-                  ref={sessionLayerRef}
-                  className={`navigation-route-layer session-dom-linger-layer ${
-                    sessionLayerVisible ? "is-active" : "is-parked"
-                  }`}
-                  aria-hidden={sessionLayerParked ? true : undefined}
-                  data-session-dom-linger={
-                    sessionLayerVisible ? "active" : "parked"
-                  }
-                >
-                  {sessionElement(renderedSessionRoute, {
-                    parked: sessionLayerParked,
-                  })}
-                </div>
-              )}
+              {sessionElement &&
+                renderedSessionRoutes.map((route) => {
+                  const parked = route.key !== currentSessionRoute?.key;
+                  return (
+                    <div
+                      key={route.key}
+                      ref={(element) => {
+                        if (element) {
+                          sessionLayerRefs.current.set(route.key, element);
+                        } else {
+                          sessionLayerRefs.current.delete(route.key);
+                        }
+                      }}
+                      className={`navigation-route-layer session-dom-linger-layer ${
+                        parked ? "is-parked" : "is-active"
+                      }`}
+                      aria-hidden={parked ? true : undefined}
+                      data-session-dom-linger={parked ? "parked" : "active"}
+                    >
+                      {sessionElement(route, { parked })}
+                    </div>
+                  );
+                })}
               <div
                 className={`navigation-route-layer navigation-route-foreground ${
                   sessionLayerVisible ? "is-hidden" : "is-active"

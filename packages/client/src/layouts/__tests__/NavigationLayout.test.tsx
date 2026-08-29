@@ -4,6 +4,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
@@ -135,6 +136,7 @@ function renderNavigationLayoutWithSessionLinger(
   path = "/projects/project-1/sessions/session-1",
   options: {
     onSessionRender?: (parked: boolean, sessionId: string) => void;
+    sessionElementCount?: number;
   } = {},
 ) {
   render(
@@ -159,6 +161,17 @@ function renderNavigationLayoutWithSessionLinger(
                       <Link to="/projects/project-1/sessions/session-2">
                         Session 2
                       </Link>
+                      {route.sessionId === "session-2" && (
+                        <Link to="/projects/project-1/sessions/session-1">
+                          Session 1
+                        </Link>
+                      )}
+                      {Array.from(
+                        { length: options.sessionElementCount ?? 0 },
+                        (_, index) => (
+                          <span key={index} />
+                        ),
+                      )}
                     </div>
                   );
                 }}
@@ -565,17 +578,72 @@ describe("NavigationLayout", () => {
     expect(screen.getByTestId("route-content")).toBeTruthy();
   });
 
-  it("does not park the old session when navigating directly to another session", () => {
+  it("parks one compact session during direct session switching and reuses it", () => {
     enableSessionDomLinger();
     renderNavigationLayoutWithSessionLinger();
 
     const firstSessionLayer = screen.getByTestId("session-layer");
     fireEvent.click(screen.getByText("Session 2"));
 
-    const secondSessionLayer = screen.getByTestId("session-layer");
+    const switchedLayers = screen.getAllByTestId("session-layer");
+    const secondSessionLayer = switchedLayers.find(
+      (layer) => layer.dataset.sessionId === "session-2",
+    );
+    const parkedFirstSessionLayer = switchedLayers.find(
+      (layer) => layer.dataset.sessionId === "session-1",
+    );
+    expect(switchedLayers).toHaveLength(2);
+    expect(parkedFirstSessionLayer).toBe(firstSessionLayer);
+    expect(parkedFirstSessionLayer?.dataset.parked).toBe("true");
+    expect(
+      parkedFirstSessionLayer
+        ?.closest("[data-session-dom-linger]")
+        ?.getAttribute("data-session-dom-linger"),
+    ).toBe("parked");
     expect(secondSessionLayer).not.toBe(firstSessionLayer);
-    expect(secondSessionLayer.dataset.sessionId).toBe("session-2");
-    expect(secondSessionLayer.dataset.parked).toBe("false");
+    expect(secondSessionLayer?.dataset.parked).toBe("false");
+
+    fireEvent.click(
+      within(secondSessionLayer as HTMLElement).getByText("Session 1"),
+    );
+
+    const returnedLayers = screen.getAllByTestId("session-layer");
+    expect(returnedLayers).toHaveLength(2);
+    expect(
+      returnedLayers.find((layer) => layer.dataset.sessionId === "session-1"),
+    ).toBe(firstSessionLayer);
+    expect(firstSessionLayer.dataset.parked).toBe("false");
+    expect(secondSessionLayer?.dataset.parked).toBe("true");
+  });
+
+  it("expires a directly parked session while the next session stays active", () => {
+    enableSessionDomLinger();
+    vi.useFakeTimers();
+    renderNavigationLayoutWithSessionLinger();
+
+    fireEvent.click(screen.getByText("Session 2"));
+    expect(screen.getAllByTestId("session-layer")).toHaveLength(2);
+
+    act(() => {
+      vi.advanceTimersByTime(60_000);
+    });
+
+    const remainingLayer = screen.getByTestId("session-layer");
+    expect(remainingLayer.dataset.sessionId).toBe("session-2");
+    expect(remainingLayer.dataset.parked).toBe("false");
+  });
+
+  it("does not retain an oversized session beside another session", () => {
+    enableSessionDomLinger();
+    renderNavigationLayoutWithSessionLinger(undefined, {
+      sessionElementCount: 5_001,
+    });
+
+    fireEvent.click(screen.getByText("Session 2"));
+
+    const remainingLayer = screen.getByTestId("session-layer");
+    expect(remainingLayer.dataset.sessionId).toBe("session-2");
+    expect(remainingLayer.dataset.parked).toBe("false");
   });
 
   it("retains one project glossary owner across same-project sessions", () => {

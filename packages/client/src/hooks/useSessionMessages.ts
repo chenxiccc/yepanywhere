@@ -644,7 +644,17 @@ export function useSessionMessages(
     let pendingWarmData: GetSessionResult | null = null;
     let pendingWarmError: Error | null = null;
     let initialAfterMessageId: string | undefined;
+    markReloadPerfPhase("session_snapshot_lookup_start", {
+      projectId,
+      sessionId,
+    });
     const warmLoad = readSessionLoadCache(coordinator);
+    markReloadPerfPhase("session_snapshot_lookup_complete", {
+      projectId,
+      sessionId,
+      hit: warmLoad !== null,
+      messageCount: warmLoad?.messages.length ?? 0,
+    });
     const initialLoad = coordinator.beginInitialLoad({
       warmSnapshot: warmLoad,
     });
@@ -834,6 +844,14 @@ export function useSessionMessages(
     setRevealedSnapshotKey(null);
     if (warmLoad) {
       resetSessionDetailState(warmLoad);
+      markReloadPerfPhase("session_snapshot_hydration_installed", {
+        projectId,
+        sessionId,
+        messageCount: warmLoad.messages.length,
+        messagesIdentityPreserved:
+          coordinator.readSelected(selectSessionDetailMessages) ===
+          warmLoad.messages,
+      });
       setSessionLoadProgress(
         coordinator.buildRouteSnapshotLoadProgress("fetching", warmLoad),
       );

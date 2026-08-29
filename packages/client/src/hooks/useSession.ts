@@ -554,6 +554,21 @@ export function useSession(
   },
 ) {
   const sourceSummary = useCurrentSourceRuntime().summary;
+  const backgroundEffectsPaused = options?.backgroundEffectsPaused === true;
+  useEffect(() => {
+    markReloadPerfPhase("session_background_effects_changed", {
+      mounted: true,
+      sessionId,
+      paused: backgroundEffectsPaused,
+    });
+    return () => {
+      markReloadPerfPhase("session_background_effects_changed", {
+        mounted: false,
+        sessionId,
+        paused: backgroundEffectsPaused,
+      });
+    };
+  }, [backgroundEffectsPaused, sessionId]);
   // Use initial status if provided (from navigation state) to connect stream immediately
   const [status, setStatus] = useState<SessionStatus>(
     initialStatus ?? { owner: "none" },
@@ -1671,6 +1686,7 @@ export function useSession(
   }, [fetchNewMessages, reconcileSessionRuntime]);
 
   useFileActivity({
+    enabled: !backgroundEffectsPaused,
     onSessionStatusChange: handleSessionStatusChange,
     onFileChange: handleFileChange,
     onSessionMetadataChange: handleSessionMetadataChange,
@@ -1704,7 +1720,7 @@ export function useSession(
   );
 
   const { connected: sessionWatchConnected } = useSessionWatchStream(
-    status.owner !== "self"
+    !backgroundEffectsPaused && status.owner !== "self"
       ? {
           sessionId,
           projectId,
@@ -2422,7 +2438,7 @@ export function useSession(
   // Only connect to session stream when we own the session
   // External sessions are tracked via the activity stream instead
   const { connected, reconnect: reconnectStream } = useSessionStream(
-    status.owner === "self" ? sessionId : null,
+    !backgroundEffectsPaused && status.owner === "self" ? sessionId : null,
     { onMessage: handleStreamMessage, onError: handleStreamError },
   );
 

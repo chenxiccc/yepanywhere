@@ -69,6 +69,7 @@ test("core validates scenario shape and creates exact-size fixture text", () => 
       {
         ...scenario,
         interactionTrace: {
+          alternateCausalArms: true,
           beforeAndAfterAppend: true,
           enabled: true,
           hoverCardDelayMs: 240,

@@ -7,11 +7,11 @@
 
 Topic: session-dom-linger-speedup
 
-Status: First one-session underlay linger slice implemented 2026-07-01. The
-current `SessionRouteSnapshot` implementation remains the fallback safety net,
-not the final latency target. User-observed warm returns can take over
-0.5 seconds when React remounts the transcript and deterministic renderers
-rebuild DOM, so the implemented fast path keeps the already-mounted session DOM
+Status: One-session underlay linger implemented 2026-07-01; bounded direct
+session A/B reuse implemented 2026-08-29. The current `SessionRouteSnapshot`
+implementation remains the fallback safety net. User-observed warm returns can
+take over 0.5 seconds when React remounts the transcript and deterministic
+renderers rebuild DOM, so the fast path keeps one eligible prior session DOM
 alive for a bounded grace window.
 
 ## Problem
@@ -63,9 +63,9 @@ Initial scope:
 
 - one lingered session entry only
 - session -> non-session route -> same session within 60 seconds
-- direct session A -> session B navigation does not park A; it unmounts or
-  expires the parked slot and relies on `SessionRouteSnapshot` if the user later
-  returns
+- direct session A -> session B navigation may park A when its rendered tree is
+  below the direct-linger admission cap; returning to A swaps the active and
+  parked trees without remounting either
 - same source, auth state, project id, YA session id, route params, and
   tail-window params only
 - no cross-tab, reload, or durable persistence
@@ -75,16 +75,18 @@ Do not expand this into a generic keep-alive wrapper for all routes. Session
 detail is the latency problem and the resource-risk problem; solving it with a
 narrow session host keeps the behavior inspectable.
 
-Do not start with two parked sessions. A second parked transcript tree adds the
-riskiest failure modes first: duplicate live streams, focus and shortcut
-ambiguity, confusing ownership of scroll/composer-adjacent state, and mobile
-memory spikes. If a later pass wants two entries, it needs separate memory and
-resource evidence after the one-entry path is proven.
+Do not retain two parked sessions. Direct switching is bounded to one active
+tree and one parked tree. The parked tree releases its activity listener,
+focused session watch, and owned-session stream, and remains inert and hidden.
+Trees above 5,000 descendant elements are not admitted beside an active
+session; they fall back to `SessionRouteSnapshot` remount behavior.
 
 ## Resource Contract
 
 - Bounded grace: default candidate 60 seconds.
-- Bounded entries: one session first; two only after memory testing.
+- Bounded entries: one active session plus at most one parked session.
+- Bounded direct-session size: at most 5,000 descendant elements in the parked
+  tree while another session is active.
 - Same-tab only; no durable persistence and no cross-source reuse.
 - Hidden DOM must not survive a closed tab or browser reload.
 - The hidden route must be inert to the foreground route: no pointer events,
@@ -131,9 +133,9 @@ foreground route data loading must continue to behave as if normal navigation
 happened. DOM linger is an implementation detail of route rendering, not a
 second navigation stack.
 
-This first version is default-on because the user explicitly selected it as the
-needed speed path and the one-entry/60-second caps make it bounded. Do not infer
-from that that generic hidden keep-alive is generally safe.
+This speed layer remains an explicit, default-off performance preference. Do
+not infer from its bounded direct-session reuse that generic hidden keep-alive
+is safe.
 
 ## Content-Frame Contract
 
@@ -334,3 +336,27 @@ session detail took 0.17 ms. That establishes both ownership fixes: parked
 optional work waits for foreground, and the normal foreground session-detail
 path prepopulates the compact mapping rather than making recovery rediscover or
 reparse the session.
+
+## 2026-08-29 Direct-session reuse
+
+The direct A/B path keeps the outgoing compact session mounted before React can
+discard it, then swaps the two keyed layers on return. Admission happens in a
+layout effect before paint: one active session may retain one same-source,
+same-project prior session only when the outgoing tree has at most 5,000
+descendant elements. A route-parameter mismatch, source/project mismatch,
+expiry, preference disable, or larger tree destroys the parked entry and uses
+the retained snapshot path.
+
+Parked sessions keep component, DOM, scroll, and draft state but release their
+activity-bus consumer, focused file watch, and owned-session stream. Revealing
+the session recreates the applicable consumer; the focused watch performs its
+normal open catch-up and an owned stream resumes from the hook's retained event
+cursor. The wrapper is `inert`, `aria-hidden`, invisible, and pointer-disabled
+while parked, so only the active layer owns focus and interaction.
+
+The performance trace records route click, snapshot lookup/hit and message
+identity, state queue, MessageList preprocessing/grouping/commit, readable
+paint, remount versus DOM reuse, active/parked layer counts, active session
+consumers, cache bytes, heap, listeners, and browser process memory. Its causal
+mode alternates idle and immediate-append arms by repetition so elapsed idle
+time is not silently attributed to session activity.
