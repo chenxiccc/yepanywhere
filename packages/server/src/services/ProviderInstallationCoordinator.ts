@@ -495,7 +495,7 @@ export class ProviderInstallationCoordinator {
         }
         if (Date.now() >= deadline) {
           throw new Error(
-            `Timed out acquiring provider installation gate: ${familyDir}`,
+            `Timed out acquiring provider installation gate: ${familyDir} ${await this.describeGateHolder(gatePath)}`,
           );
         }
         await delay(this.pollMs);
@@ -510,7 +510,10 @@ export class ProviderInstallationCoordinator {
         } satisfies GateRecord);
         break;
       } catch (error) {
-        await rmdir(gatePath).catch(() => undefined);
+        // A gate directory left behind without its owner record is only
+        // recoverable on the stale-gate timer, so give the claim back now.
+        await unlink(gateOwnerPath).catch(() => undefined);
+        await this.removeGateDirectory(gatePath);
         throw error;
       }
     }
@@ -524,23 +527,37 @@ export class ProviderInstallationCoordinator {
     }
   }
 
+  /**
+   * Recover a gate whose owner is gone, returning true when the directory is
+   * free for another `mkdir` attempt.
+   *
+   * Two abandoned shapes exist. An owner record whose recorded process is
+   * verifiably dead is the ordinary one. The second is a gate directory with
+   * no owner record at all, left by a process that died between claiming the
+   * directory and writing the record — nothing heartbeats it, so the
+   * directory's own mtime is the only age evidence available. A live claimant
+   * crosses that window in adjacent statements, far inside the stale
+   * threshold, so an owner-less directory older than the threshold is
+   * abandoned. Without this branch it is unrecoverable and permanently wedges
+   * the family for every YA process owned by this user.
+   */
   private async clearStaleGate(gatePath: string): Promise<boolean> {
     const ownerPath = join(gatePath, "owner.json");
     try {
+      if (!(await this.pathExists(ownerPath))) {
+        if (!(await this.isStale(gatePath, this.gateStaleMs))) return false;
+        return this.removeGateDirectory(gatePath);
+      }
       if (!(await this.isStale(ownerPath, this.gateStaleMs))) return false;
       if (!(await this.staleRecordOwnerGone(ownerPath))) return false;
-      await unlink(ownerPath);
-      await rmdir(gatePath);
-      return true;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") return false;
-      if (!(await this.isStale(gatePath, this.gateStaleMs))) return false;
-      try {
-        await rmdir(gatePath);
-        return true;
-      } catch {
-        return false;
-      }
+      await unlink(ownerPath).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== "ENOENT") throw error;
+      });
+      return this.removeGateDirectory(gatePath);
+    } catch {
+      // Recovery is a probe: anything that stops us proving the gate is
+      // abandoned means keep waiting, and the admission deadline reports it.
+      return false;
     }
   }
 
@@ -558,12 +575,49 @@ export class ProviderInstallationCoordinator {
         return;
       }
       await unlink(ownerPath);
-      await rmdir(gatePath);
     } catch (error) {
       log.warn(
         { error, gatePath, gateId },
-        "Failed to release provider installation gate",
+        "Failed to release provider installation gate owner record",
       );
+    }
+    // Drop the directory even when its owner record had already vanished:
+    // leaving it behind is what blocks every later admission attempt.
+    await this.removeGateDirectory(gatePath);
+  }
+
+  /** True once the gate directory is gone, whichever process removed it. */
+  private async removeGateDirectory(gatePath: string): Promise<boolean> {
+    try {
+      await rmdir(gatePath);
+      return true;
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code === "ENOENT";
+    }
+  }
+
+  /** Names the current gate holder for an admission-timeout diagnostic. */
+  private async describeGateHolder(gatePath: string): Promise<string> {
+    const ownerPath = join(gatePath, "owner.json");
+    try {
+      const info = await stat(ownerPath);
+      const record = JSON.parse(await readFile(ownerPath, "utf8")) as {
+        pid?: unknown;
+      };
+      const heartbeatAgeMs = Date.now() - info.mtimeMs;
+      return `(held by pid ${String(record.pid)}, last heartbeat ${Math.round(heartbeatAgeMs / 1000)}s ago)`;
+    } catch {
+      return "(gate directory has no owner record; it clears itself once stale)";
+    }
+  }
+
+  private async pathExists(path: string): Promise<boolean> {
+    try {
+      await stat(path);
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+      throw error;
     }
   }
 

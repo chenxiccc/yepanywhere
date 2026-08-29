@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -62,6 +62,15 @@ describe("ProviderInstallationCoordinator", () => {
     const past = new Date(Date.now() - 60_000);
     await utimes(recordPath, past, past);
     return recordPath;
+  }
+
+  /** Claim the gate directory the way a process that then died would leave it. */
+  async function claimGateWithoutOwner(ageMs: number): Promise<string> {
+    const gatePath = join(rootDir, FAMILY, "gate.lock");
+    await mkdir(gatePath, { recursive: true, mode: 0o700 });
+    const claimedAt = new Date(Date.now() - ageMs);
+    await utimes(gatePath, claimedAt, claimedAt);
+    return gatePath;
   }
 
   function probe(
@@ -232,6 +241,56 @@ describe("ProviderInstallationCoordinator", () => {
     const lease = await competingLease;
     await lease.release();
     expect(maxActiveProbes).toBe(1);
+  });
+
+  it("recovers a gate claimed before its owner record was written", async () => {
+    const gatePath = await claimGateWithoutOwner(60_000);
+    const coordinator = createCoordinator();
+
+    const lease = await coordinator.acquireRuntimeLease(FAMILY);
+    await lease.release();
+
+    await expect(stat(gatePath)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("leaves a just-claimed gate alone until it goes stale", async () => {
+    await claimGateWithoutOwner(0);
+    const coordinator = new ProviderInstallationCoordinator({
+      rootDir,
+      heartbeatMs: 10,
+      leaseStaleMs: 100,
+      pollMs: 5,
+      gateStaleMs: 10_000,
+      gateWaitMs: 50,
+    });
+
+    await expect(coordinator.acquireRuntimeLease(FAMILY)).rejects.toThrow(
+      "Timed out acquiring provider installation gate",
+    );
+  });
+
+  it("drops the gate directory when its owner record vanished", async () => {
+    await writeStaleRecord("runtime-vanishing.json", {
+      id: "vanishing",
+      family: FAMILY,
+      kind: "runtime",
+      pid: 12345,
+      ownerStartId: "boot-100",
+      createdAt: Date.now() - 60_000,
+    });
+    const gatePath = join(rootDir, FAMILY, "gate.lock");
+    const coordinator = createCoordinator({
+      aliveState: () => "alive",
+      startId: async () => {
+        await rm(join(gatePath, "owner.json"), { force: true });
+        return "boot-100";
+      },
+    });
+
+    await expect(coordinator.getSnapshot(FAMILY)).resolves.toMatchObject({
+      runtimes: 1,
+    });
+    await expect(stat(gatePath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("keeps a delayed-heartbeat runtime lease while its owner is alive", async () => {
