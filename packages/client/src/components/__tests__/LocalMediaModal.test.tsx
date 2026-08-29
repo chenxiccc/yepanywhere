@@ -557,7 +557,7 @@ describe("LocalMediaModal", () => {
       y: 0,
     }));
     const dispatchTouchPointer = (
-      type: "pointerdown" | "pointermove",
+      type: "pointerdown" | "pointermove" | "pointerup",
       pointerId: number,
       clientX: number,
     ) => {
@@ -581,6 +581,27 @@ describe("LocalMediaModal", () => {
         .getByRole("dialog")
         .querySelector(`.${imageViewerStyles.zoomLevel}`)?.textContent,
     ).toBe("101%");
+
+    dispatchTouchPointer("pointerup", 1, 300);
+    dispatchTouchPointer("pointerup", 2, 700);
+    fireEvent.click(screen.getByRole("button", { name: "100%" }));
+    await act(
+      () =>
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => resolve());
+        }),
+    );
+    stage.scrollLeft = 500;
+    dispatchTouchPointer("pointerdown", 1, 300);
+    dispatchTouchPointer("pointerdown", 2, 500);
+    dispatchTouchPointer("pointermove", 1, 400);
+    dispatchTouchPointer("pointermove", 2, 600);
+    await waitFor(() => expect(stage.scrollLeft).toBe(400));
+    expect(
+      screen
+        .getByRole("dialog")
+        .querySelector(`.${imageViewerStyles.zoomLevel}`)?.textContent,
+    ).toBe("100%");
 
     expect(fetchBlob).toHaveBeenCalledWith(
       "/tmp/plot.png",

@@ -119,6 +119,8 @@ export function ImageViewer({
         y: number;
       }
     | {
+        contentX: number;
+        contentY: number;
         distance: number;
         kind: "pinch";
         scale: number;
@@ -216,6 +218,24 @@ export function ImageViewer({
     [getFitScale, scale, viewMode],
   );
 
+  const startPinch = useCallback(
+    (first: { x: number; y: number }, second: { x: number; y: number }) => {
+      const stage = stageRef.current;
+      if (!stage) return;
+      const rect = stage.getBoundingClientRect();
+      const centerX = (first.x + second.x) / 2 - rect.left;
+      const centerY = (first.y + second.y) / 2 - rect.top;
+      gestureRef.current = {
+        contentX: stage.scrollLeft + centerX,
+        contentY: stage.scrollTop + centerY,
+        distance: pointerDistance(first, second),
+        kind: "pinch",
+        scale: getCurrentScale(),
+      };
+    },
+    [getCurrentScale],
+  );
+
   const zoomAt = useCallback(
     (requestedScale: number, clientX?: number, clientY?: number) => {
       const stage = stageRef.current;
@@ -287,11 +307,7 @@ export function ImageViewer({
       if (!first || !second) {
         return;
       }
-      gestureRef.current = {
-        distance: pointerDistance(first, second),
-        kind: "pinch",
-        scale: getCurrentScale(),
-      };
+      startPinch(first, second);
       return;
     }
     startRemainingPointerPan();
@@ -317,11 +333,7 @@ export function ImageViewer({
       }
       const gesture = gestureRef.current;
       if (gesture?.kind !== "pinch") {
-        gestureRef.current = {
-          distance: pointerDistance(first, second),
-          kind: "pinch",
-          scale: getCurrentScale(),
-        };
+        startPinch(first, second);
         return;
       }
       const distance = pointerDistance(first, second);
@@ -329,11 +341,21 @@ export function ImageViewer({
         return;
       }
       suppressClickRef.current = true;
-      zoomAt(
+      const nextScale = clampImageScale(
         gesture.scale * (distance / gesture.distance),
-        (first.x + second.x) / 2,
-        (first.y + second.y) / 2,
       );
+      const stage = stageRef.current;
+      if (!stage) return;
+      const rect = stage.getBoundingClientRect();
+      const centerX = (first.x + second.x) / 2 - rect.left;
+      const centerY = (first.y + second.y) / 2 - rect.top;
+      setViewMode("zoom");
+      setScale(nextScale);
+      requestAnimationFrame(() => {
+        const ratio = nextScale / gesture.scale;
+        stage.scrollLeft = gesture.contentX * ratio - centerX;
+        stage.scrollTop = gesture.contentY * ratio - centerY;
+      });
       return;
     }
 

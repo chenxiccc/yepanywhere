@@ -185,7 +185,10 @@ does not manufacture a file controller. A detail controller label describes the
 detail rather than a file, and the file-only right-click copy-path action is not
 present. Provider-child detail additionally retains its selected child and
 loaded transcript across parking, and its header count can restore the same
-viewer.
+viewer. In the full image viewer, a two-touch gesture applies both changes in
+finger separation and movement of their shared center: separation scales the
+image while center movement pans it horizontally and vertically. Lifting one
+finger continues as the existing one-finger pan.
 
 The session owns one managed-panel host beside the message list, inside the same
 session metadata and agent-content providers as the transcript. A tool row or
