@@ -43,6 +43,12 @@ describe("Process", () => {
 
     it("chunks deadlines above Node's maximum timer delay", async () => {
       vi.useFakeTimers();
+      // The Process bucket-swap interval is unrelated to idle reaping. Do not
+      // iterate it tens of thousands of times while crossing a multi-day
+      // synthetic deadline.
+      const setIntervalSpy = vi
+        .spyOn(globalThis, "setInterval")
+        .mockReturnValue({} as ReturnType<typeof setInterval>);
       const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
       try {
         const maxTimerDelayMs = 2_147_483_647;
@@ -76,6 +82,7 @@ describe("Process", () => {
         expect(abortFn).toHaveBeenCalledOnce();
       } finally {
         setTimeoutSpy.mockRestore();
+        setIntervalSpy.mockRestore();
         vi.useRealTimers();
       }
     }, 10_000);

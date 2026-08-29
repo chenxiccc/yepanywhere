@@ -5,10 +5,7 @@
  * without requiring actual Gemini CLI installation.
  */
 
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
   GeminiProvider,
   type GeminiProviderConfig,
@@ -48,15 +45,14 @@ describe("GeminiProvider", () => {
       expect(typeof status.enabled).toBe("boolean");
     });
 
-    it("should return authenticated=false if oauth_creds.json does not exist", async () => {
-      // This test relies on the auth file not existing in the test environment
-      const credsPath = join(homedir(), ".gemini", "oauth_creds.json");
-      if (!existsSync(credsPath)) {
-        const status = await provider.getAuthStatus();
-        // If CLI is not installed, everything should be false
-        // If CLI is installed but no auth, installed=true but auth=false
-        expect(status.authenticated).toBe(false);
-      }
+    it("should defer auth validation to the installed CLI", async () => {
+      const installed = await provider.isInstalled();
+
+      await expect(provider.getAuthStatus()).resolves.toEqual({
+        installed,
+        authenticated: installed,
+        enabled: installed,
+      });
     });
   });
 
@@ -129,81 +125,6 @@ describe("GeminiProvider", () => {
         ),
       ).toBe(true);
     });
-  });
-});
-
-describe("GeminiProvider Auth File Parsing", () => {
-  let tempDir: string;
-  let originalHome: string | undefined;
-
-  beforeAll(() => {
-    // Create a temp directory to use as HOME
-    tempDir = mkdtempSync(join(require("node:os").tmpdir(), "gemini-test-"));
-    originalHome = process.env.HOME;
-  });
-
-  afterAll(() => {
-    // Restore HOME
-    if (originalHome !== undefined) {
-      process.env.HOME = originalHome;
-    }
-    // Cleanup
-    try {
-      rmSync(tempDir, { recursive: true, force: true });
-    } catch {
-      // Ignore
-    }
-  });
-
-  it("should parse valid oauth_creds.json file", async () => {
-    // Create mock auth file
-    const geminiDir = join(tempDir, ".gemini");
-    require("node:fs").mkdirSync(geminiDir, { recursive: true });
-
-    const authData = {
-      access_token: "test-access-token",
-      refresh_token: "test-refresh-token",
-      expiry_date: Date.now() + 86400000, // 1 day from now
-      token_type: "Bearer",
-    };
-
-    writeFileSync(
-      join(geminiDir, "oauth_creds.json"),
-      JSON.stringify(authData),
-    );
-
-    // Create provider that looks in our temp directory
-    // Note: This doesn't actually work because homedir() is cached,
-    // but it demonstrates the intended behavior
-  });
-
-  it("should handle expired tokens with refresh token", async () => {
-    // Create mock auth file with expired token but valid refresh
-    const geminiDir = join(tempDir, ".gemini");
-    require("node:fs").mkdirSync(geminiDir, { recursive: true });
-
-    const authData = {
-      access_token: "test-access-token",
-      refresh_token: "test-refresh-token",
-      expiry_date: Date.now() - 86400000, // 1 day ago
-    };
-
-    writeFileSync(
-      join(geminiDir, "oauth_creds.json"),
-      JSON.stringify(authData),
-    );
-
-    // The actual test would need to mock homedir() to use tempDir
-    // With a refresh token, should still be considered authenticated
-  });
-
-  it("should handle invalid JSON in oauth_creds file", async () => {
-    const geminiDir = join(tempDir, ".gemini");
-    require("node:fs").mkdirSync(geminiDir, { recursive: true });
-
-    writeFileSync(join(geminiDir, "oauth_creds.json"), "not valid json");
-
-    // Provider should handle this gracefully
   });
 });
 

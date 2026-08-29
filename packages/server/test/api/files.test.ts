@@ -46,7 +46,9 @@ async function primeProjectFiles(
     // that valid invalidation settle, then rebuild the known-only facts the
     // response under test is meant to consume.
     await index.findExisting(relativePaths);
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) =>
+      setTimeout(resolve, process.platform === "darwin" ? 100 : 10),
+    );
     await index.findExisting(relativePaths);
   } finally {
     index.release();

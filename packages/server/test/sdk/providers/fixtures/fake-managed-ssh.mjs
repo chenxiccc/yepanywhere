@@ -37,7 +37,30 @@ const truncateInputAfter = Number(
 );
 const truncateInput =
   Number.isSafeInteger(truncateInputAfter) && truncateInputAfter > 0;
-const child = spawn("/bin/sh", ["-c", command], {
+// Model a Linux target even when the test controller itself runs on Darwin.
+const remoteArchitecture = process.arch === "arm64" ? "aarch64" : "x86_64";
+const simulatedRemoteCommand = [
+  "uname() {",
+  `case "\${1-}" in`,
+  "-s) printf '%s\\n' Linux ;;",
+  `-m) printf '%s\\n' ${remoteArchitecture} ;;`,
+  '*) command uname "$@" ;;',
+  "esac",
+  "}",
+  ...(process.platform === "darwin"
+    ? [
+        "stat() {",
+        `if [ "\${1-}" = "-c" ] && [ "\${2-}" = "%a" ] && [ "$#" -eq 3 ]; then`,
+        'command stat -f "%Lp" "$3"',
+        "else",
+        'command stat "$@"',
+        "fi",
+        "}",
+      ]
+    : []),
+  command,
+].join("\n");
+const child = spawn("/bin/sh", ["-c", simulatedRemoteCommand], {
   env: process.env,
   stdio: truncateInput ? ["pipe", "inherit", "inherit"] : "inherit",
 });

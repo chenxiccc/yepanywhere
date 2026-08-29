@@ -212,7 +212,7 @@ afterEach(async () => {
 describe("ProjectGlossarySubscriptionManager", () => {
   it("sends observed glossary paths first and reports later changes", async () => {
     const { manager, projectId, projectPath, invalidateProject, observePath } =
-      await createHarness();
+      await createHarness({ pollMs: 1_000 });
     await mkdir(join(projectPath, "papers"));
     await writeFile(join(projectPath, "GLOSSARY.md"), "root");
     await writeFile(join(projectPath, "papers", "GLOSSARY.md"), "paper");
@@ -283,7 +283,7 @@ describe("ProjectGlossarySubscriptionManager", () => {
 
   it("detects a nearer glossary created in an observed directory", async () => {
     const { manager, observePath, projectId, projectPath } =
-      await createHarness();
+      await createHarness({ pollMs: 1_000 });
     await mkdir(join(projectPath, "papers"));
     await writeFile(join(projectPath, "GLOSSARY.md"), "root");
     // The nearest candidate is missing, so it stays observed for its creation.
@@ -365,7 +365,7 @@ describe("ProjectGlossarySubscriptionManager", () => {
 
   it("watches a directory resolution observes after subscription", async () => {
     const { manager, observePath, projectId, projectPath } =
-      await createHarness();
+      await createHarness({ pollMs: 1_000 });
     await mkdir(join(projectPath, "docs"));
     await writeFile(join(projectPath, "GLOSSARY.md"), "root");
     observePath("GLOSSARY.md");
@@ -398,7 +398,7 @@ describe("ProjectGlossarySubscriptionManager", () => {
 
   it("treats an already existing observed candidate as discovery, not creation", async () => {
     const { manager, observePath, projectId, projectPath } =
-      await createHarness();
+      await createHarness({ pollMs: 1_000 });
     await mkdir(join(projectPath, "papers"));
     await writeFile(join(projectPath, "GLOSSARY.md"), "root");
     await writeFile(join(projectPath, "papers", "GLOSSARY.md"), "paper");

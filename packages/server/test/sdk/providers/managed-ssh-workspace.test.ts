@@ -1,6 +1,13 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,6 +21,7 @@ import {
 const fakeSshPath = fileURLToPath(
   new URL("./fixtures/fake-managed-ssh.mjs", import.meta.url),
 );
+const MANAGED_WORKSPACE_TEST_TIMEOUT_MS = 15_000;
 const temporaryPaths: string[] = [];
 
 afterEach(async () => {
@@ -33,11 +41,16 @@ function git(cwd: string, args: string[]): string {
   }).trim();
 }
 
+async function fixtureDirectory(prefix: string): Promise<string> {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), prefix)));
+  temporaryPaths.push(directory);
+  return directory;
+}
+
 async function createSourceRepository(options: {
   dirty: boolean;
 }): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "managed-workspace-source-"));
-  temporaryPaths.push(directory);
+  const directory = await fixtureDirectory("managed-workspace-source-");
   git(directory, ["init", "--quiet", "--initial-branch=main"]);
   git(directory, ["config", "user.email", "gate-b@example.invalid"]);
   git(directory, ["config", "user.name", "Gate B Fixture"]);
@@ -59,8 +72,7 @@ async function createService(): Promise<{
   recordPath: string;
   service: ManagedSshWorkspaceService;
 }> {
-  const fixture = await mkdtemp(join(tmpdir(), "managed-workspace-target-"));
-  temporaryPaths.push(fixture);
+  const fixture = await fixtureDirectory("managed-workspace-target-");
   const root = join(fixture, "managed-root");
   const recordPath = join(fixture, "ssh-record.jsonl");
   const target = new ManagedSshTarget({
@@ -103,6 +115,7 @@ async function configureTargetAuthor(
 
 describe.skipIf(process.platform === "win32")(
   "ManagedSshWorkspaceService",
+  { timeout: MANAGED_WORKSPACE_TEST_TIMEOUT_MS },
   () => {
     it("round-trips exact committed work through amend without touching the source checkout", async () => {
       const source = await createSourceRepository({ dirty: true });

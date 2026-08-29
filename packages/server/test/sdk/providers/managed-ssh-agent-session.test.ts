@@ -1,5 +1,12 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -27,12 +34,17 @@ afterEach(async () => {
   );
 });
 
+async function fixtureDirectory(prefix: string): Promise<string> {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), prefix)));
+  temporaryPaths.push(directory);
+  return directory;
+}
+
 describe.skipIf(process.platform === "win32")(
   "managed SSH AgentSession proxy",
   () => {
     it("preserves YA/provider identity, auth callbacks, approvals, RPC, and clean shutdown", async () => {
-      const fixture = await mkdtemp(join(tmpdir(), "managed-agent-session-"));
-      temporaryPaths.push(fixture);
+      const fixture = await fixtureDirectory("managed-agent-session-");
       const remoteRoot = join(fixture, "remote");
       const remoteDirectory = join(remoteRoot, "workspaces", "workspace-one");
       const worktree = join(remoteDirectory, "worktree");
@@ -158,10 +170,9 @@ describe.skipIf(process.platform === "win32")(
     });
 
     it("fails unsupported target, version, and controller-path projections before launch", async () => {
-      const fixture = await mkdtemp(
-        join(tmpdir(), "managed-agent-session-preflight-"),
+      const fixture = await fixtureDirectory(
+        "managed-agent-session-preflight-",
       );
-      temporaryPaths.push(fixture);
       const remoteRoot = join(fixture, "remote");
       const remoteDirectory = join(remoteRoot, "workspaces", "workspace-one");
       const worktree = join(remoteDirectory, "worktree");
