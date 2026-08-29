@@ -4,6 +4,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -461,7 +462,7 @@ describe("NavigationLayout", () => {
     expect(window.localStorage.getItem(UI_KEYS.sidebarMinimized)).toBe("false");
   });
 
-  it("parks one session DOM layer under a non-session route and reveals it", () => {
+  it("parks one session DOM layer under a non-session route and reveals it", async () => {
     enableSessionDomLinger();
     renderNavigationLayoutWithSessionLinger();
 
@@ -473,21 +474,31 @@ describe("NavigationLayout", () => {
 
     expect(screen.getByTestId("route-content")).toBeTruthy();
     expect(screen.getByTestId("session-layer")).toBe(sessionLayer);
-    expect(screen.getByTestId("session-layer").dataset.parked).toBe("true");
+    expect(screen.getByTestId("session-layer").dataset.parked).toBe("false");
     expect(
       screen
         .getByTestId("session-layer")
         .closest("[data-session-dom-linger]")
         ?.getAttribute("data-session-dom-linger"),
     ).toBe("parked");
+    await waitFor(() => {
+      expect(screen.getByTestId("session-layer").dataset.parked).toBe("true");
+    });
 
     fireEvent.click(screen.getByText("Session 1"));
 
     expect(screen.getByTestId("session-layer")).toBe(sessionLayer);
-    expect(screen.getByTestId("session-layer").dataset.parked).toBe("false");
+    expect(
+      sessionLayer
+        .closest("[data-session-dom-linger]")
+        ?.getAttribute("data-session-dom-linger"),
+    ).toBe("active");
+    await waitFor(() => {
+      expect(screen.getByTestId("session-layer").dataset.parked).toBe("false");
+    });
   });
 
-  it("parks the session DOM under a full-frame project file route", () => {
+  it("parks the session DOM under a full-frame project file route", async () => {
     enableSessionDomLinger();
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
@@ -501,7 +512,7 @@ describe("NavigationLayout", () => {
 
     expect(screen.getByTestId("file-frame")).toBeTruthy();
     expect(screen.getByTestId("session-layer")).toBe(sessionLayer);
-    expect(screen.getByTestId("session-layer").dataset.parked).toBe("true");
+    expect(screen.getByTestId("session-layer").dataset.parked).toBe("false");
     expect(screen.queryByTestId("desktop-sidebar")).toBeNull();
     expect(screen.queryByTestId("mobile-sidebar")).toBeNull();
     expect(
@@ -513,6 +524,9 @@ describe("NavigationLayout", () => {
         .closest("[data-session-dom-linger]")
         ?.getAttribute("data-session-dom-linger"),
     ).toBe("parked");
+    await waitFor(() => {
+      expect(screen.getByTestId("session-layer").dataset.parked).toBe("true");
+    });
 
     fireEvent.click(screen.getByText("Open file sidebar"));
 
@@ -534,7 +548,15 @@ describe("NavigationLayout", () => {
     fireEvent.click(screen.getByText("Session 1"));
 
     expect(screen.getByTestId("session-layer")).toBe(sessionLayer);
-    expect(screen.getByTestId("session-layer").dataset.parked).toBe("false");
+    expect(screen.getByTestId("session-layer").dataset.parked).toBe("true");
+    expect(
+      sessionLayer
+        .closest("[data-session-dom-linger]")
+        ?.getAttribute("data-session-dom-linger"),
+    ).toBe("active");
+    await waitFor(() => {
+      expect(screen.getByTestId("session-layer").dataset.parked).toBe("false");
+    });
   });
 
   it("parks the parent session under a read-only child page and keeps sidebar highlight", () => {
@@ -562,7 +584,12 @@ describe("NavigationLayout", () => {
     renderNavigationLayoutWithSessionLinger();
 
     fireEvent.click(screen.getByText("Agents"));
-    expect(screen.getByTestId("session-layer").dataset.parked).toBe("true");
+    expect(
+      screen
+        .getByTestId("session-layer")
+        .closest("[data-session-dom-linger]")
+        ?.getAttribute("data-session-dom-linger"),
+    ).toBe("parked");
 
     act(() => {
       vi.advanceTimersByTime(60_000);
@@ -590,7 +617,7 @@ describe("NavigationLayout", () => {
     expect(screen.getByTestId("route-content")).toBeTruthy();
   });
 
-  it("parks one compact session during direct session switching and reuses it", () => {
+  it("parks one compact session during direct session switching and reuses it", async () => {
     enableSessionDomLinger();
     const mark = vi.fn();
     window.__YA_RELOAD_PERF_PROBE__ = { mark };
@@ -608,7 +635,7 @@ describe("NavigationLayout", () => {
     );
     expect(switchedLayers).toHaveLength(2);
     expect(parkedFirstSessionLayer).toBe(firstSessionLayer);
-    expect(parkedFirstSessionLayer?.dataset.parked).toBe("true");
+    expect(parkedFirstSessionLayer?.dataset.parked).toBe("false");
     expect(
       parkedFirstSessionLayer
         ?.closest("[data-session-dom-linger]")
@@ -616,6 +643,9 @@ describe("NavigationLayout", () => {
     ).toBe("parked");
     expect(secondSessionLayer).not.toBe(firstSessionLayer);
     expect(secondSessionLayer?.dataset.parked).toBe("false");
+    await waitFor(() => {
+      expect(parkedFirstSessionLayer?.dataset.parked).toBe("true");
+    });
 
     fireEvent.click(
       within(secondSessionLayer as HTMLElement).getByText("Session 1"),
@@ -626,8 +656,17 @@ describe("NavigationLayout", () => {
     expect(
       returnedLayers.find((layer) => layer.dataset.sessionId === "session-1"),
     ).toBe(firstSessionLayer);
-    expect(firstSessionLayer.dataset.parked).toBe("false");
-    expect(secondSessionLayer?.dataset.parked).toBe("true");
+    expect(firstSessionLayer.dataset.parked).toBe("true");
+    expect(secondSessionLayer?.dataset.parked).toBe("false");
+    expect(
+      firstSessionLayer
+        .closest("[data-session-dom-linger]")
+        ?.getAttribute("data-session-dom-linger"),
+    ).toBe("active");
+    await waitFor(() => {
+      expect(firstSessionLayer.dataset.parked).toBe("false");
+      expect(secondSessionLayer?.dataset.parked).toBe("true");
+    });
     expect(mark).toHaveBeenCalledWith("session_dom_linger_visual_swap", {
       sessionId: "session-1",
     });

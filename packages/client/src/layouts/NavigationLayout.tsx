@@ -1,6 +1,7 @@
 import {
   Profiler,
   createContext,
+  memo,
   startTransition,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
@@ -51,6 +52,7 @@ export interface NavigationLayoutContext {
 const NOOP = () => {};
 const SESSION_DOM_LINGER_TTL_MS = 60_000;
 const SESSION_DOM_LINGER_MAX_PARKED_ELEMENTS = 5_000;
+const SESSION_DOM_LINGER_RESOURCE_TRANSITION_DELAY_MS = 500;
 const NON_TEXT_INPUT_TYPES = new Set([
   "button",
   "checkbox",
@@ -119,6 +121,25 @@ interface SessionDomLingerLayerProps {
   subtreeParked: boolean;
 }
 
+interface SessionDomLingerSubtreeProps {
+  parked: boolean;
+  progressiveRenderPauseSignal: SessionDomLingerRenderSignal;
+  route: SessionDomLingerRoute;
+  sessionElement: NonNullable<NavigationLayoutProps["sessionElement"]>;
+}
+
+const SessionDomLingerSubtree = memo(function SessionDomLingerSubtree({
+  parked,
+  progressiveRenderPauseSignal,
+  route,
+  sessionElement,
+}: SessionDomLingerSubtreeProps) {
+  return sessionElement(route, {
+    parked,
+    progressiveRenderPauseSignal,
+  });
+});
+
 function SessionDomLingerLayer({
   parked,
   route,
@@ -143,35 +164,35 @@ function SessionDomLingerLayer({
     if (committedSubtreeParked === subtreeParked) {
       return;
     }
-    startTransition(() => setCommittedSubtreeParked(subtreeParked));
+    let timeoutId: number | null = null;
+    const frameId = window.requestAnimationFrame(() => {
+      timeoutId = window.setTimeout(() => {
+        startTransition(() => setCommittedSubtreeParked(subtreeParked));
+      }, SESSION_DOM_LINGER_RESOURCE_TRANSITION_DELAY_MS);
+    });
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+    };
   }, [committedSubtreeParked, subtreeParked]);
   const [sessionLocationContext] = useState(() => ({
     location: sessionRoute.location,
     navigationType: parentLocationContext.navigationType,
   }));
   const [sessionRouteContext] = useState(parentRouteContext);
-  const subtree = useMemo(
-    () =>
-      sessionElement(sessionRoute, {
-        parked: committedSubtreeParked,
-        progressiveRenderPauseSignal,
-      }),
-    [
-      committedSubtreeParked,
-      progressiveRenderPauseSignal,
-      sessionElement,
-      sessionRoute,
-    ],
-  );
-  const scopedSubtree = useMemo(
-    () => (
-      <UNSAFE_LocationContext.Provider value={sessionLocationContext}>
-        <UNSAFE_RouteContext.Provider value={sessionRouteContext}>
-          {subtree}
-        </UNSAFE_RouteContext.Provider>
-      </UNSAFE_LocationContext.Provider>
-    ),
-    [sessionLocationContext, sessionRouteContext, subtree],
+  const scopedSubtree = (
+    <UNSAFE_LocationContext.Provider value={sessionLocationContext}>
+      <UNSAFE_RouteContext.Provider value={sessionRouteContext}>
+        <SessionDomLingerSubtree
+          parked={committedSubtreeParked}
+          progressiveRenderPauseSignal={progressiveRenderPauseSignal}
+          route={sessionRoute}
+          sessionElement={sessionElement}
+        />
+      </UNSAFE_RouteContext.Provider>
+    </UNSAFE_LocationContext.Provider>
   );
   const handleRender = useCallback<React.ProfilerOnRenderCallback>(
     (_id, phase, actualDuration, baseDuration) => {
@@ -771,19 +792,17 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
       markReloadPerfPhase("session_dom_linger_visual_swap", {
         sessionId: targetMatch.sessionId,
       });
-      startTransition(() => {
-        const basename = navigationContext?.basename ?? "/";
-        const pathname =
-          basename !== "/" &&
-          (targetUrl.pathname === basename ||
-            targetUrl.pathname.startsWith(`${basename}/`))
-            ? targetUrl.pathname.slice(basename.length) || "/"
-            : targetUrl.pathname;
-        navigate({
-          hash: targetUrl.hash,
-          pathname,
-          search: targetUrl.search,
-        });
+      const basename = navigationContext?.basename ?? "/";
+      const pathname =
+        basename !== "/" &&
+        (targetUrl.pathname === basename ||
+          targetUrl.pathname.startsWith(`${basename}/`))
+          ? targetUrl.pathname.slice(basename.length) || "/"
+          : targetUrl.pathname;
+      navigate({
+        hash: targetUrl.hash,
+        pathname,
+        search: targetUrl.search,
       });
     },
     [
