@@ -1,5 +1,20 @@
-import { describe, expect, it } from "vitest";
-import { isPackagedAppOrigin } from "../registerServiceWorker";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  isPackagedAppOrigin,
+  registerServiceWorkerAtStartup,
+} from "../registerServiceWorker";
+
+const mocks = vi.hoisted(() => ({
+  getServerSettings: vi.fn(),
+}));
+
+vi.mock("../../api/client", () => ({
+  api: mocks,
+}));
+
+vi.mock("../connection", () => ({
+  isRemoteClient: () => false,
+}));
 
 describe("isPackagedAppOrigin", () => {
   it("recognizes the transitional Tauri asset origin", () => {
@@ -36,5 +51,47 @@ describe("isPackagedAppOrigin", () => {
         protocol: "https:",
       }),
     ).toBe(false);
+  });
+});
+
+describe("registerServiceWorkerAtStartup", () => {
+  let serviceWorkerDescriptor: PropertyDescriptor | undefined;
+
+  beforeEach(() => {
+    mocks.getServerSettings.mockReset();
+    mocks.getServerSettings.mockResolvedValue({
+      settings: { serviceWorkerEnabled: true },
+    });
+    serviceWorkerDescriptor = Object.getOwnPropertyDescriptor(
+      navigator,
+      "serviceWorker",
+    );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    if (serviceWorkerDescriptor) {
+      Object.defineProperty(
+        navigator,
+        "serviceWorker",
+        serviceWorkerDescriptor,
+      );
+    } else {
+      Reflect.deleteProperty(navigator, "serviceWorker");
+    }
+  });
+
+  it("accepts a blocked registration as no registration", async () => {
+    const register = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: { register },
+    });
+    const logError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await registerServiceWorkerAtStartup();
+
+    expect(register).toHaveBeenCalledTimes(1);
+    expect(logError).not.toHaveBeenCalled();
   });
 });

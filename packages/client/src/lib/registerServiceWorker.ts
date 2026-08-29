@@ -12,9 +12,10 @@ import { isRemoteClient } from "./connection";
 /** Service Worker file path, compatible with Vite base URL (local "/" and remote "/remote/") */
 const SW_PATH = toBrowserAssetHref("sw.js");
 
-/** Whether the browser supports Service Worker */
-const hasBrowserSupport =
-  typeof window !== "undefined" && "serviceWorker" in navigator;
+/** Whether the current browser supports Service Worker. */
+function hasBrowserSupport(): boolean {
+  return typeof window !== "undefined" && "serviceWorker" in navigator;
+}
 
 /** Packaged app assets use a local trusted origin, not a browser PWA origin. */
 export function isPackagedAppOrigin(location: {
@@ -33,7 +34,7 @@ export function isPackagedAppOrigin(location: {
  * Only registers the SW itself, does not subscribe to push notifications.
  */
 export async function registerServiceWorkerAtStartup(): Promise<void> {
-  if (!hasBrowserSupport) return;
+  if (!hasBrowserSupport()) return;
   if (isPackagedAppOrigin(window.location)) return;
 
   // In dev mode, check server setting (allows runtime toggle via settings UI)
@@ -64,6 +65,9 @@ export async function registerServiceWorkerAtStartup(): Promise<void> {
   try {
     // Calling register() on an already-registered SW returns the existing registration
     const reg = await navigator.serviceWorker.register(SW_PATH);
+    // Playwright returns undefined when the context intentionally blocks
+    // service workers. That is an expected no-registration result.
+    if (!reg) return;
     console.log(
       "[registerServiceWorker] Service worker registered:",
       reg.scope,
