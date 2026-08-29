@@ -109,6 +109,7 @@ class FakeSupervisor implements ProjectQueueSupervisor {
   createError: Error | null = null;
   resumeBlocker: Promise<void> | null = null;
   queueNextStart = false;
+  startModelSettings: Array<ModelSettings | undefined> = [];
   startLaunchOptions: SessionLaunchOptions | undefined;
   createLaunchOptions: SessionLaunchOptions | undefined;
   resumeLaunchOptions: SessionLaunchOptions | undefined;
@@ -127,10 +128,11 @@ class FakeSupervisor implements ProjectQueueSupervisor {
     projectPath: string,
     message: UserMessage,
     _permissionMode?: PermissionMode,
-    _modelSettings?: ModelSettings,
+    modelSettings?: ModelSettings,
     launchOptions?: SessionLaunchOptions,
   ): Promise<ProjectQueueDispatchResult> {
     this.startCalls.push({ projectPath, message });
+    this.startModelSettings.push(modelSettings);
     this.startLaunchOptions = launchOptions;
     if (this.startError) throw this.startError;
     if (this.queueNextStart) {
@@ -427,6 +429,49 @@ describe("ProjectQueueScheduler", () => {
         }),
       ]),
     );
+  });
+
+  it("defaults queued project sandboxes to the network firewall", async () => {
+    await service.createItem({
+      projectId,
+      projectPath: PROJECT_PATH,
+      request: {
+        target: {
+          type: "new-session",
+          provider: "claude",
+          sandboxLevel: "project-write",
+        },
+        message: { text: "start with public-only networking" },
+      },
+    });
+
+    await waitFor(() => expect(supervisor.startCalls).toHaveLength(1));
+    expect(supervisor.startModelSettings[0]).toMatchObject({
+      sandboxLevel: "project-write",
+      sandboxNetworkFirewall: true,
+    });
+  });
+
+  it("preserves a queued project sandbox network opt-out", async () => {
+    await service.createItem({
+      projectId,
+      projectPath: PROJECT_PATH,
+      request: {
+        target: {
+          type: "new-session",
+          provider: "claude",
+          sandboxLevel: "project-write",
+          sandboxNetworkFirewall: false,
+        },
+        message: { text: "start with direct host networking" },
+      },
+    });
+
+    await waitFor(() => expect(supervisor.startCalls).toHaveLength(1));
+    expect(supervisor.startModelSettings[0]).toMatchObject({
+      sandboxLevel: "project-write",
+      sandboxNetworkFirewall: false,
+    });
   });
 
   it("requeues a deferred new session after transient provider startup failure", async () => {

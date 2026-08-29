@@ -160,6 +160,24 @@ function optionalSandboxLevel(
   return value;
 }
 
+function optionalSandboxNetworkFirewall(
+  value: unknown,
+  sandboxLevel: "none" | "project-write" | undefined,
+): boolean | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "boolean") {
+    throw new ProjectQueueValidationError(
+      "target.sandboxNetworkFirewall is invalid",
+    );
+  }
+  if (value && sandboxLevel !== "project-write") {
+    throw new ProjectQueueValidationError(
+      "target.sandboxNetworkFirewall requires project-write sandboxing",
+    );
+  }
+  return sandboxLevel === "project-write" ? value : undefined;
+}
+
 function normalizeUploadedFile(value: unknown, index: number): UploadedFile {
   if (!isRecord(value)) {
     throw new ProjectQueueValidationError(
@@ -398,10 +416,15 @@ function normalizeTarget(raw: unknown): ProjectQueueTarget {
   }
 
   if (raw.type === "new-session") {
+    const sandboxLevel = optionalSandboxLevel(raw.sandboxLevel);
     return {
       type: "new-session",
       title: optionalString(raw.title, "target.title"),
-      sandboxLevel: optionalSandboxLevel(raw.sandboxLevel),
+      sandboxLevel,
+      sandboxNetworkFirewall: optionalSandboxNetworkFirewall(
+        raw.sandboxNetworkFirewall,
+        sandboxLevel,
+      ),
       ...common,
     };
   }

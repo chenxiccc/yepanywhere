@@ -1635,6 +1635,56 @@ export const SERVER_CAPABILITIES = {
         "Hosted clients need to distinguish protocol-aware but unsupported hosts and intermediate development servers from hosts with a verified usable backend.",
     },
   },
+  sessionSandboxNetworkFirewall: {
+    id: CAPABILITY_ID_ALLOCATIONS.sessionSandboxNetworkFirewall.id,
+    name: "session-sandbox-network-firewall",
+    kind: "permanent",
+    area: "localAccess",
+    introducedIn: "0.7.2",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Server accepts, persists, inherits, enforces, and reports the project-write session network firewall selection.",
+    clientFallback:
+      "Hide all session sandbox controls and omit both sandbox launch fields.",
+    serverContract: {
+      routes: [
+        "GET /api/settings",
+        "PUT /api/settings",
+        "POST /api/projects/:projectId/sessions",
+        "POST /api/projects/:projectId/sessions/create",
+        "POST /api/projects/:projectId/queue",
+        "POST /api/projects/:projectId/sessions/:sessionId/resume",
+        "POST /api/projects/:projectId/sessions/:sessionId/reactivate",
+        "POST /api/projects/:projectId/sessions/:sessionId/recap",
+        "POST /api/projects/:projectId/sessions/:sessionId/restart",
+        "POST /api/projects/:projectId/sessions/:sessionId/fork",
+        "POST /api/projects/:projectId/sessions/:sessionId/retitle",
+        "POST /api/projects/:projectId/sessions/:sessionId/fork-summary",
+        "POST /api/sessions",
+        "POST /api/sessions/create",
+      ],
+      requestFields: [
+        "settings.newSessionDefaults.sandboxNetworkFirewall",
+        "sessionStart.sandboxNetworkFirewall",
+        "sessionCreate.sandboxNetworkFirewall",
+        "projectQueue.target.sandboxNetworkFirewall",
+        "sessionRestart.sandboxNetworkFirewall",
+      ],
+      responseFields: [
+        "settings.newSessionDefaults.sandboxNetworkFirewall",
+        "sessionStart.sandboxEnforcement.networkFirewall",
+        "sessionResume.sandboxEnforcement.networkFirewall",
+        "sessionReactivate.sandboxEnforcement.networkFirewall",
+        "sessionRestart.sandboxEnforcement.networkFirewall",
+        "process.sandboxEnforcement.networkFirewall",
+      ],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Self-hosted clients and servers can remain version-skewed indefinitely, and omission on older servers cannot prove this security boundary.",
+    },
+  },
   projectQueue: {
     name: "projectQueue",
     kind: "permanent",
@@ -2144,6 +2194,9 @@ export const SESSION_SANDBOXING_CAPABILITY =
 
 export const SESSION_SANDBOXING_STATUS_CAPABILITY =
   SERVER_CAPABILITIES.sessionSandboxingStatus.name;
+
+export const SESSION_SANDBOX_NETWORK_FIREWALL_CAPABILITY =
+  SERVER_CAPABILITIES.sessionSandboxNetworkFirewall.name;
 
 export const SESSION_FORK_TURN_INTENTS_CAPABILITY =
   SERVER_CAPABILITIES.sessionForkTurnIntents.name;

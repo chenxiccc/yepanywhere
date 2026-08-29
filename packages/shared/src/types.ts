@@ -533,6 +533,8 @@ export interface SessionSandboxEnforcement {
   effective: SessionSandboxLevel;
   state: "enforced" | "unsupported" | "setup-failed";
   hostBackend?: string;
+  /** Whether this launch also enforces public-only IPv4 egress. */
+  networkFirewall?: boolean;
   providerPolicy?: string;
 }
 
@@ -580,6 +582,8 @@ export interface NewSessionDefaults {
   permissionMode?: PermissionMode;
   /** Default-off YA host filesystem confinement for newly created sessions. */
   sandboxLevel?: SessionSandboxLevel;
+  /** Public-only egress boundary for project-write sessions; absent means on. */
+  sandboxNetworkFirewall?: boolean;
   recapMode?: RecapMode;
   /**
    * Browser-away duration before YA asks the live process for a recap.

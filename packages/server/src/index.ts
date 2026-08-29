@@ -1097,6 +1097,7 @@ async function startServer() {
           clientName: runtime.reattach.clientName,
           executor: runtime.reattach.executor,
           sandboxLevel: runtime.reattach.sandboxLevel,
+          sandboxNetworkFirewall: runtime.reattach.sandboxNetworkFirewall,
           sandboxStateKey: runtime.reattach.sandboxStateKey,
         },
       );

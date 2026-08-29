@@ -16,7 +16,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -220,15 +220,11 @@ describe("CodexProvider", () => {
       expect(typeof status.enabled).toBe("boolean");
     });
 
-    it("should return authenticated=false if auth.json does not exist", async () => {
-      // This test relies on the auth file not existing in the test environment
-      const authPath = join(homedir(), ".codex", "auth.json");
-      if (!existsSync(authPath)) {
-        const status = await provider.getAuthStatus();
-        // If CLI is not installed, everything should be false
-        // If CLI is installed but no auth, installed=true but auth=false
-        expect(status.authenticated).toBe(false);
-      }
+    it("uses CLI installation as the conservative authentication signal", async () => {
+      const status = await provider.getAuthStatus();
+
+      expect(status.authenticated).toBe(status.installed);
+      expect(status.enabled).toBe(status.installed);
     });
   });
 

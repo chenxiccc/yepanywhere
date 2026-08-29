@@ -11,9 +11,10 @@ import {
   open,
   realpath,
   stat,
+  writeFile,
   type FileHandle,
 } from "node:fs/promises";
-import { homedir } from "node:os";
+import { homedir, networkInterfaces } from "node:os";
 import {
   basename,
   dirname,
@@ -23,6 +24,7 @@ import {
   resolve,
   sep,
 } from "node:path";
+import { fileURLToPath } from "node:url";
 import type {
   ProviderName,
   RecapMode,
@@ -35,6 +37,36 @@ import { getDefaultCodexHomeDir } from "./projects/codex-scanner.js";
 import { stripYaControlPlaneCredentials } from "./sdk/providers/env-filter.js";
 
 const BWRAP_CANDIDATES = ["/usr/bin/bwrap", "/bin/bwrap"] as const;
+const UNSHARE_CANDIDATES = ["/usr/bin/unshare", "/bin/unshare"] as const;
+const SLIRP4NETNS_CANDIDATES = [
+  "/usr/bin/slirp4netns",
+  "/bin/slirp4netns",
+] as const;
+const IP_CANDIDATES = [
+  "/usr/sbin/ip",
+  "/sbin/ip",
+  "/usr/bin/ip",
+  "/bin/ip",
+] as const;
+const NETWORK_LAUNCHER_PATH = fileURLToPath(
+  new URL("./session-sandbox-network-launcher.mjs", import.meta.url),
+);
+const NETWORK_BLOCKED_IPV4_DESTINATIONS = [
+  "0.0.0.0/8",
+  "10.0.0.0/8",
+  "100.64.0.0/10",
+  "127.0.0.0/8",
+  "169.254.0.0/16",
+  "172.16.0.0/12",
+  "192.0.0.0/24",
+  "192.0.2.0/24",
+  "192.168.0.0/16",
+  "198.18.0.0/15",
+  "198.51.100.0/24",
+  "203.0.113.0/24",
+  "224.0.0.0/4",
+  "240.0.0.0/4",
+] as const;
 const BWRAP_PREFLIGHT_ARGS = [
   "--unshare-all",
   "--share-net",
@@ -124,6 +156,8 @@ export interface SessionSandboxRuntime {
 
 export interface PrepareSessionSandboxOptions {
   level: SessionSandboxLevel | undefined;
+  /** Public-only egress boundary; absent defaults on for project-write. */
+  networkFirewall?: boolean;
   provider: ProviderName;
   projectPath: string;
   executor?: string;
@@ -134,6 +168,10 @@ export interface PrepareSessionSandboxOptions {
   authEnforced?: boolean;
   /** Test-only override; production intentionally uses trusted system paths. */
   bwrapPath?: string;
+  /** Test-only overrides; production intentionally uses trusted system paths. */
+  unsharePath?: string;
+  slirp4netnsPath?: string;
+  ipPath?: string;
   /** Test-only override for keeping fixtures out of the real YA state root. */
   stateRoot?: string;
 }
@@ -177,6 +215,30 @@ function sandboxRuntimeError(detail: string): SessionSandboxSetupError {
   );
 }
 
+function sandboxNetworkInstallError(tool: string): SessionSandboxSetupError {
+  return new SessionSandboxSetupError(
+    "probe-failed",
+    `Network-firewalled sandboxed sessions require a trusted ${tool} binary. ` +
+      "Install slirp4netns, util-linux, and iproute2 before starting this session.",
+  );
+}
+
+function sandboxNetworkTrustError(tool: string): SessionSandboxSetupError {
+  return new SessionSandboxSetupError(
+    "probe-failed",
+    `Network-firewalled sandboxed sessions require a root-owned ${tool} binary ` +
+      "that is not group- or world-writable.",
+  );
+}
+
+function sandboxNetworkRuntimeError(detail: string): SessionSandboxSetupError {
+  return new SessionSandboxSetupError(
+    "probe-failed",
+    `The session network firewall could not establish isolated public egress (${detail}). ` +
+      "Check that this host permits unprivileged user and network namespaces.",
+  );
+}
+
 function isWithin(parent: string, child: string): boolean {
   const rel = relative(parent, child);
   return rel === "" || (!rel.startsWith(`..${sep}`) && rel !== "..");
@@ -191,8 +253,9 @@ function hasErrorCode(error: unknown, code: string): boolean {
   );
 }
 
-async function resolveTrustedBwrap(explicit?: string): Promise<string> {
-  const candidates = explicit ? [explicit] : BWRAP_CANDIDATES;
+async function findTrustedSystemExecutable(
+  candidates: readonly string[],
+): Promise<{ path?: string; found: boolean }> {
   let foundCandidate = false;
   for (const candidate of candidates) {
     if (!isAbsolute(candidate)) continue;
@@ -203,15 +266,34 @@ async function resolveTrustedBwrap(explicit?: string): Promise<string> {
       if (!info.isFile() || info.uid !== 0 || (info.mode & 0o022) !== 0) {
         continue;
       }
-      return resolved;
+      return { path: resolved, found: true };
     } catch {
       // Try the next trusted system location.
     }
   }
-  if (foundCandidate) {
-    throw sandboxTrustError();
-  }
+  return { found: foundCandidate };
+}
+
+async function resolveTrustedBwrap(explicit?: string): Promise<string> {
+  const result = await findTrustedSystemExecutable(
+    explicit ? [explicit] : BWRAP_CANDIDATES,
+  );
+  if (result.path) return result.path;
+  if (result.found) throw sandboxTrustError();
   throw sandboxInstallError();
+}
+
+async function resolveTrustedNetworkHelper(
+  tool: string,
+  candidates: readonly string[],
+  explicit?: string,
+): Promise<string> {
+  const result = await findTrustedSystemExecutable(
+    explicit ? [explicit] : candidates,
+  );
+  if (result.path) return result.path;
+  if (result.found) throw sandboxNetworkTrustError(tool);
+  throw sandboxNetworkInstallError(tool);
 }
 
 async function runBwrapProbe(
@@ -243,6 +325,119 @@ async function runBwrapProbe(
         stderr.trim() ||
         `probe exited with ${signal ? `signal ${signal}` : `status ${code}`}`;
       rejectProbe(sandboxRuntimeError(detail));
+    });
+  });
+}
+
+interface SessionSandboxNetworkTools {
+  unsharePath: string;
+  slirp4netnsPath: string;
+  ipPath: string;
+}
+
+function blockedIpv4Destinations(): string[] {
+  const destinations = new Set<string>(NETWORK_BLOCKED_IPV4_DESTINATIONS);
+  for (const addresses of Object.values(networkInterfaces())) {
+    for (const address of addresses ?? []) {
+      if (address.family === "IPv4") {
+        destinations.add(`${address.address}/32`);
+      }
+    }
+  }
+  return [...destinations];
+}
+
+function buildNetworkLauncherArgs(options: {
+  tools: SessionSandboxNetworkTools;
+  bwrapPath: string;
+  bwrapArgs: readonly string[];
+  blockedDestinations: readonly string[];
+  passProjectFd: boolean;
+  command: string;
+  commandArgs: readonly string[];
+}): string[] {
+  return [
+    NETWORK_LAUNCHER_PATH,
+    JSON.stringify({
+      unsharePath: options.tools.unsharePath,
+      slirpPath: options.tools.slirp4netnsPath,
+      ipPath: options.tools.ipPath,
+      bwrapPath: options.bwrapPath,
+      bwrapArgs: options.bwrapArgs,
+      blockedDestinations: options.blockedDestinations,
+      passProjectFd: options.passProjectFd,
+    }),
+    options.command,
+    ...options.commandArgs,
+  ];
+}
+
+async function resolveSessionSandboxNetworkTools(options: {
+  unsharePath?: string;
+  slirp4netnsPath?: string;
+  ipPath?: string;
+}): Promise<SessionSandboxNetworkTools> {
+  const launcher = await stat(NETWORK_LAUNCHER_PATH).catch(() => undefined);
+  if (!launcher?.isFile()) {
+    throw sandboxNetworkRuntimeError("the YA network launcher is missing");
+  }
+  const [unsharePath, slirp4netnsPath, ipPath] = await Promise.all([
+    resolveTrustedNetworkHelper(
+      "unshare",
+      UNSHARE_CANDIDATES,
+      options.unsharePath,
+    ),
+    resolveTrustedNetworkHelper(
+      "slirp4netns",
+      SLIRP4NETNS_CANDIDATES,
+      options.slirp4netnsPath,
+    ),
+    resolveTrustedNetworkHelper("ip", IP_CANDIDATES, options.ipPath),
+  ]);
+  return { unsharePath, slirp4netnsPath, ipPath };
+}
+
+async function runNetworkSandboxProbe(options: {
+  tools: SessionSandboxNetworkTools;
+  bwrapPath: string;
+  bwrapArgs: readonly string[];
+  blockedDestinations: readonly string[];
+  projectDirectoryFd?: number;
+}): Promise<void> {
+  await new Promise<void>((resolveProbe, rejectProbe) => {
+    const child = spawn(
+      process.execPath,
+      buildNetworkLauncherArgs({
+        ...options,
+        passProjectFd: options.projectDirectoryFd !== undefined,
+        command: "/bin/true",
+        commandArgs: [],
+      }),
+      {
+        cwd: "/",
+        stdio:
+          options.projectDirectoryFd === undefined
+            ? ["ignore", "ignore", "pipe"]
+            : ["ignore", "ignore", "pipe", options.projectDirectoryFd],
+        env: process.env,
+      },
+    );
+    let stderr = "";
+    child.stderr?.on("data", (chunk: Buffer) => {
+      if (stderr.length < 8000) stderr += chunk.toString("utf8");
+    });
+    child.once("error", (error) => {
+      rejectProbe(sandboxNetworkRuntimeError(error.message));
+    });
+    child.once("exit", (code, signal) => {
+      if (code === 0) {
+        resolveProbe();
+        return;
+      }
+      const detail =
+        stderr.trim() ||
+        `probe exited with ${signal ? `signal ${signal}` : `status ${code}`}`;
+      rejectProbe(sandboxNetworkRuntimeError(detail));
     });
   });
 }
@@ -311,6 +506,10 @@ export interface ProbeSessionSandboxAvailabilityOptions {
   platform?: NodeJS.Platform;
   /** Test-only binary override. Production uses fixed trusted system paths. */
   bwrapPath?: string;
+  /** Test-only helper overrides. Production uses fixed trusted system paths. */
+  unsharePath?: string;
+  slirp4netnsPath?: string;
+  ipPath?: string;
 }
 
 export function applySessionSandboxAuthRequirement(
@@ -340,7 +539,13 @@ export async function probeSessionSandboxAvailability(
   try {
     const bwrapPath = await resolveTrustedBwrap(options.bwrapPath);
     const version = await requireSupportedBwrapVersion(bwrapPath);
-    await runBwrapProbe(bwrapPath, BWRAP_PREFLIGHT_ARGS);
+    const tools = await resolveSessionSandboxNetworkTools(options);
+    await runNetworkSandboxProbe({
+      tools,
+      bwrapPath,
+      bwrapArgs: BWRAP_PREFLIGHT_ARGS,
+      blockedDestinations: blockedIpv4Destinations(),
+    });
     return {
       state: "available",
       platform,
@@ -598,6 +803,8 @@ function buildBwrapBaseArgs(options: {
   tempDir: string;
   varTempDir: string;
   privateClaudeJson?: string;
+  providerHostRuntimeDir?: string;
+  networkResolvConf?: string;
 }): string[] {
   const args = [
     "--unshare-all",
@@ -638,6 +845,12 @@ function buildBwrapBaseArgs(options: {
       join(homedir(), ".claude.json"),
     );
   }
+  if (options.providerHostRuntimeDir) {
+    args.push("--tmpfs", options.providerHostRuntimeDir);
+  }
+  if (options.networkResolvConf) {
+    args.push("--ro-bind", options.networkResolvConf, "/etc/resolv.conf");
+  }
   args.push(
     "--chdir",
     options.projectPath,
@@ -651,8 +864,55 @@ function buildBwrapBaseArgs(options: {
     "CONTAINER_HOST",
     "--unsetenv",
     "KUBECONFIG",
+    "--unsetenv",
+    "AUTH_COOKIE_SECRET",
+    "--unsetenv",
+    "DESKTOP_AUTH_TOKEN",
+    "--unsetenv",
+    "YEP_PROVIDER_RUNTIME_TOKEN",
+    "--unsetenv",
+    "YEP_PROVIDER_RUNTIME_DIR",
+    "--unsetenv",
+    "YEP_PROVIDER_HOST_RUNTIME_DIR",
   );
   return args;
+}
+
+async function resolveProviderHostRuntimeMask(options: {
+  projectPath: string;
+  stateDir: string;
+}): Promise<string | undefined> {
+  const configured =
+    process.env.YEP_PROVIDER_RUNTIME_DIR?.trim() ||
+    process.env.YEP_PROVIDER_HOST_RUNTIME_DIR?.trim();
+  if (!configured) return undefined;
+  if (!isAbsolute(configured)) {
+    throw new Error(
+      "Session sandbox requires an absolute provider-host runtime directory.",
+    );
+  }
+  const runtimeDir = await realpath(configured);
+  const info = await stat(runtimeDir);
+  if (!info.isDirectory()) {
+    throw new Error(
+      "Session sandbox provider-host runtime path must be a directory.",
+    );
+  }
+  if (
+    runtimeDir === "/" ||
+    isWithin(runtimeDir, options.projectPath) ||
+    isWithin(options.projectPath, runtimeDir) ||
+    isWithin(runtimeDir, options.stateDir) ||
+    isWithin(options.stateDir, runtimeDir)
+  ) {
+    throw new Error(
+      "Session sandbox provider-host runtime directory must be dedicated and outside the project and private provider state.",
+    );
+  }
+  for (const alreadyPrivate of ["/run", "/tmp", "/var/tmp"]) {
+    if (isWithin(alreadyPrivate, runtimeDir)) return undefined;
+  }
+  return runtimeDir;
 }
 
 async function openAnchoredDirectory(
@@ -682,7 +942,14 @@ export async function prepareSessionSandbox(
   options: PrepareSessionSandboxOptions,
 ): Promise<SessionSandboxRuntime | undefined> {
   const level = options.level ?? "none";
-  if (level === "none") return undefined;
+  if (level === "none") {
+    if (options.networkFirewall === true) {
+      throw new Error(
+        "Session sandbox network firewall requires project-write sandboxing.",
+      );
+    }
+    return undefined;
+  }
   if (level !== "project-write") {
     throw new Error(`Invalid session sandbox level: ${String(level)}`);
   }
@@ -729,6 +996,13 @@ export async function prepareSessionSandbox(
   }
   const bwrapPath = await resolveTrustedBwrap(options.bwrapPath);
   await requireSupportedBwrapVersion(bwrapPath);
+  const networkFirewall = options.networkFirewall !== false;
+  const networkTools = networkFirewall
+    ? await resolveSessionSandboxNetworkTools(options)
+    : undefined;
+  const blockedDestinations = networkFirewall
+    ? blockedIpv4Destinations()
+    : undefined;
   const providerStateDir = join(
     stateDir,
     options.provider === "codex" ? "codex" : "claude",
@@ -737,6 +1011,7 @@ export async function prepareSessionSandbox(
   const tempDir = join(stateDir, "tmp");
   const varTempDir = join(stateDir, "var-tmp");
   const privateClaudeJson = join(stateDir, "claude.json");
+  const networkResolvConf = join(stateDir, "network-resolv.conf");
   const transcriptDir =
     options.provider === "codex"
       ? join(providerStateDir, "sessions")
@@ -754,8 +1029,20 @@ export async function prepareSessionSandbox(
     providerStateDir,
     privateClaudeJson,
   });
+  if (networkFirewall) {
+    await writeFile(
+      networkResolvConf,
+      "nameserver 10.0.2.3\noptions timeout:2 attempts:2\n",
+      { mode: 0o600 },
+    );
+    await chmod(networkResolvConf, 0o600);
+  }
   const mountPrivateClaudeJson =
     options.provider !== "codex" && (await hasClaudeJsonMountPoint());
+  const providerHostRuntimeDir = await resolveProviderHostRuntimeMask({
+    projectPath,
+    stateDir,
+  });
 
   const initialProjectAnchor = openProjectDirectoryAnchor(projectPath);
   const projectIdentity = initialProjectAnchor.identity;
@@ -767,9 +1054,21 @@ export async function prepareSessionSandbox(
     tempDir,
     varTempDir,
     privateClaudeJson: mountPrivateClaudeJson ? privateClaudeJson : undefined,
+    providerHostRuntimeDir,
+    networkResolvConf: networkFirewall ? networkResolvConf : undefined,
   });
   try {
-    await runBwrapProbe(bwrapPath, baseArgs, initialProjectAnchor.fd);
+    if (networkTools && blockedDestinations) {
+      await runNetworkSandboxProbe({
+        tools: networkTools,
+        bwrapPath,
+        bwrapArgs: baseArgs,
+        blockedDestinations,
+        projectDirectoryFd: initialProjectAnchor.fd,
+      });
+    } else {
+      await runBwrapProbe(bwrapPath, baseArgs, initialProjectAnchor.fd);
+    }
   } finally {
     initialProjectAnchor.release();
   }
@@ -803,6 +1102,7 @@ export async function prepareSessionSandbox(
       effective: "project-write",
       state: "enforced",
       hostBackend: `bubblewrap:${basename(bwrapPath)}`,
+      networkFirewall,
     },
     wrapSpawn(command, args, env) {
       const projectAnchor = openProjectDirectoryAnchor(
@@ -810,8 +1110,19 @@ export async function prepareSessionSandbox(
         projectIdentity,
       );
       return {
-        command: bwrapPath,
-        args: [...baseArgs, "--", command, ...args],
+        command: networkTools ? process.execPath : bwrapPath,
+        args:
+          networkTools && blockedDestinations
+            ? buildNetworkLauncherArgs({
+                tools: networkTools,
+                bwrapPath,
+                bwrapArgs: baseArgs,
+                blockedDestinations,
+                passProjectFd: true,
+                command,
+                commandArgs: args,
+              })
+            : [...baseArgs, "--", command, ...args],
         // Bubblewrap changes to the project only after installing the
         // descriptor-backed bind. Its host-side cwd must not follow a
         // pathname replacement between wrapSpawn() and spawn().

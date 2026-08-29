@@ -403,6 +403,11 @@ version, while the permanent capability ledger retains all prior assignments.
   recipe. Crash recovery, ownership disagreement, and stale state fail closed.
 - Hono reload preserves eligible active turns but does not claim that retained
   workers loaded changed provider code.
+- A retained worker is reusable only when its recorded session sandbox level
+  and network-firewall selection match the replacement server's settled
+  boundary. Missing legacy firewall metadata resolves to the secure
+  project-write default; a mismatch terminates and relaunches the worker rather
+  than attaching it under an inaccurate enforcement claim.
 - A compatible retained local worker refreshes the replacement Hono
   generation's two allowlisted browser-debugging values for later Bash tool
   shells. The caller factor is domain-separated from the provider-host boot

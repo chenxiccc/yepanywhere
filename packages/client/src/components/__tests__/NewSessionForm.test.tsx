@@ -11,6 +11,7 @@ import {
 } from "@testing-library/react";
 import {
   PROJECT_QUEUE_CAPABILITY,
+  SESSION_SANDBOX_NETWORK_FIREWALL_CAPABILITY,
   SESSION_SANDBOXING_CAPABILITY,
   SESSION_SANDBOXING_STATUS_CAPABILITY,
 } from "@yep-anywhere/shared";
@@ -175,6 +176,7 @@ const {
         recapAfterSeconds?: number;
         promptSuggestionMode?: "off" | "native";
         sandboxLevel?: "none" | "project-write";
+        sandboxNetworkFirewall?: boolean;
         helperSideModel?: string;
         providers?: Partial<
           Record<
@@ -1359,6 +1361,7 @@ describe("NewSessionForm", () => {
     versionState.version = {
       capabilities: [
         PROJECT_QUEUE_CAPABILITY,
+        SESSION_SANDBOX_NETWORK_FIREWALL_CAPABILITY,
         SESSION_SANDBOXING_CAPABILITY,
         SESSION_SANDBOXING_STATUS_CAPABILITY,
       ],
@@ -1394,6 +1397,13 @@ describe("NewSessionForm", () => {
         }) as HTMLInputElement
       ).checked,
     ).toBe(true);
+    expect(
+      (
+        screen.getByRole("checkbox", {
+          name: "newSessionSandboxNetworkFirewallLabel",
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(true);
     fireEvent.change(screen.getByPlaceholderText("newSessionPlaceholder"), {
       target: { value: "sandbox this" },
     });
@@ -1405,7 +1415,10 @@ describe("NewSessionForm", () => {
       expect(mockStartSession).toHaveBeenCalledTimes(1);
     });
     expect(mockStartSession.mock.calls[0]?.[2]).toEqual(
-      expect.objectContaining({ sandboxLevel: "project-write" }),
+      expect.objectContaining({
+        sandboxLevel: "project-write",
+        sandboxNetworkFirewall: true,
+      }),
     );
   });
 
@@ -1413,6 +1426,7 @@ describe("NewSessionForm", () => {
     versionState.version = {
       capabilities: [
         PROJECT_QUEUE_CAPABILITY,
+        SESSION_SANDBOX_NETWORK_FIREWALL_CAPABILITY,
         SESSION_SANDBOXING_CAPABILITY,
         SESSION_SANDBOXING_STATUS_CAPABILITY,
       ],
@@ -1453,6 +1467,13 @@ describe("NewSessionForm", () => {
     expect(sideSession.disabled).toBe(true);
     expect(
       (
+        screen.getByRole("checkbox", {
+          name: "newSessionSandboxNetworkFirewallLabel",
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(true);
+    expect(
+      (
         screen.getByRole("button", {
           name: "recapModeFork",
         }) as HTMLButtonElement
@@ -1476,6 +1497,64 @@ describe("NewSessionForm", () => {
       expect.objectContaining({
         sandboxLevel: "project-write",
         recapMode: "off",
+      }),
+    );
+  });
+
+  it("submits an explicit project sandbox network opt-out", async () => {
+    versionState.version = {
+      capabilities: [
+        PROJECT_QUEUE_CAPABILITY,
+        SESSION_SANDBOX_NETWORK_FIREWALL_CAPABILITY,
+        SESSION_SANDBOXING_CAPABILITY,
+        SESSION_SANDBOXING_STATUS_CAPABILITY,
+      ],
+      sessionSandboxing: {
+        state: "available",
+        platform: "linux",
+        backend: "bubblewrap",
+        version: "0.4.0",
+      },
+    };
+    serverSettingsState.settings = {
+      newSessionDefaults: {
+        provider: "claude",
+        permissionMode: "default",
+        sandboxLevel: "project-write",
+        sandboxNetworkFirewall: false,
+      },
+    };
+    serverSettingsState.isLoading = false;
+
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    expect(
+      (
+        screen.getByRole("checkbox", {
+          name: "newSessionSandboxNetworkFirewallLabel",
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(false);
+    fireEvent.change(screen.getByPlaceholderText("newSessionPlaceholder"), {
+      target: { value: "sandbox with direct networking" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "newSessionStartAction" }),
+    );
+
+    await waitFor(() => {
+      expect(mockStartSession).toHaveBeenCalledTimes(1);
+    });
+    expect(mockStartSession.mock.calls[0]?.[2]).toEqual(
+      expect.objectContaining({
+        sandboxLevel: "project-write",
+        sandboxNetworkFirewall: false,
       }),
     );
   });
@@ -1576,6 +1655,7 @@ describe("NewSessionForm", () => {
     versionState.version = {
       capabilities: [
         PROJECT_QUEUE_CAPABILITY,
+        SESSION_SANDBOX_NETWORK_FIREWALL_CAPABILITY,
         SESSION_SANDBOXING_CAPABILITY,
         SESSION_SANDBOXING_STATUS_CAPABILITY,
       ],

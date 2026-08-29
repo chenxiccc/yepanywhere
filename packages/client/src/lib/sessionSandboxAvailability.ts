@@ -1,6 +1,7 @@
 import {
   SESSION_SANDBOXING_CAPABILITY,
   SESSION_SANDBOXING_STATUS_CAPABILITY,
+  SESSION_SANDBOX_NETWORK_FIREWALL_CAPABILITY,
   type SessionSandboxAvailability,
   serverHasCapability,
 } from "@yep-anywhere/shared";
@@ -21,6 +22,7 @@ export function serverHasAvailableSessionSandbox(
   return (
     serverHasCapability(source, SESSION_SANDBOXING_STATUS_CAPABILITY) &&
     serverHasCapability(source, SESSION_SANDBOXING_CAPABILITY) &&
+    serverHasCapability(source, SESSION_SANDBOX_NETWORK_FIREWALL_CAPABILITY) &&
     source?.sessionSandboxing?.state === "available"
   );
 }

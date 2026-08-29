@@ -330,6 +330,12 @@ export const CAPABILITY_ID_ALLOCATIONS = {
     name: "public-file-shares",
     introducedIn: "0.7.2",
   },
+  sessionSandboxNetworkFirewall: {
+    id: 52,
+    direction: "server",
+    name: "session-sandbox-network-firewall",
+    introducedIn: "0.7.2",
+  },
 } as const satisfies Record<string, CapabilityIdAllocation>;
 
 export type CapabilityBitset = readonly (readonly [

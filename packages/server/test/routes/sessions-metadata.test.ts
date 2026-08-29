@@ -2003,6 +2003,7 @@ describe("Sessions metadata route", () => {
           appliedPermissionMode: "default",
           modeVersion: 0,
           recapAfterSeconds: undefined,
+          startedAt: new Date("2026-03-10T09:46:00.000Z"),
           state: { type: "idle", since: new Date("2026-03-10T09:47:00.000Z") },
           provider: "claude",
           resolvedModel: "claude-sonnet-4-6",
@@ -3188,12 +3189,12 @@ describe("Sessions metadata route", () => {
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toMatchObject({
       error:
-        "A restarted session inherits the source sandbox level and cannot change it",
+        "A restarted session inherits the source sandbox boundary and cannot change it",
     });
     expect(startSession).not.toHaveBeenCalled();
   });
 
-  it("forks the transcript instead of handing off when restartMode is fork", async () => {
+  it("preserves a firewall opt-out when restartMode is fork", async () => {
     const project = createProject();
     const forkSession = vi.fn(async () => ({
       sessionId: "sess-fork",
@@ -3265,6 +3266,7 @@ describe("Sessions metadata route", () => {
         getMetadata: vi.fn(() => ({
           customTitle: "Refactor session",
           sandboxLevel: "project-write",
+          sandboxNetworkFirewall: false,
           sandboxStateKey: "project-sandbox",
           sandboxProjectPath: project.path,
           effectiveLaunchSettings: {
@@ -3325,6 +3327,7 @@ describe("Sessions metadata route", () => {
       upToMessageId: "msg-uuid-7",
       title: "Fork: Refactor session",
       sandboxLevel: "project-write",
+      sandboxNetworkFirewall: false,
       sandboxStateKey: "project-sandbox",
     });
     expect(startSession).not.toHaveBeenCalled();
@@ -3341,11 +3344,13 @@ describe("Sessions metadata route", () => {
         effort: "high",
         providerName: "claude",
         sandboxLevel: "project-write",
+        sandboxNetworkFirewall: false,
         sandboxStateKey: "project-sandbox",
       }),
     );
     expect(setSessionSandbox).toHaveBeenCalledWith("sess-fork", {
       level: "project-write",
+      networkFirewall: false,
       stateKey: "project-sandbox",
       projectPath: project.path,
       projectId: project.id,
@@ -3426,8 +3431,10 @@ describe("Sessions metadata route", () => {
       projectPath: project.path,
       providerName: "claude",
       upToMessageId: "msg-uuid-3",
+      boundary: undefined,
       title: "Fork: Refactor session",
       sandboxLevel: "project-write",
+      sandboxNetworkFirewall: true,
       sandboxStateKey: "project-sandbox",
     });
     // Fork-only: no process is started or resumed, no message sent.
@@ -3436,6 +3443,7 @@ describe("Sessions metadata route", () => {
     expect(setProvider).toHaveBeenCalledWith("sess-fork", "claude");
     expect(setSessionSandbox).toHaveBeenCalledWith("sess-fork", {
       level: "project-write",
+      networkFirewall: true,
       stateKey: "project-sandbox",
       projectPath: project.path,
       projectId: project.id,
@@ -4246,6 +4254,7 @@ describe("Sessions metadata route", () => {
       providerName: "claude",
       title: "Fork summary generator",
       sandboxLevel: "project-write",
+      sandboxNetworkFirewall: true,
       sandboxStateKey: "project-sandbox",
     });
     expect(generateSummary).toHaveBeenCalledWith(
@@ -4273,6 +4282,7 @@ describe("Sessions metadata route", () => {
       },
       title: "Refactor continuation",
       sandboxLevel: "project-write",
+      sandboxNetworkFirewall: true,
       sandboxStateKey: "project-sandbox",
     });
     expect(resumeSession).toHaveBeenCalledWith(
@@ -5944,6 +5954,7 @@ describe("Session reactivation route", () => {
             executor: "build-host",
             permissions: { deny: ["Bash(rm *)"] },
             sandboxLevel: "none",
+            sandboxNetworkFirewall: false,
             sandboxStateKey: undefined,
             recapMode: "fork",
             recapAfterSeconds: 45,

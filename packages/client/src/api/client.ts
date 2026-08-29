@@ -258,6 +258,8 @@ export interface SessionOptions {
   executor?: string;
   /** Default-off YA host filesystem confinement for a newly created session. */
   sandboxLevel?: SessionSandboxLevel;
+  /** Public-only egress boundary for project-write sessions. */
+  sandboxNetworkFirewall?: boolean;
   /** Recap behavior for future away-return triggers in this session. */
   recapMode?: RecapMode;
   /** Browser-away duration before YA asks this session for a recap. */
@@ -703,6 +705,7 @@ export const api = {
         provider: options?.provider,
         executor: options?.executor,
         sandboxLevel: options?.sandboxLevel,
+        sandboxNetworkFirewall: options?.sandboxNetworkFirewall,
         recapMode: options?.recapMode,
         recapAfterSeconds: options?.recapAfterSeconds,
         promptSuggestionMode: options?.promptSuggestionMode,
@@ -740,6 +743,7 @@ export const api = {
         provider: options?.provider,
         executor: options?.executor,
         sandboxLevel: options?.sandboxLevel,
+        sandboxNetworkFirewall: options?.sandboxNetworkFirewall,
         recapMode: options?.recapMode,
         recapAfterSeconds: options?.recapAfterSeconds,
         promptSuggestionMode: options?.promptSuggestionMode,
@@ -777,6 +781,7 @@ export const api = {
         provider: options?.provider,
         executor: options?.executor,
         sandboxLevel: options?.sandboxLevel,
+        sandboxNetworkFirewall: options?.sandboxNetworkFirewall,
         recapMode: options?.recapMode,
         recapAfterSeconds: options?.recapAfterSeconds,
         promptSuggestionMode: options?.promptSuggestionMode,
@@ -809,6 +814,7 @@ export const api = {
         provider: options?.provider,
         executor: options?.executor,
         sandboxLevel: options?.sandboxLevel,
+        sandboxNetworkFirewall: options?.sandboxNetworkFirewall,
         recapMode: options?.recapMode,
         recapAfterSeconds: options?.recapAfterSeconds,
         promptSuggestionMode: options?.promptSuggestionMode,
@@ -946,6 +952,7 @@ export const api = {
         provider: options?.provider,
         executor: options?.executor,
         sandboxLevel: options?.sandboxLevel,
+        sandboxNetworkFirewall: options?.sandboxNetworkFirewall,
         recapMode: options?.recapMode,
         recapAfterSeconds: options?.recapAfterSeconds,
         promptSuggestionMode: options?.promptSuggestionMode,

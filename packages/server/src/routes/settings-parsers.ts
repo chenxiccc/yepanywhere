@@ -552,6 +552,28 @@ export function parseNewSessionDefaults(
     }
   }
 
+  if ("sandboxNetworkFirewall" in input) {
+    if (
+      input.sandboxNetworkFirewall !== undefined &&
+      input.sandboxNetworkFirewall !== null &&
+      typeof input.sandboxNetworkFirewall !== "boolean"
+    ) {
+      return null;
+    }
+    if (
+      input.sandboxNetworkFirewall === true &&
+      parsed.sandboxLevel !== "project-write"
+    ) {
+      return null;
+    }
+    if (
+      parsed.sandboxLevel === "project-write" &&
+      typeof input.sandboxNetworkFirewall === "boolean"
+    ) {
+      parsed.sandboxNetworkFirewall = input.sandboxNetworkFirewall;
+    }
+  }
+
   if ("recapMode" in input) {
     if (
       input.recapMode !== undefined &&

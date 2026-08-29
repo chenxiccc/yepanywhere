@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 const sourceDir = join(rootDir, "packages/server/src/services/voice");
 const targetDir = join(rootDir, "packages/server/dist/services/voice");
+const serverSourceDir = join(rootDir, "packages/server/src");
+const serverTargetDir = join(rootDir, "packages/server/dist");
 
 mkdirSync(targetDir, { recursive: true });
 
@@ -36,3 +38,8 @@ for (const expected of [
     throw new Error(`Expected ${expected} in server dist assets`);
   }
 }
+
+copyFileSync(
+  join(serverSourceDir, "session-sandbox-network-launcher.mjs"),
+  join(serverTargetDir, "session-sandbox-network-launcher.mjs"),
+);

@@ -379,6 +379,7 @@ export function NewSessionForm({
     useState<EffortLevel>("high");
   const [selectedRecapMode, setSelectedRecapMode] = useState<RecapMode>("off");
   const [sandboxLevel, setSandboxLevel] = useState<SessionSandboxLevel>("none");
+  const [sandboxNetworkFirewall, setSandboxNetworkFirewall] = useState(true);
   const [recapAfterSeconds, setRecapAfterSeconds] = useState(
     DEFAULT_RECAP_AFTER_SECONDS,
   );
@@ -496,6 +497,8 @@ export function NewSessionForm({
   const effectiveSandboxLevel: SessionSandboxLevel = canConfigureSessionSandbox
     ? sandboxLevel
     : "none";
+  const effectiveSandboxNetworkFirewall =
+    effectiveSandboxLevel === "project-write" && sandboxNetworkFirewall;
   const supportsProjectQueue = serverSupportsProjectQueue(versionInfo);
   const projectQueueCtrlEnterEnabled =
     versionInfo?.clientDefaults?.projectQueueCtrlEnterEnabled ??
@@ -1406,6 +1409,10 @@ export function NewSessionForm({
           : savedRecapMode,
       );
       setSandboxLevel(savedSandboxLevel);
+      setSandboxNetworkFirewall(
+        savedSandboxLevel === "project-write" &&
+          savedDefaults?.sandboxNetworkFirewall !== false,
+      );
       setRecapAfterSeconds(
         normalizeRecapAfterSeconds(savedDefaults?.recapAfterSeconds),
       );
@@ -1846,6 +1853,7 @@ export function NewSessionForm({
     const {
       helperSideModel: _legacyHelperSideModel,
       sandboxLevel: _savedSandboxLevel,
+      sandboxNetworkFirewall: _savedSandboxNetworkFirewall,
       ...baseDefaults
     } = (newSessionDefaultsRef.current ?? {}) as NonNullable<
       typeof newSessionDefaultsRef.current
@@ -1863,7 +1871,14 @@ export function NewSessionForm({
             recapMode: selectedRecapMode,
             recapAfterSeconds,
             promptSuggestionMode: selectedPromptSuggestionMode,
-            ...(supportsSessionSandboxing ? { sandboxLevel } : {}),
+            ...(supportsSessionSandboxing
+              ? {
+                  sandboxLevel,
+                  ...(sandboxLevel === "project-write"
+                    ? { sandboxNetworkFirewall }
+                    : {}),
+                }
+              : {}),
           },
           selectedProvider,
           {
@@ -1884,6 +1899,7 @@ export function NewSessionForm({
     mode,
     recapAfterSeconds,
     sandboxLevel,
+    sandboxNetworkFirewall,
     selectedModel,
     selectedEffortLevel,
     selectedProvider,
@@ -2109,7 +2125,14 @@ export function NewSessionForm({
           provider: selectedProvider ?? undefined,
           executor: effectiveExecutor ?? undefined,
           ...(supportsSessionSandboxing
-            ? { sandboxLevel: effectiveSandboxLevel }
+            ? {
+                sandboxLevel: effectiveSandboxLevel,
+                ...(effectiveSandboxLevel === "project-write"
+                  ? {
+                      sandboxNetworkFirewall: effectiveSandboxNetworkFirewall,
+                    }
+                  : {}),
+              }
             : {}),
           recapMode: effectiveRecapMode,
           recapAfterSeconds,
@@ -2127,6 +2150,9 @@ export function NewSessionForm({
           executor: effectiveExecutor,
           sandboxLevel: supportsSessionSandboxing
             ? effectiveSandboxLevel
+            : null,
+          sandboxNetworkFirewall: supportsSessionSandboxing
+            ? effectiveSandboxNetworkFirewall
             : null,
           recapMode: effectiveRecapMode,
           recapAfterSeconds,
@@ -2373,6 +2399,7 @@ export function NewSessionForm({
       projectInput,
       recapAfterSeconds,
       effectiveSandboxLevel,
+      effectiveSandboxNetworkFirewall,
       resolvePendingAttachmentsForSession,
       resolveProjectIdForSubmission,
       selectedCheckoutWorkstreamId,
@@ -2462,7 +2489,14 @@ export function NewSessionForm({
           provider: selectedProvider ?? undefined,
           executor: effectiveExecutor ?? undefined,
           ...(supportsSessionSandboxing
-            ? { sandboxLevel: effectiveSandboxLevel }
+            ? {
+                sandboxLevel: effectiveSandboxLevel,
+                ...(effectiveSandboxLevel === "project-write"
+                  ? {
+                      sandboxNetworkFirewall: effectiveSandboxNetworkFirewall,
+                    }
+                  : {}),
+              }
             : {}),
           title: trimmedMessage,
         },
@@ -2493,6 +2527,9 @@ export function NewSessionForm({
         provider: selectedProvider ?? null,
         executor: effectiveExecutor,
         sandboxLevel: supportsSessionSandboxing ? effectiveSandboxLevel : null,
+        sandboxNetworkFirewall: supportsSessionSandboxing
+          ? effectiveSandboxNetworkFirewall
+          : null,
         textLength: trimmedMessage.length,
         attachmentCount: stagedRefs.length,
         uploadWaitMs: Date.now() - actionAtMs,
@@ -3714,6 +3751,9 @@ export function NewSessionForm({
             hasUserCustomizedDefaultsRef.current = true;
             const enabled = event.currentTarget.checked;
             setSandboxLevel(enabled ? "project-write" : "none");
+            if (enabled) {
+              setSandboxNetworkFirewall(true);
+            }
             if (enabled && selectedRecapMode === "side-session") {
               setSelectedRecapMode("off");
             }
@@ -3721,6 +3761,24 @@ export function NewSessionForm({
           aria-label={t("newSessionSandboxLabel")}
         />
       </label>
+      <label className="settings-item">
+        <div className="settings-item-info">
+          <strong>{t("newSessionSandboxNetworkFirewallLabel")}</strong>
+        </div>
+        <input
+          type="checkbox"
+          checked={sandboxLevel === "project-write" && sandboxNetworkFirewall}
+          disabled={isStarting || sandboxLevel !== "project-write"}
+          onChange={(event) => {
+            hasUserCustomizedDefaultsRef.current = true;
+            setSandboxNetworkFirewall(event.currentTarget.checked);
+          }}
+          aria-label={t("newSessionSandboxNetworkFirewallLabel")}
+        />
+      </label>
+      <p className="session-default-section-description">
+        {t("newSessionSandboxNetworkFirewallDescription")}
+      </p>
       <p className="session-default-section-description">
         {t("newSessionSandboxDescription")}
       </p>

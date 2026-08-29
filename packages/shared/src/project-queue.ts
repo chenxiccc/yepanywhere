@@ -121,6 +121,7 @@ export type ProjectQueueTarget =
       serviceTier?: string;
       executor?: string;
       sandboxLevel?: SessionSandboxLevel;
+      sandboxNetworkFirewall?: boolean;
       title?: string;
       thinking?: ThinkingOption;
       showThinking?: ShowThinking;

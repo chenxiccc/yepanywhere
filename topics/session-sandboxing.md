@@ -9,10 +9,10 @@
 Topic: session-sandboxing
 
 Status: **Linux v1 mechanism implemented.** Local Claude-family and Codex
-sessions use trusted Bubblewrap. The shared host network leaves YA's localhost
-listener reachable, so availability and launch require enforced password or
-desktop authentication, with localhost-open and auth-disable both off.
-Persisted browser session material is non-bearer verifier data, provider
+sessions use trusted Bubblewrap plus a default-on, separately selectable
+public-egress network firewall. Availability and launch require enforced
+password or desktop authentication, with localhost-open and auth-disable both
+off. Persisted browser session material is non-bearer verifier data, provider
 environments exclude YA operator credentials, and authentication cannot be
 relaxed while a project-write sandbox is launching or active. Other providers,
 remote executors, and non-Linux hosts still fail an enabled launch before
@@ -22,6 +22,8 @@ See also:
 
 - [session-defaults](session-defaults.md) — the saved all-provider value that
   seeds New Session.
+- [session-sandbox-network-boundary](session-sandbox-network-boundary.md) —
+  public-only IPv4 egress and private host/control-plane isolation.
 - [permission-mode](permission-mode.md) — approval policy is independent from
   filesystem confinement.
 - [codex-permission-mode](codex-permission-mode.md) — Codex's own coupled
@@ -82,8 +84,10 @@ Toggle mapping:
 
 `project-write` means the agent may mutate the selected project tree but may
 not mutate filesystem objects outside it. It does not mean read-only, and it
-does not by itself disable network access, process signaling, or reads outside
-the project.
+does not by itself constrain reads outside the project. The separately settled
+network firewall is selected by default whenever `project-write` is selected;
+turning it off preserves the prior shared-network behavior and its captioned
+escape risk.
 
 The value is an all-provider session default:
 
@@ -91,6 +95,7 @@ The value is an all-provider session default:
 interface NewSessionDefaults {
   // Existing fields...
   sandboxLevel?: SessionSandboxLevel;
+  sandboxNetworkFirewall?: boolean;
 }
 ```
 
@@ -124,13 +129,15 @@ actionable error; it never falls back to `none`.
 
 ## Compatibility Boundary
 
-The setting, launch field, and effective-status fields use the permanent,
-dynamically advertised `session-sandboxing` server capability, introduced in
-0.7.1. A server advertises it only while its local host preflight reports an
-available backend and the local-auth prerequisite is enforced. Without it, a
-client hides the control, sends no sandbox field, and retains existing launch
-behavior. Existing clients omit the field and therefore resolve to `none` on a
-new server.
+The sandbox setting, launch field, and effective-status fields use the
+permanent, dynamically advertised `session-sandboxing` server capability,
+introduced in 0.7.1. The additive network selection uses the permanent,
+version-implied `session-sandbox-network-firewall` capability. A current client
+requires both plus the status capability and an available result before it
+shows either control. Without the complete set, it hides both controls, sends
+neither field, and retains existing launch behavior. Existing clients omit the
+network field; a new server defaults it on only when their requested sandbox
+level is `project-write`.
 
 The separate permanent `session-sandboxing-status` capability gates the
 structured `version.sessionSandboxing` preflight result. A client requires
@@ -141,10 +148,12 @@ Missing status support has the same no-field fallback as a missing sandbox
 capability.
 
 Preflight is advisory and cached briefly for routine version reads; it has no
-background polling loop. A fresh version request rechecks it. Every requested
-`project-write` launch repeats the authoritative checks with the final project
-and private-state bind policy. Capability or preflight staleness must therefore
-produce a closed launch failure, never an unlocked provider process.
+background polling loop. A fresh version request rechecks it. The probe covers
+Bubblewrap, `unshare`, `slirp4netns`, the route utility, and a real namespace
+setup. Every requested `project-write` launch repeats the authoritative checks
+with the final project, private-state, and network policy. Capability or
+preflight staleness must therefore produce a closed launch failure, never an
+unlocked provider process.
 
 The pre-implementation stable-release audit covered v0.7.0 and v0.6.2. Neither
 release has the YA `sandboxLevel` launch field or capability. The exact routes,
@@ -511,6 +520,7 @@ interface SessionSandboxEnforcement {
   state: "enforced" | "unsupported" | "setup-failed";
   hostBackend?: string;
   providerPolicy?: string;
+  networkFirewall?: boolean;
 }
 ```
 
@@ -518,13 +528,13 @@ interface SessionSandboxEnforcement {
 - YA host enforcement vs. provider-reported policy; and
 - local vs. remote execution host.
 
-The mount/namespace probe establishes the filesystem mechanism. Availability
-then applies the local-auth prerequisite, and every launch rechecks it. A
-launch reserves that prerequisite until the process is registered, and the
-authenticated auth routes return 409 rather than disabling auth or opening
-localhost access while a launch is pending or any such process is active. A
-requested confined session must never launch with only part of the claimed
-boundary.
+The namespace probe establishes the complete filesystem and default network
+mechanism. Availability then applies the local-auth prerequisite, and every
+launch rechecks it. A launch reserves that prerequisite until the process is
+registered, and the authenticated auth routes return 409 rather than disabling
+auth or opening localhost access while a launch is pending or any such process
+is active. A requested confined session must never launch with only part of
+the claimed boundary.
 
 The server persists the requested level, project-scoped state key, canonical
 project path, and effective backend status. It does not expose or persist the
@@ -541,6 +551,7 @@ session project against ordinary agent-controlled filesystem mutations. It
 trusts:
 
 - the host kernel and selected enforcement primitive;
+- the trusted `unshare`, `slirp4netns`, and route helpers;
 - YA's pre-exec launcher and policy construction;
 - the canonical project root supplied by the authenticated owner; and
 - any privileged helper that the selected backend requires.
@@ -550,11 +561,10 @@ It does not promise protection against:
 - kernel or sandbox-primitive vulnerabilities;
 - reads or secret disclosure outside the project;
 - network exfiltration or mutation through remote APIs;
-- signaling or debugging unrelated processes;
 - pre-existing writable file descriptors or privileged IPC unless the backend
   explicitly closes/blocks them;
-- Docker/container sockets, desktop automation, databases, or other indirect
-  mutation channels;
+- pathname Unix sockets outside the backend's private runtime/temp roots and
+  explicitly masked provider-control directory;
 - devices and kernel interfaces outside the ordinary filesystem policy;
 - a compromised YA server or authenticated owner; or
 - hard-linked files, nested mounts, and other aliasing cases until the chosen
@@ -583,7 +593,7 @@ Before a share may be described as **locked to this session**, it must also:
   or create files;
 - be revocable and auditable; and
 - state plainly that Project writes only still permits outside reads and
-  network access.
+  public remote network access.
 
 If the future guest threat model includes confidentiality or malicious
 prompting, it needs a stronger level that restricts reads, network, IPC, and
@@ -646,7 +656,10 @@ capability sets, and refusal to create an outside-file hard link through the
 writable project mount. A localhost integration case reads persisted session
 verifier material from inside the real Bubblewrap domain, verifies that YA
 operator credentials are absent from the provider environment, and proves the
-verifier receives 401 rather than operator authority.
+verifier receives 401 rather than operator authority. Network cases verify
+public IPv4 DNS and routing; deny private and IPv6 routes, loopback, the slirp
+host alias, and the host's concrete IPv4 address; isolate host abstract
+sockets; and mask an explicitly configured provider-host runtime directory.
 
 ## Linux Backend Evidence
 
@@ -659,11 +672,12 @@ remain below.
 
 ### Linux v1 decision
 
-Linux v1 requires trusted non-setuid Bubblewrap 0.4.0 or newer. Use it when the
-version check and runtime probe pass; otherwise fail an enabled launch before
-provider process creation with an actionable error. Absence of `bwrap` includes
-an installation command, while an old version or failed runtime probe names
-the relevant prerequisite.
+Linux v1 requires trusted non-setuid Bubblewrap 0.4.0 or newer plus trusted
+`unshare`, `slirp4netns`, and `ip` helpers. Use it when the version check and
+complete runtime probe pass; otherwise fail an enabled launch before provider
+process creation with an actionable error. Absence of `bwrap` includes an
+installation command, while an old version, missing helper, or failed runtime
+probe names the relevant prerequisite.
 
 Never substitute provider cooperation, plain chroot, PRoot, or an unlocked
 process merely because Bubblewrap is missing.
@@ -679,20 +693,21 @@ The implemented provider matrix is intentionally small:
   host; and
 - non-Linux hosts reject it until a backend satisfies the same contract.
 
-YA accepts only a root-owned Bubblewrap binary at a fixed system path that is
-not group- or world-writable. Host preflight checks the trusted path, version,
-and baseline namespace/mount policy before advertising availability. The
-launcher then probes the complete final mount shape with `/bin/true` before it
+YA accepts only root-owned helper binaries at fixed system paths that are not
+group- or world-writable. Host preflight checks the paths, Bubblewrap version,
+and real filesystem/network namespace policy before advertising availability.
+The launcher then probes the complete final shape with `/bin/true` before it
 starts the provider. The enabled process gets a read-only host root, writable
 canonical project and private state binds, private `/tmp` and `/var/tmp`, a
-private `/run`, new process/device views, a
+private `/run`, new process/device/network views, public-only IPv4 egress, a
 dropped capability set, a new terminal session, parent-death coupling, and
 sanitized broker environment variables. The argument set is exercised against
 Rocky 8's Bubblewrap 0.4.0. Each provider launch opens and identity-checks the
 project directory, mounts that descriptor rather than resolving the pathname
-again, and changes to the project only after the mount is installed. It also
-shares the host network, so the local-auth prerequisite and non-bearer persisted
-session verifiers are part of the mechanism's filesystem-integrity boundary.
+again, and changes to the project only after the mount is installed. Explicit
+network-firewall opt-out retains the same filesystem policy with shared host
+networking, so the local-auth prerequisite and non-bearer persisted session
+verifiers remain defense in depth for every project-write session.
 
 ## Backend Integration Gate
 

@@ -470,6 +470,7 @@ export function ModelSettings() {
       };
       if (!supportsSessionSandboxing) {
         delete nextDefaults.sandboxLevel;
+        delete nextDefaults.sandboxNetworkFirewall;
       }
       await updateSetting("newSessionDefaults", nextDefaults);
       showToast(t("newSessionDefaultsSaved"), "success");
@@ -759,12 +760,48 @@ export function ModelSettings() {
                   const enabled = event.currentTarget.checked;
                   void updateNewSessionDefaults({
                     sandboxLevel: enabled ? "project-write" : "none",
+                    sandboxNetworkFirewall: enabled ? true : undefined,
                     ...(enabled && savedRecapMode === "side-session"
                       ? { recapMode: "off" }
                       : {}),
                   });
                 }}
                 aria-label={t("modelSettingsSandboxDefaultTitle")}
+              />
+            </SettingsItem>
+          )}
+
+          {canConfigureSessionSandbox && (
+            <SettingsItem
+              id="session-default-sandbox-network-firewall"
+              as="label"
+              label={t("newSessionSandboxNetworkFirewallLabel")}
+              description={t("newSessionSandboxNetworkFirewallDescription")}
+              keywords={["sandbox", "network", "firewall", "localhost"]}
+              valueText={
+                savedDefaults?.sandboxLevel === "project-write" &&
+                savedDefaults.sandboxNetworkFirewall !== false
+                  ? t("newSessionSandboxNetworkFirewallLabel")
+                  : undefined
+              }
+              className="new-session-helper-section session-default-sandbox-section settings-item--session-default-block"
+            >
+              <input
+                type="checkbox"
+                checked={
+                  savedDefaults?.sandboxLevel === "project-write" &&
+                  savedDefaults.sandboxNetworkFirewall !== false
+                }
+                disabled={
+                  settingsLoading ||
+                  savedDefaults?.sandboxLevel !== "project-write"
+                }
+                onChange={(event) => {
+                  void updateNewSessionDefaults({
+                    sandboxNetworkFirewall: event.currentTarget.checked,
+                  });
+                }}
+                aria-label={t("newSessionSandboxNetworkFirewallLabel")}
               />
             </SettingsItem>
           )}

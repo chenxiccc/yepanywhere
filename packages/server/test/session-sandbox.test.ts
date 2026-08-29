@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { existsSync } from "node:fs";
+import { createServer as createNetServer } from "node:net";
 import {
   lstat,
   mkdtemp,
@@ -9,10 +11,11 @@ import {
   readdir,
   rename,
   rm,
+  stat,
   symlink,
   writeFile,
 } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { networkInterfaces, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionMetadataService } from "../src/metadata/SessionMetadataService.js";
@@ -36,6 +39,9 @@ import type { UrlProjectId } from "@yep-anywhere/shared";
 
 const hostSandboxAvailable =
   (await probeSessionSandboxAvailability()).state === "available";
+const trustedSystemFalseAvailable = await stat("/usr/bin/false")
+  .then((info) => info.isFile() && info.uid === 0 && (info.mode & 0o022) === 0)
+  .catch(() => false);
 
 function prepareSessionSandbox(
   options: Parameters<typeof prepareSessionSandboxWithoutAuth>[0],
@@ -79,6 +85,7 @@ async function runSandboxed(spawnOptions: SessionSandboxSpawn): Promise<void> {
 describe("session sandbox", () => {
   const roots: string[] = [];
   const linuxIt = process.platform === "linux" ? it : it.skip;
+  const trustedFalseIt = trustedSystemFalseAvailable ? linuxIt : it.skip;
   const t = hostSandboxAvailable ? it : it.skip;
 
   afterEach(async () => {
@@ -190,7 +197,7 @@ describe("session sandbox", () => {
     expect(supervisor.isAuthenticationRelaxationBlocked()).toBe(false);
   });
 
-  it("distinguishes missing, untrusted, and unusable Linux backends", async () => {
+  it("distinguishes missing and untrusted Linux backends", async () => {
     const root = await fixtureRoot();
     const missingPath = join(root, "missing-bwrap");
     const untrustedPath = join(root, "untrusted-bwrap");
@@ -216,6 +223,9 @@ describe("session sandbox", () => {
       platform: "linux",
       backend: "bubblewrap",
     });
+  });
+
+  trustedFalseIt("reports a trusted but unusable Linux backend", async () => {
     await expect(
       probeSessionSandboxAvailability({
         platform: "linux",
@@ -375,6 +385,7 @@ describe("session sandbox", () => {
 
         const runtime = await prepareSessionSandbox({
           level: "project-write",
+          networkFirewall: false,
           provider: "codex",
           projectPath,
           stateRoot: join(root, "state"),
@@ -420,7 +431,170 @@ describe("session sandbox", () => {
     },
   );
 
-  linuxIt(
+  t(
+    "blocks host-local networking while retaining public IPv4 routing",
+    async () => {
+      const root = await fixtureRoot();
+      const projectPath = join(root, "project");
+      await mkdir(projectPath);
+      const ipPath = [
+        "/usr/sbin/ip",
+        "/sbin/ip",
+        "/usr/bin/ip",
+        "/bin/ip",
+      ].find(existsSync);
+      if (!ipPath) throw new Error("sandbox probe found no route utility");
+
+      const hostAddress = Object.values(networkInterfaces())
+        .flatMap((addresses) => addresses ?? [])
+        .find(
+          (address) => address.family === "IPv4" && !address.internal,
+        )?.address;
+      const hostApp = new Hono();
+      hostApp.get("/", (c) => c.text("host service"));
+      let server!: ReturnType<typeof serve>;
+      const port = await new Promise<number>((resolvePort) => {
+        server = serve(
+          { fetch: hostApp.fetch, hostname: "0.0.0.0", port: 0 },
+          (info) => resolvePort(info.port),
+        );
+      });
+
+      try {
+        const runtime = await prepareSessionSandbox({
+          level: "project-write",
+          provider: "codex",
+          projectPath,
+          stateRoot: join(root, "state"),
+        });
+        if (!runtime) throw new Error("sandbox runtime was not prepared");
+        expect(runtime.enforcement.networkFirewall).toBe(true);
+
+        const script = `
+        const { spawnSync } = require("node:child_process");
+        const { readFileSync } = require("node:fs");
+        void (async () => {
+          const [ipPath, ...urls] = process.argv.slice(1);
+          if (!readFileSync("/etc/resolv.conf", "utf8").includes("nameserver 10.0.2.3")) {
+            throw new Error("sandbox DNS proxy is not configured");
+          }
+          if (spawnSync(ipPath, ["route", "get", "1.1.1.1"]).status !== 0) {
+            throw new Error("public IPv4 route is unavailable");
+          }
+          if (spawnSync(ipPath, ["route", "get", "10.1.1.1"]).status === 0) {
+            throw new Error("private IPv4 route is available");
+          }
+          if (spawnSync(ipPath, ["-6", "route", "get", "2606:4700:4700::1111"]).status === 0) {
+            throw new Error("IPv6 route is available");
+          }
+          for (const url of urls) {
+            try {
+              await fetch(url, { signal: AbortSignal.timeout(2000) });
+            } catch {
+              continue;
+            }
+            throw new Error("host-local service was reachable at " + url);
+          }
+        })();
+      `;
+        const hostUrls = [
+          `http://127.0.0.1:${port}/`,
+          `http://10.0.2.2:${port}/`,
+          ...(hostAddress ? [`http://${hostAddress}:${port}/`] : []),
+        ];
+        await runSandboxed(
+          runtime.wrapSpawn(
+            process.execPath,
+            ["-e", script, ipPath, ...hostUrls],
+            process.env,
+          ),
+        );
+      } finally {
+        await new Promise<void>((resolveClose, rejectClose) => {
+          server.close((error) => {
+            if (error) rejectClose(error);
+            else resolveClose();
+          });
+        });
+      }
+    },
+  );
+
+  t(
+    "isolates abstract host sockets and masks provider control state",
+    async () => {
+      const root = await fixtureRoot();
+      const projectPath = join(root, "project");
+      const providerRuntimeDir = await mkdtemp(
+        join(process.cwd(), ".ya-session-runtime-"),
+      );
+      roots.push(providerRuntimeDir);
+      await mkdir(projectPath);
+      await writeFile(join(providerRuntimeDir, "control-token"), "host-only\n");
+      vi.stubEnv("YEP_PROVIDER_RUNTIME_DIR", "");
+      vi.stubEnv("YEP_PROVIDER_HOST_RUNTIME_DIR", providerRuntimeDir);
+
+      const abstractName = `ya-sandbox-${process.pid}-${Date.now()}`;
+      const abstractServer = createNetServer();
+      await new Promise<void>((resolveListen, rejectListen) => {
+        abstractServer.once("error", rejectListen);
+        abstractServer.listen(`\0${abstractName}`, resolveListen);
+      });
+
+      try {
+        const runtime = await prepareSessionSandbox({
+          level: "project-write",
+          provider: "codex",
+          projectPath,
+          stateRoot: join(root, "state"),
+        });
+        if (!runtime) throw new Error("sandbox runtime was not prepared");
+        const script = `
+        const { createConnection } = require("node:net");
+        const { existsSync } = require("node:fs");
+        const [runtimeDir, abstractName] = process.argv.slice(1);
+        if (existsSync(runtimeDir + "/control-token")) {
+          throw new Error("provider runtime control state was visible");
+        }
+        for (const name of ["YEP_PROVIDER_RUNTIME_DIR", "YEP_PROVIDER_HOST_RUNTIME_DIR", "YEP_PROVIDER_RUNTIME_TOKEN"]) {
+          if (process.env[name] !== undefined) throw new Error(name + " leaked");
+        }
+        const socket = createConnection({ path: "\\0" + abstractName });
+        const timeout = setTimeout(() => socket.destroy(new Error("abstract socket probe timed out")), 2000);
+        socket.once("connect", () => {
+          clearTimeout(timeout);
+          socket.destroy(new Error("host abstract socket was reachable"));
+        });
+        socket.once("error", (error) => {
+          clearTimeout(timeout);
+          if (error.message === "host abstract socket was reachable") throw error;
+        });
+      `;
+        await runSandboxed(
+          runtime.wrapSpawn(
+            process.execPath,
+            ["-e", script, providerRuntimeDir, abstractName],
+            {
+              ...process.env,
+              YEP_PROVIDER_RUNTIME_TOKEN: "must-not-reach-provider",
+            },
+          ),
+        );
+        expect(
+          await readFile(join(providerRuntimeDir, "control-token"), "utf8"),
+        ).toBe("host-only\n");
+      } finally {
+        await new Promise<void>((resolveClose, rejectClose) => {
+          abstractServer.close((error) => {
+            if (error) rejectClose(error);
+            else resolveClose();
+          });
+        });
+      }
+    },
+  );
+
+  trustedFalseIt(
     "fails closed with install guidance when Bubblewrap is absent",
     async () => {
       const root = await fixtureRoot();

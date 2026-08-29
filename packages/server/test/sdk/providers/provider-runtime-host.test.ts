@@ -1783,4 +1783,67 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     await waitUntil(() => host.runtimes.size === 0);
     await host.shutdown("proxy test complete");
   });
+
+  it("replaces a retained runtime when its network boundary changes", async () => {
+    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-proxy-test-"));
+    temporaryPaths.push(runtimeRoot);
+    const controlSocketPath = join(runtimeRoot, "host.sock");
+    const host = new ProviderRuntimeHost({
+      runtimeDir: runtimeRoot,
+      controlSocketPath,
+      token: "sandbox-boundary-token",
+      workerPath: fixtureWorker,
+    });
+    await host.start();
+    process.env.YEP_PROVIDER_RUNTIME_SOCKET = controlSocketPath;
+    process.env.YEP_PROVIDER_RUNTIME_TOKEN = "sandbox-boundary-token";
+    process.env.YEP_SERVER_GENERATION = "sandbox-boundary-one";
+    expect(await initializeProviderRuntimeHost()).toBe(true);
+
+    const first = await startHostedProviderSession(
+      "claude",
+      {
+        cwd: runtimeRoot,
+        sessionSandboxOptions: {
+          level: "project-write",
+          networkFirewall: false,
+          provider: "claude",
+          projectPath: runtimeRoot,
+          authEnforced: true,
+        },
+      },
+      {},
+    );
+    await first.iterator.next();
+    await first.publishAgentctlSessionId?.("sandbox-boundary-session");
+    const firstRuntimeId = [...host.runtimes.keys()][0];
+    await first.detachForServerReload?.();
+
+    closeProviderRuntimeHostRegistration();
+    process.env.YEP_SERVER_GENERATION = "sandbox-boundary-two";
+    expect(await initializeProviderRuntimeHost()).toBe(true);
+    const second = await startHostedProviderSession(
+      "claude",
+      {
+        cwd: runtimeRoot,
+        resumeSessionId: "sandbox-boundary-session",
+        sessionSandboxOptions: {
+          level: "project-write",
+          networkFirewall: true,
+          provider: "claude",
+          projectPath: runtimeRoot,
+          authEnforced: true,
+        },
+      },
+      {},
+    );
+    await second.iterator.next();
+
+    expect(host.runtimes.size).toBe(1);
+    expect([...host.runtimes.keys()][0]).not.toBe(firstRuntimeId);
+
+    await second.abort();
+    await waitUntil(() => host.runtimes.size === 0);
+    await host.shutdown("sandbox boundary replacement test complete");
+  });
 });

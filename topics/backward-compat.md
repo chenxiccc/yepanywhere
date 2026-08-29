@@ -275,3 +275,12 @@ password hash, enabled state, and localhost-access setting but intentionally
 invalidates all browser sessions; users must log in again. This closes the
 readable-session-token path from a project-write sandbox without changing the
 password or desktop authentication contract.
+
+2026-08-29 project-write session network firewall — add the permanent,
+version-implied `session-sandbox-network-firewall` capability rather than
+expanding `session-sandboxing`. Current clients require all three sandbox
+signals before showing either control and send neither field to older servers.
+For older clients and legacy metadata, a missing firewall value defaults on
+only when `sandboxLevel` is `project-write`; explicit false stays authoritative,
+and true without project-write is rejected. Audited stable releases `v0.7.0`
+and `v0.6.2` lack the complete sandbox and firewall contracts.

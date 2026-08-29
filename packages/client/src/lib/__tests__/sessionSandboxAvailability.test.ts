@@ -1,6 +1,7 @@
 import {
   SESSION_SANDBOXING_CAPABILITY,
   SESSION_SANDBOXING_STATUS_CAPABILITY,
+  SESSION_SANDBOX_NETWORK_FIREWALL_CAPABILITY,
 } from "@yep-anywhere/shared";
 import { describe, expect, it } from "vitest";
 import { serverHasAvailableSessionSandbox } from "../sessionSandboxAvailability";
@@ -12,6 +13,7 @@ describe("serverHasAvailableSessionSandbox", () => {
         capabilities: [
           SESSION_SANDBOXING_CAPABILITY,
           SESSION_SANDBOXING_STATUS_CAPABILITY,
+          SESSION_SANDBOX_NETWORK_FIREWALL_CAPABILITY,
         ],
         sessionSandboxing: {
           state: "available",
@@ -39,6 +41,18 @@ describe("serverHasAvailableSessionSandbox", () => {
       capabilities: [
         SESSION_SANDBOXING_CAPABILITY,
         SESSION_SANDBOXING_STATUS_CAPABILITY,
+      ],
+      sessionSandboxing: {
+        state: "available" as const,
+        platform: "linux",
+        backend: "bubblewrap" as const,
+      },
+    },
+    {
+      capabilities: [
+        SESSION_SANDBOXING_CAPABILITY,
+        SESSION_SANDBOXING_STATUS_CAPABILITY,
+        SESSION_SANDBOX_NETWORK_FIREWALL_CAPABILITY,
       ],
       sessionSandboxing: {
         state: "probe-failed" as const,

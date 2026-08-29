@@ -1699,6 +1699,7 @@ describe("Settings Routes", () => {
             model: "legacy-codex",
             serviceTier: "legacy-priority",
             sandboxLevel: "project-write",
+            sandboxNetworkFirewall: false,
             providers: {
               claude: {
                 model: "opus",
@@ -1725,6 +1726,7 @@ describe("Settings Routes", () => {
           model: "legacy-codex",
           serviceTier: "legacy-priority",
           sandboxLevel: "project-write",
+          sandboxNetworkFirewall: false,
           providers: {
             claude: {
               model: "opus",
@@ -1755,6 +1757,29 @@ describe("Settings Routes", () => {
         body: JSON.stringify({
           newSessionDefaults: {
             sandboxLevel: "home-write",
+          },
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        error: "Invalid newSessionDefaults setting",
+      });
+      expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+    });
+
+    it("rejects a network firewall default without project sandboxing", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          newSessionDefaults: {
+            sandboxLevel: "none",
+            sandboxNetworkFirewall: true,
           },
         }),
       });

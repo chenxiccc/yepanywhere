@@ -283,6 +283,16 @@ local host currently has a usable enforcement backend. Clients require both
 and an `available` status before showing or sending the optional launch field;
 the launch path still rechecks and fails closed.
 
+`session-sandbox-network-firewall` permanently gates the additive network
+selection and enforcement status. Current clients require it together with the
+two sandbox capabilities before showing either sandbox control, and otherwise
+send neither launch field. It is version-implied from 0.7.2 because every
+official build from that release owns the setting, session/queue fields,
+derivative inheritance, and public-only egress boundary. Stable releases
+`v0.7.0` and `v0.6.2` lack the complete sandbox contract. An omitted firewall
+value on a project-write request defaults on at the new server; explicit false
+is preserved. No existing capability meaning changes.
+
 For session copying, `session-fork-turn-intents` advertises the additive
 `forkKind` / `sourceMessageId` contract on the existing project-session fork
 route. The client requires it together with provider `supportsForkSession`
@@ -422,9 +432,10 @@ the same ledger:
 | 49 | server | 0.7.2 | `cache-miss-billing-expected-expiry` |
 | 50 | server | 0.7.2 | `attachment-only-session-messages` |
 | 51 | server | 0.7.2 | `public-file-shares` |
+| 52 | server | 0.7.2 | `session-sandbox-network-firewall` |
 
 The code ledger is authoritative. The next client or server capability takes
-ID 52; retired rows stay in the ledger as reserved IDs.
+ID 53; retired rows stay in the ledger as reserved IDs.
 
 ## When To Add One
 

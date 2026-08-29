@@ -78,6 +78,7 @@ export interface HostedProviderReattachSpec {
       ? L
       : never
     : never;
+  sandboxNetworkFirewall?: boolean;
   sandboxStateKey?: string;
 }
 
@@ -452,6 +453,7 @@ function cloneableOptions(
 function reattachSpec(
   options: StartSessionOptions,
 ): HostedProviderReattachSpec {
+  const sandboxLevel = options.sessionSandboxOptions?.level;
   return {
     permissionMode: options.permissionMode,
     model: options.model,
@@ -460,7 +462,11 @@ function reattachSpec(
     effort: options.effort,
     clientName: options.clientName,
     executor: options.executor,
-    sandboxLevel: options.sessionSandboxOptions?.level,
+    sandboxLevel,
+    sandboxNetworkFirewall:
+      sandboxLevel === "project-write"
+        ? options.sessionSandboxOptions?.networkFirewall !== false
+        : undefined,
     sandboxStateKey: options.sessionSandboxOptions?.stateKey,
   };
 }
@@ -482,6 +488,18 @@ export async function startHostedProviderSession(
     throw new Error(
       `Retained runtime provider ${runtime.providerName} does not match ${providerName}`,
     );
+  }
+  const requestedReattach = reattachSpec(options);
+  if (
+    runtime &&
+    ((runtime.reattach.sandboxLevel ?? "none") !==
+      (requestedReattach.sandboxLevel ?? "none") ||
+      (requestedReattach.sandboxLevel === "project-write" &&
+        runtime.reattach.sandboxNetworkFirewall !==
+          requestedReattach.sandboxNetworkFirewall))
+  ) {
+    await requestHost("terminate", { runtimeId: runtime.runtimeId });
+    runtime = null;
   }
   if (!runtime) {
     runtime = await requestHost<HostedProviderRuntimeInfo>("launch", {

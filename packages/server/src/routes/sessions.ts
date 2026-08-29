@@ -350,6 +350,8 @@ interface StartSessionBody {
   executor?: string;
   /** Default-off YA host filesystem confinement settled at session creation. */
   sandboxLevel?: SessionSandboxLevel;
+  /** Public-only egress boundary for a project-write session. */
+  sandboxNetworkFirewall?: boolean;
   /** Permission rules for tool filtering (deny/allow patterns) */
   permissions?: PermissionRules;
   /** Session recap behavior for future away-return triggers. */
@@ -386,6 +388,8 @@ interface CreateSessionBody {
   executor?: string;
   /** Default-off YA host filesystem confinement settled at session creation. */
   sandboxLevel?: SessionSandboxLevel;
+  /** Public-only egress boundary for a project-write session. */
+  sandboxNetworkFirewall?: boolean;
   /** Permission rules for tool filtering (deny/allow patterns) */
   permissions?: PermissionRules;
   /** Session recap behavior for future away-return triggers. */
@@ -409,14 +413,82 @@ interface InputResponseBody {
 
 function parseSessionSandboxLevel(
   value: unknown,
-): { sandboxLevel: SessionSandboxLevel } | { error: string } {
-  if (value === undefined || value === null || value === "") {
-    return { sandboxLevel: "none" };
+  networkFirewall: unknown = undefined,
+  fallbackLevel: SessionSandboxLevel = "none",
+  fallbackNetworkFirewall: boolean | undefined = undefined,
+):
+  | {
+      sandboxLevel: SessionSandboxLevel;
+      sandboxNetworkFirewall: boolean;
+    }
+  | { error: string } {
+  const sandboxLevel =
+    value === undefined || value === null || value === ""
+      ? fallbackLevel
+      : value;
+  if (sandboxLevel !== "none" && sandboxLevel !== "project-write") {
+    return { error: 'sandboxLevel must be "none" or "project-write"' };
   }
-  if (value === "none" || value === "project-write") {
-    return { sandboxLevel: value };
+  if (
+    networkFirewall !== undefined &&
+    networkFirewall !== null &&
+    typeof networkFirewall !== "boolean"
+  ) {
+    return { error: "sandboxNetworkFirewall must be a boolean" };
   }
-  return { error: 'sandboxLevel must be "none" or "project-write"' };
+  if (sandboxLevel !== "project-write" && networkFirewall === true) {
+    return {
+      error: "sandboxNetworkFirewall requires sandboxLevel project-write",
+    };
+  }
+  const defaultNetworkFirewall =
+    sandboxLevel === fallbackLevel && fallbackNetworkFirewall !== undefined
+      ? fallbackNetworkFirewall
+      : true;
+  return {
+    sandboxLevel,
+    sandboxNetworkFirewall:
+      sandboxLevel === "project-write" &&
+      (networkFirewall === undefined || networkFirewall === null
+        ? defaultNetworkFirewall
+        : networkFirewall),
+  };
+}
+
+function persistedSandboxNetworkFirewall(
+  metadata:
+    | { sandboxLevel?: SessionSandboxLevel; sandboxNetworkFirewall?: boolean }
+    | null
+    | undefined,
+): boolean {
+  return (
+    metadata?.sandboxLevel === "project-write" &&
+    metadata.sandboxNetworkFirewall !== false
+  );
+}
+
+function inheritedSandboxSettings(
+  metadata:
+    | {
+        sandboxLevel?: SessionSandboxLevel;
+        sandboxNetworkFirewall?: boolean;
+        sandboxStateKey?: string;
+      }
+    | null
+    | undefined,
+):
+  | {
+      sandboxLevel: "project-write";
+      sandboxNetworkFirewall: boolean;
+      sandboxStateKey?: string;
+    }
+  | Record<string, never> {
+  if (metadata?.sandboxLevel !== "project-write") return {};
+  return {
+    sandboxLevel: "project-write",
+    sandboxNetworkFirewall: metadata.sandboxNetworkFirewall !== false,
+    sandboxStateKey: metadata.sandboxStateKey,
+  };
 }
 
 interface RestartSessionBody extends CreateSessionBody {
@@ -2157,6 +2229,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     workstreamId?: WorkstreamId,
     sandbox?: {
       level: SessionSandboxLevel;
+      networkFirewall?: boolean;
       stateKey?: string;
       projectPath: string;
       projectId: UrlProjectId;
@@ -3542,7 +3615,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (executorError) {
       return c.json({ error: executorError }, 400);
     }
-    const sandboxSelection = parseSessionSandboxLevel(body.sandboxLevel);
+    const sandboxSelection = parseSessionSandboxLevel(
+      body.sandboxLevel,
+      body.sandboxNetworkFirewall,
+    );
     if ("error" in sandboxSelection) {
       return c.json({ error: sandboxSelection.error }, 400);
     }
@@ -3604,6 +3680,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         providerName: body.provider,
         executor,
         sandboxLevel: sandboxSelection.sandboxLevel,
+        sandboxNetworkFirewall: sandboxSelection.sandboxNetworkFirewall,
         globalInstructions: getGlobalInstructions(),
         permissions: body.permissions,
         recapMode: helperSettings.recapMode,
@@ -3648,6 +3725,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       workstreamTarget.workstreamId,
       {
         level: sandboxSelection.sandboxLevel,
+        networkFirewall: sandboxSelection.sandboxNetworkFirewall,
         stateKey: result.sandboxStateKey,
         projectPath: result.sandboxProjectPath ?? result.projectPath,
         projectId: result.projectId,
@@ -3701,7 +3779,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (executorError) {
       return c.json({ error: executorError }, 400);
     }
-    const sandboxSelection = parseSessionSandboxLevel(body.sandboxLevel);
+    const sandboxSelection = parseSessionSandboxLevel(
+      body.sandboxLevel,
+      body.sandboxNetworkFirewall,
+    );
     if ("error" in sandboxSelection) {
       return c.json({ error: sandboxSelection.error }, 400);
     }
@@ -3743,6 +3824,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         providerName: body.provider,
         executor,
         sandboxLevel: sandboxSelection.sandboxLevel,
+        sandboxNetworkFirewall: sandboxSelection.sandboxNetworkFirewall,
         globalInstructions: getGlobalInstructions(),
         permissions: body.permissions,
         recapMode: helperSettings.recapMode,
@@ -3789,6 +3871,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       workstreamTarget.workstreamId,
       {
         level: sandboxSelection.sandboxLevel,
+        networkFirewall: sandboxSelection.sandboxNetworkFirewall,
         stateKey: result.sandboxStateKey,
         projectPath: result.sandboxProjectPath ?? result.projectPath,
         projectId: result.projectId,
@@ -3831,7 +3914,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (executorError) {
       return c.json({ error: executorError }, 400);
     }
-    const sandboxSelection = parseSessionSandboxLevel(body.sandboxLevel);
+    const sandboxSelection = parseSessionSandboxLevel(
+      body.sandboxLevel,
+      body.sandboxNetworkFirewall,
+    );
     if ("error" in sandboxSelection) {
       return c.json({ error: sandboxSelection.error }, 400);
     }
@@ -3877,6 +3963,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         providerName: body.provider,
         executor,
         sandboxLevel: sandboxSelection.sandboxLevel,
+        sandboxNetworkFirewall: sandboxSelection.sandboxNetworkFirewall,
         globalInstructions: getGlobalInstructions(),
         permissions: body.permissions,
         recapMode: helperSettings.recapMode,
@@ -3908,6 +3995,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       undefined,
       {
         level: sandboxSelection.sandboxLevel,
+        networkFirewall: sandboxSelection.sandboxNetworkFirewall,
         stateKey: result.sandboxStateKey,
         projectPath: result.sandboxProjectPath ?? result.projectPath,
         projectId: result.projectId,
@@ -3947,7 +4035,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (executorError) {
       return c.json({ error: executorError }, 400);
     }
-    const sandboxSelection = parseSessionSandboxLevel(body.sandboxLevel);
+    const sandboxSelection = parseSessionSandboxLevel(
+      body.sandboxLevel,
+      body.sandboxNetworkFirewall,
+    );
     if ("error" in sandboxSelection) {
       return c.json({ error: sandboxSelection.error }, 400);
     }
@@ -3978,6 +4069,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       providerName: body.provider,
       executor,
       sandboxLevel: sandboxSelection.sandboxLevel,
+      sandboxNetworkFirewall: sandboxSelection.sandboxNetworkFirewall,
       globalInstructions: getGlobalInstructions(),
       permissions: body.permissions,
       recapMode: helperSettings.recapMode,
@@ -4008,6 +4100,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       undefined,
       {
         level: sandboxSelection.sandboxLevel,
+        networkFirewall: sandboxSelection.sandboxNetworkFirewall,
         stateKey: result.sandboxStateKey,
         projectPath: result.sandboxProjectPath ?? result.projectPath,
         projectId: result.projectId,
@@ -4074,20 +4167,35 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const persistedMetadata =
       deps.sessionMetadataService?.getMetadata?.(sessionId);
     const settledSandboxLevel = persistedMetadata?.sandboxLevel ?? "none";
+    const settledSandboxNetworkFirewall =
+      settledSandboxLevel === "project-write" &&
+      persistedMetadata?.sandboxNetworkFirewall !== false;
     const resumeProjectPath =
       settledSandboxLevel === "project-write"
         ? (persistedMetadata?.sandboxProjectPath ?? project.path)
         : project.path;
-    if (body.sandboxLevel !== undefined) {
-      const requestedSandbox = parseSessionSandboxLevel(body.sandboxLevel);
+    if (
+      body.sandboxLevel !== undefined ||
+      body.sandboxNetworkFirewall !== undefined
+    ) {
+      const requestedSandbox = parseSessionSandboxLevel(
+        body.sandboxLevel,
+        body.sandboxNetworkFirewall,
+        settledSandboxLevel,
+        settledSandboxNetworkFirewall,
+      );
       if ("error" in requestedSandbox) {
         return c.json({ error: requestedSandbox.error }, 400);
       }
-      if (requestedSandbox.sandboxLevel !== settledSandboxLevel) {
+      if (
+        requestedSandbox.sandboxLevel !== settledSandboxLevel ||
+        requestedSandbox.sandboxNetworkFirewall !==
+          settledSandboxNetworkFirewall
+      ) {
         return c.json(
           {
             error:
-              "sandboxLevel is settled when the session is created and cannot change on resume",
+              "The session sandbox boundary is settled at creation and cannot change on resume",
           },
           409,
         );
@@ -4278,6 +4386,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           providerName,
           executor,
           sandboxLevel: settledSandboxLevel,
+          sandboxNetworkFirewall: settledSandboxNetworkFirewall,
           sandboxStateKey: persistedMetadata?.sandboxStateKey,
           globalInstructions,
           permissions: body.permissions,
@@ -4419,11 +4528,6 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       if (helperSettings.error) {
         return c.json({ error: helperSettings.error }, 400);
       }
-      const parsedSandbox = parseSessionSandboxLevel(body.sandboxLevel);
-      if ("error" in parsedSandbox) {
-        return c.json({ error: parsedSandbox.error }, 400);
-      }
-
       const project = await deps.scanner.getOrCreateProject(projectId);
       if (!project) {
         return c.json(
@@ -4433,12 +4537,23 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       }
 
       const metadata = deps.sessionMetadataService?.getMetadata?.(sessionId);
+      const parsedSandbox = parseSessionSandboxLevel(
+        body.sandboxLevel,
+        body.sandboxNetworkFirewall,
+        metadata?.sandboxLevel ?? "none",
+        persistedSandboxNetworkFirewall(metadata),
+      );
+      if ("error" in parsedSandbox) {
+        return c.json({ error: parsedSandbox.error }, 400);
+      }
       const hasProvider = Object.hasOwn(body, "provider");
       const hasExecutor = Object.hasOwn(body, "executor");
       const hasModel = Object.hasOwn(body, "model");
       const hasServiceTier = Object.hasOwn(body, "serviceTier");
       const hasThinking = Object.hasOwn(body, "thinking");
-      const hasSandbox = Object.hasOwn(body, "sandboxLevel");
+      const hasSandbox =
+        Object.hasOwn(body, "sandboxLevel") ||
+        Object.hasOwn(body, "sandboxNetworkFirewall");
       const hasPermissions = Object.hasOwn(body, "permissions");
       const hasRecapMode = Object.hasOwn(body, "recapMode");
       const hasRecapAfterSeconds = Object.hasOwn(body, "recapAfterSeconds");
@@ -4467,6 +4582,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       const sandboxLevel = hasSandbox
         ? parsedSandbox.sandboxLevel
         : metadata?.sandboxLevel;
+      const sandboxNetworkFirewall = hasSandbox
+        ? parsedSandbox.sandboxNetworkFirewall
+        : metadata?.sandboxLevel === "project-write" &&
+          metadata.sandboxNetworkFirewall !== false;
       const recapMode = hasRecapMode
         ? helperSettings.recapMode
         : metadata?.recapMode;
@@ -4494,8 +4613,13 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         ...(hasPermissions
           ? { permissions: body.permissions ?? undefined }
           : {}),
-        sandboxLevel,
-        sandboxStateKey: metadata?.sandboxStateKey,
+        ...(hasSandbox || sandboxLevel === "project-write"
+          ? {
+              sandboxLevel,
+              sandboxNetworkFirewall,
+              sandboxStateKey: metadata?.sandboxStateKey,
+            }
+          : {}),
         globalInstructions: getGlobalInstructions(),
         recapAfterSeconds,
         recapMode,
@@ -4521,6 +4645,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         ...(hasSandbox
           ? {
               sandboxLevel: parsedSandbox.sandboxLevel,
+              sandboxNetworkFirewall: parsedSandbox.sandboxNetworkFirewall,
               sandboxStateKey: metadata?.sandboxStateKey,
             }
           : {}),
@@ -4678,8 +4803,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           model,
           providerName,
           executor: metadata?.executor,
-          sandboxLevel: metadata?.sandboxLevel,
-          sandboxStateKey: metadata?.sandboxStateKey,
+          ...inheritedSandboxSettings(metadata),
           globalInstructions: getGlobalInstructions(),
           recapAfterSeconds: metadata?.recapAfterSeconds,
           recapMode: "fork",
@@ -4873,14 +4997,22 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     }
     const originalMetadata =
       deps.sessionMetadataService?.getMetadata?.(sessionId);
-    const requestedRestartSandbox =
-      body.sandboxLevel === undefined
-        ? { sandboxLevel: originalMetadata?.sandboxLevel ?? ("none" as const) }
-        : parseSessionSandboxLevel(body.sandboxLevel);
+    const originalSandboxLevel = originalMetadata?.sandboxLevel ?? "none";
+    const originalSandboxNetworkFirewall =
+      originalSandboxLevel === "project-write" &&
+      originalMetadata?.sandboxNetworkFirewall !== false;
+    const requestedRestartSandbox = parseSessionSandboxLevel(
+      body.sandboxLevel,
+      body.sandboxNetworkFirewall,
+      originalSandboxLevel,
+      originalSandboxNetworkFirewall,
+    );
     if ("error" in requestedRestartSandbox) {
       return c.json({ error: requestedRestartSandbox.error }, 400);
     }
     const restartSandboxLevel = requestedRestartSandbox.sandboxLevel;
+    const restartSandboxNetworkFirewall =
+      requestedRestartSandbox.sandboxNetworkFirewall;
     const sandboxSettingsError = getSessionSandboxSettingsError(
       restartSandboxLevel,
       helperSettings.recapMode ?? originalMetadata?.recapMode,
@@ -4901,11 +5033,14 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     }
 
     const restartMode = body.restartMode ?? "handoff";
-    if (restartSandboxLevel !== (originalMetadata?.sandboxLevel ?? "none")) {
+    if (
+      restartSandboxLevel !== originalSandboxLevel ||
+      restartSandboxNetworkFirewall !== originalSandboxNetworkFirewall
+    ) {
       return c.json(
         {
           error:
-            "A restarted session inherits the source sandbox level and cannot change it",
+            "A restarted session inherits the source sandbox boundary and cannot change it",
         },
         409,
       );
@@ -5026,6 +5161,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           upToMessageId: body.forkUpToMessageId,
           title: forkTitle,
           sandboxLevel: restartSandboxLevel,
+          sandboxNetworkFirewall: restartSandboxNetworkFirewall,
           sandboxStateKey: originalMetadata?.sandboxStateKey,
         });
       } catch (error) {
@@ -5065,6 +5201,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           providerName: sourceProvider,
           executor,
           sandboxLevel: restartSandboxLevel,
+          sandboxNetworkFirewall: restartSandboxNetworkFirewall,
           sandboxStateKey:
             fork.sandboxStateKey ?? originalMetadata?.sandboxStateKey,
           globalInstructions: getGlobalInstructions(),
@@ -5119,6 +5256,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         originalMetadata?.workstreamId,
         {
           level: restartSandboxLevel,
+          networkFirewall: restartSandboxNetworkFirewall,
           stateKey:
             result.sandboxStateKey ??
             fork.sandboxStateKey ??
@@ -5201,6 +5339,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         clientName: "yep-anywhere",
         executor,
         sandboxLevel: restartSandboxLevel,
+        sandboxNetworkFirewall: restartSandboxNetworkFirewall,
         globalInstructions: getGlobalInstructions(),
         permissions: body.permissions,
         recapMode: helperSettings.recapMode,
@@ -5256,6 +5395,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       undefined,
       {
         level: restartSandboxLevel,
+        networkFirewall: restartSandboxNetworkFirewall,
         stateKey: result.sandboxStateKey,
         projectPath: result.sandboxProjectPath ?? result.projectPath,
         projectId: result.projectId,
@@ -5479,8 +5619,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         upToMessageId,
         boundary: providerBoundary,
         title: forkTitle,
-        sandboxLevel: originalMetadata?.sandboxLevel,
-        sandboxStateKey: originalMetadata?.sandboxStateKey,
+        ...inheritedSandboxSettings(originalMetadata),
       });
     } catch (error) {
       getLogger().warn(
@@ -5549,6 +5688,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       originalMetadata?.workstreamId,
       {
         level: originalMetadata?.sandboxLevel ?? "none",
+        networkFirewall: persistedSandboxNetworkFirewall(originalMetadata),
         stateKey: fork.sandboxStateKey ?? originalMetadata?.sandboxStateKey,
         projectPath: forkProjectPath,
         projectId:
@@ -5706,8 +5846,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
                 : undefined,
             providerName,
             executor: savedExecutor,
-            sandboxLevel: sourceMetadata?.sandboxLevel,
-            sandboxStateKey: sourceMetadata?.sandboxStateKey,
+            ...inheritedSandboxSettings(sourceMetadata),
             globalInstructions: getGlobalInstructions(),
             promptSuggestionMode,
             recapAfterSeconds,
@@ -5726,8 +5865,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         projectPath: sourceProjectPath,
         providerName,
         title: "Retitle generator",
-        sandboxLevel: sourceMetadata?.sandboxLevel,
-        sandboxStateKey: sourceMetadata?.sandboxStateKey,
+        ...inheritedSandboxSettings(sourceMetadata),
       });
       generatorSessionId = generator.sessionId;
       await updateForkSummaryChildMetadata(
@@ -5747,6 +5885,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         sourceMetadata?.workstreamId,
         {
           level: sourceMetadata?.sandboxLevel ?? "none",
+          networkFirewall: persistedSandboxNetworkFirewall(sourceMetadata),
           stateKey:
             generator.sandboxStateKey ?? sourceMetadata?.sandboxStateKey,
           projectPath: sourceProjectPath,
@@ -5962,8 +6101,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             projectPath: sourceProjectPath,
             providerName,
             title: "Fork summary generator",
-            sandboxLevel: originalMetadata?.sandboxLevel,
-            sandboxStateKey: originalMetadata?.sandboxStateKey,
+            ...inheritedSandboxSettings(originalMetadata),
           });
           generatorSessionId = generator.sessionId;
           await updateForkSummaryChildMetadata(
@@ -5983,6 +6121,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             originalMetadata?.workstreamId,
             {
               level: originalMetadata?.sandboxLevel ?? "none",
+              networkFirewall:
+                persistedSandboxNetworkFirewall(originalMetadata),
               stateKey:
                 generator.sandboxStateKey ?? originalMetadata?.sandboxStateKey,
               projectPath: sourceProjectPath,
@@ -6024,8 +6164,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
               ? { boundary: boundary.providerBoundary }
               : { upToMessageId: boundary.retainedThroughMessageId }),
             title,
-            sandboxLevel: originalMetadata?.sandboxLevel,
-            sandboxStateKey: originalMetadata?.sandboxStateKey,
+            ...inheritedSandboxSettings(originalMetadata),
           });
           targetSessionId = target.sessionId;
           await updateForkSummaryChildMetadata(
@@ -6045,6 +6184,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             originalMetadata?.workstreamId,
             {
               level: originalMetadata?.sandboxLevel ?? "none",
+              networkFirewall:
+                persistedSandboxNetworkFirewall(originalMetadata),
               stateKey:
                 target.sandboxStateKey ?? originalMetadata?.sandboxStateKey,
               projectPath: sourceProjectPath,
@@ -6065,9 +6206,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             {
               providerName,
               executor: savedExecutor,
-              sandboxLevel: originalMetadata?.sandboxLevel,
-              sandboxStateKey:
-                target.sandboxStateKey ?? originalMetadata?.sandboxStateKey,
+              ...inheritedSandboxSettings({
+                ...originalMetadata,
+                sandboxStateKey:
+                  target.sandboxStateKey ?? originalMetadata?.sandboxStateKey,
+              }),
               globalInstructions: getGlobalInstructions(),
               model: requestedModel,
               promptSuggestionMode: originalMetadata?.promptSuggestionMode,
@@ -6104,6 +6247,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             originalMetadata?.workstreamId,
             {
               level: originalMetadata?.sandboxLevel ?? "none",
+              networkFirewall:
+                persistedSandboxNetworkFirewall(originalMetadata),
               stateKey:
                 result.sandboxStateKey ??
                 target.sandboxStateKey ??

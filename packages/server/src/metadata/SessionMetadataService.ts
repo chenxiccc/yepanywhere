@@ -111,6 +111,8 @@ export interface SessionMetadata {
   automationPausedUntilUserTurn?: boolean;
   /** Settled YA host filesystem confinement for every launch of this session. */
   sandboxLevel?: SessionSandboxLevel;
+  /** Public-only egress selection; absent means on for project-write. */
+  sandboxNetworkFirewall?: boolean;
   /** Opaque key for the canonical project's private provider runtime state. */
   sandboxStateKey?: string;
   /** Effective host project path used to locate private provider transcripts. */
@@ -652,6 +654,7 @@ export class SessionMetadataService {
     sessionId: string,
     sandbox: {
       level: SessionSandboxLevel;
+      networkFirewall?: boolean;
       stateKey?: string;
       projectPath: string;
       projectId: UrlProjectId;
@@ -662,6 +665,10 @@ export class SessionMetadataService {
       ...metadata,
       ...(sandbox.provider ? { provider: sandbox.provider } : {}),
       sandboxLevel: sandbox.level,
+      sandboxNetworkFirewall:
+        sandbox.level === "project-write"
+          ? sandbox.networkFirewall !== false
+          : undefined,
       sandboxStateKey: sandbox.stateKey,
       sandboxProjectPath: sandbox.projectPath,
       workingProjectId: sandbox.projectId,
@@ -982,6 +989,9 @@ export class SessionMetadataService {
     }
     if (updated.sandboxLevel) {
       cleaned.sandboxLevel = updated.sandboxLevel;
+    }
+    if (updated.sandboxNetworkFirewall !== undefined) {
+      cleaned.sandboxNetworkFirewall = updated.sandboxNetworkFirewall;
     }
     if (updated.sandboxStateKey) {
       cleaned.sandboxStateKey = updated.sandboxStateKey;

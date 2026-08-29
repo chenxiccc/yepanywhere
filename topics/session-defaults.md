@@ -35,7 +35,12 @@ currently selected provider lacks the feature.
   toggle. The saved value is provider-independent and each New Session may
   override it before process creation. The control is rendered and sent only
   when the server reports a currently available host backend; see
-  [session-sandboxing](session-sandboxing.md).
+  [session-sandboxing](session-sandboxing.md). Selecting it also selects the
+  subordinate **Network firewall** default, which preserves public IPv4 egress
+  while blocking the YA host and local networks. Explicit firewall opt-out is
+  retained; an absent firewall value defaults on only inside a project-write
+  sandbox. See
+  [session-sandbox-network-boundary](session-sandbox-network-boundary.md).
 - **Recaps** — recap mode and away threshold belong together. They are standing
   session-helper choices, not properties of whichever provider button happens
   to be selected. In New Session's linear control stack, they follow the core

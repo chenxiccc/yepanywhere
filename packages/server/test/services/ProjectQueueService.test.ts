@@ -88,6 +88,55 @@ describe("ProjectQueueService", () => {
     });
   });
 
+  it("preserves a project sandbox network-firewall opt-out", async () => {
+    const service = await createService();
+    const created = await service.createItem({
+      projectId,
+      projectPath: "/tmp/project-queue",
+      request: {
+        target: {
+          type: "new-session",
+          sandboxLevel: "project-write",
+          sandboxNetworkFirewall: false,
+        },
+        message: { text: "start with direct host networking" },
+      },
+    });
+
+    expect(created.target).toMatchObject({
+      type: "new-session",
+      sandboxLevel: "project-write",
+      sandboxNetworkFirewall: false,
+    });
+    const reloaded = await createService();
+    expect(reloaded.listProject(projectId).items[0]?.target).toMatchObject({
+      type: "new-session",
+      sandboxLevel: "project-write",
+      sandboxNetworkFirewall: false,
+    });
+  });
+
+  it("rejects a network firewall without project sandboxing", async () => {
+    const service = await createService();
+
+    await expect(
+      service.createItem({
+        projectId,
+        projectPath: "/tmp/project-queue",
+        request: {
+          target: {
+            type: "new-session",
+            sandboxLevel: "none",
+            sandboxNetworkFirewall: true,
+          },
+          message: { text: "invalid boundary" },
+        },
+      }),
+    ).rejects.toThrow(
+      "target.sandboxNetworkFirewall requires project-write sandboxing",
+    );
+  });
+
   it("persists manual dispatch pause across service re-instantiation", async () => {
     const service = await createService();
     await service.createItem({

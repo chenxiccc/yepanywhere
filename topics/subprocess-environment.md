@@ -88,8 +88,11 @@ individual YA variables remain in [ya-env-vars.md](ya-env-vars.md).
   restore it. For subprocess tests, construct a dedicated child environment
   and scrub conflicting inherited names before applying the values under test.
 - `HOME` belongs to the safe-home test launcher, and deliberate harness gates
-  such as real-SDK opt-ins remain under their owning test scripts. Do not add
-  either category to the general config scrub list.
+  such as real-SDK opt-ins remain under their owning test scripts. The ordinary
+  server unit-test command gives the complete Vitest process a launcher-owned
+  disposable `HOME` and `USERPROFILE`, then removes that exact directory.
+  Real-SDK integration commands retain the operator home behind their explicit
+  opt-in gates. Do not add either category to the general config scrub list.
 - Hermeticity includes descriptors and working directory when behavior depends
   on them; a clean environment object alone is not sufficient.
 

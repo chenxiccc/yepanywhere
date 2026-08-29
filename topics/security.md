@@ -56,25 +56,32 @@ read-only in Settings; it still does not create an agent sandbox. See
 The separate **Sandbox session / Project writes only** launch option is the
 intended host-enforced boundary. On supported local Linux Claude-family and
 Codex sessions, Bubblewrap prevents direct persistent writes outside the
-canonical project and YA-owned private state. It is default-off, permits reads
-outside the project and network access, and does not claim general hostile-code
-or confidentiality isolation. Unsupported providers, non-Linux hosts, and SSH
+canonical project and YA-owned private state. It is default-off and permits
+reads outside the project. Its subordinate, default-selected **Network
+firewall** preserves public IPv4 egress while denying host-local and private
+destinations; explicit opt-out restores shared host networking. Neither mode
+claims general hostile-code, confidentiality, credential-isolation, or
+exfiltration protection. Unsupported providers, non-Linux hosts, and SSH
 executors cannot use it.
 
-The Linux backend shares the host network, so a confined agent can reach YA's
-localhost listener. YA therefore advertises and launches **Project writes
-only** only while local operator authentication is enforced: password or
-desktop authentication must be present, `--auth-disable` must be off, and
-localhost-open access must be off. While such a sandbox is launching or active,
-the auth routes reject disabling authentication or opening localhost access.
+YA advertises and launches **Project writes only** only while local operator
+authentication is enforced: password or desktop authentication must be
+present, `--auth-disable` must be off, and localhost-open access must be off.
+This remains required because a user may explicitly disable the network
+firewall and because authentication is independent defense in depth. While a
+project-write sandbox is launching or active, the auth routes reject disabling
+authentication or opening localhost access.
 
 Browser bearer tokens never appear in `auth.json`; it stores domain-separated
 SHA-256 verifiers of the random tokens instead. Provider environments omit the
 auth-cookie secret, desktop token, and provider-runtime control credentials.
-A sandbox may read password hashes and session verifiers and may connect to the
-listener, but that material does not authorize an operator request. Network
-confidentiality and isolation remain outside this filesystem-integrity level.
-See [`session-sandboxing.md`](session-sandboxing.md).
+A sandbox may read password hashes and session verifiers, but that material
+does not authorize an operator request. With the firewall enabled it also
+cannot reach the listener, local-network services, provider control sockets,
+or host abstract sockets. Public remote services remain reachable, so network
+confidentiality, credential isolation, and exfiltration resistance remain
+outside this boundary. See [`session-sandboxing.md`](session-sandboxing.md) and
+[`session-sandbox-network-boundary.md`](session-sandbox-network-boundary.md).
 
 Agent-authored active documents are therefore significant defense-in-depth
 hardening—important, but not a new general trust boundary—specifically for a

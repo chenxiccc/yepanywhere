@@ -1167,6 +1167,7 @@ export class Supervisor {
     const tempSessionId = resumeSessionId ?? randomUUID();
     const sessionSandbox = await prepareSessionSandbox({
       level: modelSettings?.sandboxLevel,
+      networkFirewall: modelSettings?.sandboxNetworkFirewall,
       provider: "claude",
       projectPath,
       executor: modelSettings?.executor,
@@ -1806,6 +1807,7 @@ export class Supervisor {
     );
     const sessionSandbox = await prepareSessionSandbox({
       level: modelSettings?.sandboxLevel,
+      networkFirewall: modelSettings?.sandboxNetworkFirewall,
       provider: "claude",
       projectPath,
       executor: modelSettings?.executor,
@@ -2017,6 +2019,7 @@ export class Supervisor {
     const tempSessionId = resumeSessionId ?? randomUUID();
     const sessionSandbox = await prepareSessionSandbox({
       level: modelSettings?.sandboxLevel,
+      networkFirewall: modelSettings?.sandboxNetworkFirewall,
       provider: activeProvider.name,
       projectPath,
       executor: modelSettings?.executor,
@@ -2027,6 +2030,7 @@ export class Supervisor {
     });
     const sessionSandboxOptions = {
       level: modelSettings?.sandboxLevel,
+      networkFirewall: modelSettings?.sandboxNetworkFirewall,
       provider: activeProvider.name,
       projectPath,
       executor: modelSettings?.executor,
@@ -2262,6 +2266,7 @@ export class Supervisor {
     const tempSessionId = resumeSessionId ?? randomUUID();
     const sessionSandbox = await prepareSessionSandbox({
       level: modelSettings?.sandboxLevel,
+      networkFirewall: modelSettings?.sandboxNetworkFirewall,
       provider: activeProvider.name,
       projectPath,
       executor: modelSettings?.executor,
@@ -2272,6 +2277,7 @@ export class Supervisor {
     });
     const sessionSandboxOptions = {
       level: modelSettings?.sandboxLevel,
+      networkFirewall: modelSettings?.sandboxNetworkFirewall,
       provider: activeProvider.name,
       projectPath,
       executor: modelSettings?.executor,
@@ -2810,6 +2816,7 @@ export class Supervisor {
     boundary?: ProviderForkBoundary;
     title?: string;
     sandboxLevel?: SessionSandboxLevel;
+    sandboxNetworkFirewall?: boolean;
     sandboxStateKey?: string;
   }): Promise<{
     sessionId: string;
@@ -2832,6 +2839,7 @@ export class Supervisor {
       boundary?: ProviderForkBoundary;
       title?: string;
       sandboxLevel?: SessionSandboxLevel;
+      sandboxNetworkFirewall?: boolean;
       sandboxStateKey?: string;
     },
     authEnforced: boolean,
@@ -2851,6 +2859,7 @@ export class Supervisor {
     }
     const sessionSandbox = await prepareSessionSandbox({
       level: options.sandboxLevel,
+      networkFirewall: options.sandboxNetworkFirewall,
       provider: provider.name,
       projectPath: options.projectPath,
       stateKey: options.sandboxStateKey,
@@ -5101,7 +5110,15 @@ export class Supervisor {
       requested === "project-write" &&
       modelSettings?.sandboxStateKey !== undefined &&
       modelSettings.sandboxStateKey !== process.sandboxStateKey;
-    if (requested !== effective || stateKeyChanged) {
+    const requestedNetworkFirewall =
+      requested === "project-write" &&
+      modelSettings?.sandboxNetworkFirewall !== false;
+    const effectiveNetworkFirewall =
+      effective === "project-write" &&
+      process.sandboxEnforcement?.networkFirewall !== false;
+    const networkFirewallChanged =
+      requestedNetworkFirewall !== effectiveNetworkFirewall;
+    if (requested !== effective || stateKeyChanged || networkFirewallChanged) {
       throw new Error(
         "The live process does not match this session's settled sandbox configuration.",
       );

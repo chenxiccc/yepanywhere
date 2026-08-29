@@ -905,6 +905,12 @@ export class ProjectQueueScheduler {
       ...(target.type === "new-session" && target.sandboxLevel
         ? { sandboxLevel: target.sandboxLevel }
         : {}),
+      ...(target.type === "new-session" &&
+      target.sandboxLevel === "project-write"
+        ? {
+            sandboxNetworkFirewall: target.sandboxNetworkFirewall !== false,
+          }
+        : {}),
       ...(globalInstructions ? { globalInstructions } : {}),
     };
   }
