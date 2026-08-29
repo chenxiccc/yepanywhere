@@ -536,6 +536,7 @@ async function measureSidebarSwitches(
   cdp,
   trace,
   expectedAssistantTurnIndex,
+  expectedCatchUpAssistantTurnIndex = expectedAssistantTurnIndex,
 ) {
   const initialLinks = await ensureSidebarSessionLinks(page);
   const sessionPaths = [
@@ -576,6 +577,7 @@ async function measureSidebarSwitches(
     if (!sessionId)
       throw new Error(`sidebar target omitted session: ${targetPath}`);
     const marker = `[${sessionId}:assistant:${expectedAssistantTurnIndex}]`;
+    const catchUpMarker = `[${sessionId}:assistant:${expectedCatchUpAssistantTurnIndex}]`;
     await resetInteractionProbe(page);
     const { finishedAtMs, markIndex, readableAtMs, startedAtMs } = await links
       .nth(targetIndex)
@@ -869,6 +871,19 @@ async function measureSidebarSwitches(
       }, sessionId);
       settledActiveSessionConsumerIds = [sessionId];
     }
+    let catchUpNextPaintMs = null;
+    if (expectedCatchUpAssistantTurnIndex !== expectedAssistantTurnIndex) {
+      await page.waitForFunction(
+        (expectedMarker) =>
+          document
+            .querySelector('[data-session-dom-linger="active"]')
+            ?.textContent?.includes(expectedMarker) === true,
+        catchUpMarker,
+      );
+      await twoAnimationFrames(page);
+      const catchUpFinishedAtMs = await page.evaluate(() => performance.now());
+      catchUpNextPaintMs = round(catchUpFinishedAtMs - startedAtMs);
+    }
     await recordSemanticMeasurement(
       page,
       "performance-sprint.sidebar-switch-next-paint",
@@ -877,6 +892,7 @@ async function measureSidebarSwitches(
     switches.push({
       cache: (await clientTelemetry(page)).transcriptMemory,
       ...diagnostics,
+      catchUpNextPaintMs,
       settledActiveSessionConsumerCount:
         settledActiveSessionConsumerIds?.length ?? null,
       settledActiveSessionConsumerIds,
@@ -900,7 +916,8 @@ async function measureBrowserInteractionTrace(
   page,
   scenario,
   trace,
-  expectedAssistantTurnIndex = scenario.initialTurns + scenario.newTurns - 1,
+  expectedAssistantTurnIndex = scenario.initialTurns - 1,
+  expectedCatchUpAssistantTurnIndex = expectedAssistantTurnIndex,
 ) {
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Performance.enable");
@@ -914,6 +931,7 @@ async function measureBrowserInteractionTrace(
         cdp,
         trace,
         expectedAssistantTurnIndex,
+        expectedCatchUpAssistantTurnIndex,
       );
       return {
         final: await collectInteractionState(page, cdp, {
@@ -1593,6 +1611,8 @@ export async function measureBrowserMode({
                     page,
                     scenario,
                     scenario.interactionTrace,
+                    scenario.initialTurns - 1,
+                    scenario.initialTurns + scenario.newTurns - 1,
                   );
                 }),
               );
