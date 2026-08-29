@@ -136,7 +136,7 @@ function renderNavigationLayoutWithSessionLinger(
   path = "/projects/project-1/sessions/session-1",
   options: {
     onSessionRender?: (parked: boolean, sessionId: string) => void;
-    sessionElementCount?: number;
+    sessionElementCount?: number | ((sessionId: string) => number);
   } = {},
 ) {
   render(
@@ -173,7 +173,12 @@ function renderNavigationLayoutWithSessionLinger(
                         </Link>
                       )}
                       {Array.from(
-                        { length: options.sessionElementCount ?? 0 },
+                        {
+                          length:
+                            typeof options.sessionElementCount === "function"
+                              ? options.sessionElementCount(route.sessionId)
+                              : (options.sessionElementCount ?? 0),
+                        },
                         (_, index) => (
                           <span key={index} />
                         ),
@@ -655,6 +660,35 @@ describe("NavigationLayout", () => {
 
     const remainingLayer = screen.getByTestId("session-layer");
     expect(remainingLayer.dataset.sessionId).toBe("session-2");
+    expect(remainingLayer.dataset.parked).toBe("false");
+  });
+
+  it("discards an oversized outgoing session before rendering it parked", () => {
+    enableSessionDomLinger();
+    const sessionRenders: string[] = [];
+    renderNavigationLayoutWithSessionLinger(undefined, {
+      onSessionRender: (parked, sessionId) => {
+        sessionRenders.push(`${sessionId}:${parked ? "parked" : "active"}`);
+      },
+      sessionElementCount: (sessionId) =>
+        sessionId === "session-2" ? 5_001 : 0,
+    });
+
+    fireEvent.click(screen.getByText("Session 2"));
+    expect(screen.getAllByTestId("session-layer")).toHaveLength(2);
+    sessionRenders.length = 0;
+
+    fireEvent.click(
+      within(
+        screen
+          .getAllByTestId("session-layer")
+          .find((layer) => layer.dataset.sessionId === "session-2")!,
+      ).getByText("Session 1"),
+    );
+
+    expect(sessionRenders).not.toContain("session-2:parked");
+    const remainingLayer = screen.getByTestId("session-layer");
+    expect(remainingLayer.dataset.sessionId).toBe("session-1");
     expect(remainingLayer.dataset.parked).toBe("false");
   });
 

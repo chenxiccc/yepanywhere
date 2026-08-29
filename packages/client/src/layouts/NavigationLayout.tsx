@@ -85,18 +85,38 @@ interface SessionDomLingerRoute {
   expiresAtMs?: number;
 }
 
+interface PendingSessionDomLingerSwap {
+  fromKey: string;
+  retainOutgoing: boolean;
+  targetKey: string;
+}
+
+interface SessionDomLingerRenderSignal {
+  current: boolean;
+  supportsCompaction: boolean;
+}
+
 interface NavigationLayoutProps {
   sessionElement?: (
     route: SessionDomLingerRoute,
-    options: { parked: boolean },
+    options: {
+      parked: boolean;
+      progressiveRenderPauseSignal: SessionDomLingerRenderSignal;
+    },
   ) => ReactNode;
+}
+
+interface SessionDomLingerLayerHandle {
+  element: HTMLDivElement;
+  progressiveRenderPauseSignal: SessionDomLingerRenderSignal;
 }
 
 interface SessionDomLingerLayerProps {
   parked: boolean;
   route: SessionDomLingerRoute;
   sessionElement: NonNullable<NavigationLayoutProps["sessionElement"]>;
-  layerRefs: React.MutableRefObject<Map<string, HTMLDivElement>>;
+  layerRefs: React.MutableRefObject<Map<string, SessionDomLingerLayerHandle>>;
+  subtreeParked: boolean;
 }
 
 function SessionDomLingerLayer({
@@ -104,6 +124,7 @@ function SessionDomLingerLayer({
   route,
   sessionElement,
   layerRefs,
+  subtreeParked,
 }: SessionDomLingerLayerProps) {
   const parentLocationContext = useContext(UNSAFE_LocationContext);
   const parentRouteContext = useContext(UNSAFE_RouteContext);
@@ -111,21 +132,36 @@ function SessionDomLingerLayer({
     throw new Error("Session DOM linger requires a router location context");
   }
   const [sessionRoute] = useState(route);
-  const [subtreeParked, setSubtreeParked] = useState(parked);
+  const [progressiveRenderPauseSignal] = useState(() => ({
+    current: parked,
+    supportsCompaction: false,
+  }));
+  progressiveRenderPauseSignal.current = parked;
+  const [committedSubtreeParked, setCommittedSubtreeParked] =
+    useState(subtreeParked);
   useEffect(() => {
-    if (subtreeParked === parked) {
+    if (committedSubtreeParked === subtreeParked) {
       return;
     }
-    startTransition(() => setSubtreeParked(parked));
-  }, [parked, subtreeParked]);
+    startTransition(() => setCommittedSubtreeParked(subtreeParked));
+  }, [committedSubtreeParked, subtreeParked]);
   const [sessionLocationContext] = useState(() => ({
     location: sessionRoute.location,
     navigationType: parentLocationContext.navigationType,
   }));
   const [sessionRouteContext] = useState(parentRouteContext);
   const subtree = useMemo(
-    () => sessionElement(sessionRoute, { parked: subtreeParked }),
-    [sessionElement, sessionRoute, subtreeParked],
+    () =>
+      sessionElement(sessionRoute, {
+        parked: committedSubtreeParked,
+        progressiveRenderPauseSignal,
+      }),
+    [
+      committedSubtreeParked,
+      progressiveRenderPauseSignal,
+      sessionElement,
+      sessionRoute,
+    ],
   );
   const scopedSubtree = useMemo(
     () => (
@@ -144,17 +180,20 @@ function SessionDomLingerLayer({
         baseDuration,
         phase,
         sessionId: sessionRoute.sessionId,
-        subtreeParked,
+        subtreeParked: committedSubtreeParked,
       });
     },
-    [sessionRoute.sessionId, subtreeParked],
+    [committedSubtreeParked, sessionRoute.sessionId],
   );
 
   return (
     <div
       ref={(element) => {
         if (element) {
-          layerRefs.current.set(sessionRoute.key, element);
+          layerRefs.current.set(sessionRoute.key, {
+            element,
+            progressiveRenderPauseSignal,
+          });
         } else {
           layerRefs.current.delete(sessionRoute.key);
         }
@@ -517,9 +556,20 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
     useState<SessionDomLingerRoute | null>(null);
   const [committedActiveSessionRoute, setCommittedActiveSessionRoute] =
     useState(currentSessionRoute);
-  const sessionLayerRefs = useRef(new Map<string, HTMLDivElement>());
+  const pendingSessionSwapRef = useRef<PendingSessionDomLingerSwap | null>(
+    null,
+  );
+  const pendingSessionSwap = pendingSessionSwapRef.current;
+  const sessionLayerRefs = useRef(
+    new Map<string, SessionDomLingerLayerHandle>(),
+  );
+  const pendingSwapRejectsOutgoing =
+    pendingSessionSwap?.retainOutgoing === false &&
+    committedActiveSessionRoute?.key === pendingSessionSwap.fromKey &&
+    currentSessionRoute?.key === pendingSessionSwap.targetKey;
   const transitioningFromSessionRoute =
     sessionDomLingerEnabled &&
+    !pendingSwapRejectsOutgoing &&
     committedActiveSessionRoute &&
     committedActiveSessionRoute.key !== currentSessionRoute?.key &&
     committedActiveSessionRoute.sourceKey === sourceKey &&
@@ -549,6 +599,17 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
       ? [renderedParkedSessionRoute]
       : [];
   const sessionLayerVisible = Boolean(currentSessionRoute);
+
+  useLayoutEffect(() => {
+    const pendingSwap = pendingSessionSwapRef.current;
+    if (
+      pendingSwap &&
+      (!sessionDomLingerEnabled ||
+        currentSessionRoute?.key !== pendingSwap.fromKey)
+    ) {
+      pendingSessionSwapRef.current = null;
+    }
+  }, [currentSessionRoute?.key, sessionDomLingerEnabled]);
 
   useLayoutEffect(() => {
     const previousActiveRoute = committedActiveSessionRoute;
@@ -588,11 +649,12 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
         return null;
       }
       if (currentSessionRoute) {
-        const element = sessionLayerRefs.current.get(nextParkedRoute.key);
+        const layer = sessionLayerRefs.current.get(nextParkedRoute.key);
         if (
-          !element ||
-          element.querySelectorAll("*").length >
-            SESSION_DOM_LINGER_MAX_PARKED_ELEMENTS
+          !layer ||
+          (!layer.progressiveRenderPauseSignal.supportsCompaction &&
+            layer.element.querySelectorAll("*").length >
+              SESSION_DOM_LINGER_MAX_PARKED_ELEMENTS)
         ) {
           return null;
         }
@@ -625,8 +687,10 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
   }, [parkedSessionRoute]);
 
   useLayoutEffect(() => {
-    for (const [key, element] of sessionLayerRefs.current) {
-      (element as HTMLDivElement & { inert?: boolean }).inert =
+    for (const [key, layer] of sessionLayerRefs.current) {
+      (layer.element as HTMLDivElement & { inert?: boolean }).inert =
+        key !== currentSessionRoute?.key;
+      layer.progressiveRenderPauseSignal.current =
         key !== currentSessionRoute?.key;
     }
   }, [currentSessionRoute?.key]);
@@ -675,10 +739,20 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
       if (!sessionLayerRefs.current.has(targetKey)) {
         return;
       }
+      const outgoingLayer = sessionLayerRefs.current.get(
+        currentSessionRoute.key,
+      );
+      const retainOutgoing =
+        outgoingLayer !== undefined &&
+        (outgoingLayer.progressiveRenderPauseSignal.supportsCompaction ||
+          outgoingLayer.element.querySelectorAll("*").length <=
+            SESSION_DOM_LINGER_MAX_PARKED_ELEMENTS);
 
       event.preventDefault();
-      for (const [key, element] of sessionLayerRefs.current) {
+      for (const [key, layer] of sessionLayerRefs.current) {
         const active = key === targetKey;
+        const { element, progressiveRenderPauseSignal } = layer;
+        progressiveRenderPauseSignal.current = !active;
         element.classList.toggle("is-active", active);
         element.classList.toggle("is-parked", !active);
         if (active) {
@@ -689,6 +763,11 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
         element.dataset.sessionDomLinger = active ? "active" : "parked";
         (element as HTMLDivElement & { inert?: boolean }).inert = !active;
       }
+      pendingSessionSwapRef.current = {
+        fromKey: currentSessionRoute.key,
+        retainOutgoing,
+        targetKey,
+      };
       markReloadPerfPhase("session_dom_linger_visual_swap", {
         sessionId: targetMatch.sessionId,
       });
@@ -816,6 +895,7 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
                       route={route}
                       sessionElement={sessionElement}
                       layerRefs={sessionLayerRefs}
+                      subtreeParked={parked}
                     />
                   );
                 })}

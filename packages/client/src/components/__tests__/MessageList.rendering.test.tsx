@@ -1142,6 +1142,130 @@ describe("MessageList rendering", () => {
     expect(container.querySelector(".session-render-progress")).not.toBeNull();
   });
 
+  it("pauses progressive rendering while the transcript is inert", async () => {
+    vi.useFakeTimers();
+    const messages = Array.from({ length: 160 }, (_, index) => [
+      userMessage(`user-${index}`, `request ${index}`),
+      assistantMessage(`assistant-${index}`, `response ${index}`),
+    ]).flat();
+    const { container, rerender } = render(
+      <MessageList
+        inert
+        messages={messages}
+        progressiveRenderEnabled
+        progressiveRenderKey="parked-session"
+      />,
+    );
+    const renderedRowCount = () =>
+      container.querySelectorAll("[data-render-id]").length;
+    const parkedRowCount = renderedRowCount();
+
+    expect(parkedRowCount).toBeLessThan(messages.length);
+    await act(async () => {
+      vi.advanceTimersByTime(1_000);
+    });
+    expect(renderedRowCount()).toBe(parkedRowCount);
+
+    await act(async () => {
+      rerender(
+        <MessageList
+          messages={messages}
+          progressiveRenderEnabled
+          progressiveRenderKey="parked-session"
+        />,
+      );
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(1_501);
+    });
+    const resumedRowCount = renderedRowCount();
+    expect(resumedRowCount).toBeGreaterThan(parkedRowCount);
+
+    await act(async () => {
+      rerender(
+        <MessageList
+          inert
+          messages={messages}
+          progressiveRenderEnabled
+          progressiveRenderKey="parked-session"
+        />,
+      );
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(1_000);
+    });
+    expect(renderedRowCount()).toBe(resumedRowCount);
+  });
+
+  it("compacts a completed transcript while parked and resumes without a loader", async () => {
+    vi.useFakeTimers();
+    const messages = Array.from({ length: 160 }, (_, index) => [
+      userMessage(`user-${index}`, `request ${index}`),
+      assistantMessage(`assistant-${index}`, `response ${index}`),
+    ]).flat();
+    const pauseSignal = { current: false, supportsCompaction: false };
+    const { container, rerender } = render(
+      <MessageList
+        messages={messages}
+        progressiveRenderEnabled
+        progressiveRenderKey="retained-session"
+        progressiveRenderPauseSignal={pauseSignal}
+      />,
+    );
+    const renderedRowCount = () =>
+      container.querySelectorAll("[data-render-id]").length;
+
+    for (let batch = 0; batch < 40; batch += 1) {
+      await act(async () => {
+        vi.advanceTimersByTime(33);
+      });
+    }
+    await act(async () => {
+      vi.advanceTimersByTime(200);
+    });
+    const completedRowCount = renderedRowCount();
+    expect(container.querySelector(".session-render-progress")).toBeNull();
+    expect(pauseSignal.supportsCompaction).toBe(true);
+
+    pauseSignal.current = true;
+    await act(async () => {
+      rerender(
+        <MessageList
+          inert
+          messages={messages}
+          progressiveRenderEnabled
+          progressiveRenderKey="retained-session"
+          progressiveRenderPauseSignal={pauseSignal}
+        />,
+      );
+    });
+    const parkedRowCount = renderedRowCount();
+    expect(parkedRowCount).toBeLessThan(completedRowCount);
+
+    pauseSignal.current = false;
+    await act(async () => {
+      rerender(
+        <MessageList
+          messages={messages}
+          progressiveRenderEnabled
+          progressiveRenderKey="retained-session"
+          progressiveRenderPauseSignal={pauseSignal}
+        />,
+      );
+    });
+    expect(container.querySelector(".session-render-progress")).toBeNull();
+
+    await act(async () => {
+      vi.advanceTimersByTime(1_499);
+    });
+    expect(renderedRowCount()).toBe(parkedRowCount);
+    await act(async () => {
+      vi.advanceTimersByTime(2);
+    });
+    expect(renderedRowCount()).toBeGreaterThan(parkedRowCount);
+    expect(renderedRowCount()).toBeLessThan(completedRowCount);
+  });
+
   it("can hide progressive details while hydrating", () => {
     const { container } = render(
       <MessageList

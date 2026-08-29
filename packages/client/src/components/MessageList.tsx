@@ -8,6 +8,7 @@ import type {
 import {
   createElement,
   memo,
+  startTransition,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -127,8 +128,9 @@ import { LinkifiedText } from "./ui/LinkifiedText";
 
 const EMPTY_TRANSCRIPT_DISPLAY_OBJECTS: readonly TranscriptDisplayObject[] = [];
 const PROGRESSIVE_INITIAL_RENDER_ITEM_TARGET = 120;
-const PROGRESSIVE_RENDER_ITEM_BATCH_TARGET = 90;
+const PROGRESSIVE_RENDER_ITEM_BATCH_TARGET = 12;
 const PROGRESSIVE_RENDER_BATCH_DELAY_MS = 32;
+const PROGRESSIVE_RETAINED_RESUME_DELAY_MS = 1_500;
 const PROGRESSIVE_RENDER_REVEAL_DELAY_MS = 180;
 const EMPTY_THINKING_PREVIEW_SLOTS = new Set<ConversationThinkingPreviewSlot>();
 
@@ -696,6 +698,11 @@ interface Props {
   progressiveRenderStatusVisible?: boolean;
   /** Stable identity for one progressive initial-render cycle. */
   progressiveRenderKey?: string;
+  /** Synchronous pause signal for retained-session layer swaps. */
+  progressiveRenderPauseSignal?: {
+    readonly current: boolean;
+    supportsCompaction?: boolean;
+  };
   /** Stable identity for ephemeral Conversation View history expansion. */
   conversationViewStateKey?: string;
   /** Force the shared Conversation View projection for an independent shell. */
@@ -1261,6 +1268,7 @@ export const MessageList = memo(function MessageList({
   progressiveRenderEnabled = false,
   progressiveRenderStatusVisible = true,
   progressiveRenderKey,
+  progressiveRenderPauseSignal,
   conversationViewStateKey,
   conversationViewEnabledOverride,
   showFollowButton = true,
@@ -2176,9 +2184,59 @@ export const MessageList = memo(function MessageList({
   >(null);
   const [progressiveRenderRevealed, setProgressiveRenderRevealed] =
     useState(false);
+  const [retainedProgressiveWindowKey, setRetainedProgressiveWindowKey] =
+    useState<string | null>(null);
+  const retainedProgressiveHydrationStartedKeyRef = useRef<string | null>(null);
+  const progressiveRenderPaused =
+    inert || progressiveRenderPauseSignal?.current === true;
+  const progressiveRenderCompactionActive =
+    progressiveRenderPaused &&
+    progressiveRenderPauseSignal?.supportsCompaction === true;
+  const retainedProgressiveWindowActive =
+    retainedProgressiveWindowKey === progressiveRenderCycleKey;
+  useLayoutEffect(() => {
+    if (progressiveRenderPauseSignal) {
+      progressiveRenderPauseSignal.supportsCompaction =
+        progressiveRenderEnabled && isScrolledToBottom;
+    }
+    return () => {
+      if (progressiveRenderPauseSignal) {
+        progressiveRenderPauseSignal.supportsCompaction = false;
+      }
+    };
+  }, [
+    isScrolledToBottom,
+    progressiveRenderEnabled,
+    progressiveRenderPauseSignal,
+  ]);
+  useLayoutEffect(() => {
+    if (!progressiveRenderAllowed || !progressiveRenderCompactionActive) {
+      return;
+    }
+    if (retainedProgressiveWindowKey !== progressiveRenderCycleKey) {
+      setRetainedProgressiveWindowKey(progressiveRenderCycleKey);
+    }
+    retainedProgressiveHydrationStartedKeyRef.current = null;
+    if (progressiveRenderStateKey !== progressiveRenderCycleKey) {
+      setProgressiveRenderStateKey(progressiveRenderCycleKey);
+    }
+    if (progressiveEntryCount !== progressiveInitialEntryCount) {
+      setProgressiveEntryCount(progressiveInitialEntryCount);
+    }
+  }, [
+    progressiveEntryCount,
+    progressiveInitialEntryCount,
+    progressiveRenderAllowed,
+    progressiveRenderCompactionActive,
+    progressiveRenderCycleKey,
+    progressiveRenderStateKey,
+    retainedProgressiveWindowKey,
+  ]);
   const progressiveEntryCountForCycle =
     progressiveRenderStateKey === progressiveRenderCycleKey
-      ? progressiveEntryCount
+      ? progressiveRenderCompactionActive
+        ? progressiveInitialEntryCount
+        : progressiveEntryCount
       : null;
   const progressiveRenderRevealedForCycle =
     progressiveRenderStateKey === progressiveRenderCycleKey
@@ -2191,6 +2249,10 @@ export const MessageList = memo(function MessageList({
     progressiveRenderAllowed &&
     !progressiveRenderAlreadyCompleted &&
     !progressiveRenderRevealedForCycle;
+  const progressiveHydrationActive =
+    progressiveRevealActive || retainedProgressiveWindowActive;
+  const progressiveWindowActive =
+    progressiveHydrationActive || progressiveRenderCompactionActive;
   const {
     effectiveEntryCount: effectiveProgressiveEntryCount,
     entries: progressiveTimelineEntries,
@@ -2200,12 +2262,12 @@ export const MessageList = memo(function MessageList({
       entries: visibleTimelineEntries,
       entryCount: progressiveEntryCountForCycle,
       initialEntryCount: progressiveInitialEntryCount,
-      revealActive: progressiveRevealActive,
+      revealActive: progressiveWindowActive,
     });
   }, [
     progressiveEntryCountForCycle,
     progressiveInitialEntryCount,
-    progressiveRevealActive,
+    progressiveWindowActive,
     visibleTimelineEntries,
   ]);
   const previousTimelineEntryRowsRef = useRef<
@@ -2267,6 +2329,7 @@ export const MessageList = memo(function MessageList({
         return;
       }
       progressiveActiveRenderKeyRef.current = null;
+      setRetainedProgressiveWindowKey(null);
       setProgressiveRenderStateKey(null);
       setProgressiveEntryCount(null);
       setProgressiveRenderRevealed(true);
@@ -2274,6 +2337,7 @@ export const MessageList = memo(function MessageList({
     }
 
     if (
+      !retainedProgressiveWindowActive &&
       progressiveCompletedRenderKeyRef.current === progressiveRenderCycleKey
     ) {
       progressiveActiveRenderKeyRef.current = null;
@@ -2295,45 +2359,71 @@ export const MessageList = memo(function MessageList({
     progressiveInitialEntryCount,
     progressiveRenderAllowed,
     progressiveRenderCycleKey,
+    retainedProgressiveWindowActive,
     searchActive,
     visibleTimelineEntries.length,
   ]);
   useEffect(() => {
     if (
-      !progressiveRevealActive ||
+      progressiveRenderPaused ||
+      !progressiveHydrationActive ||
       effectiveProgressiveEntryCount >= visibleTimelineEntries.length
     ) {
       return;
     }
 
+    const resumeDelayMs =
+      retainedProgressiveWindowActive &&
+      retainedProgressiveHydrationStartedKeyRef.current !==
+        progressiveRenderCycleKey
+        ? PROGRESSIVE_RETAINED_RESUME_DELAY_MS
+        : PROGRESSIVE_RENDER_BATCH_DELAY_MS;
     const timer = setTimeout(() => {
-      setProgressiveEntryCount((current) =>
-        getNextProgressiveEntryCount(
-          visibleTimelineEntries,
-          current ?? progressiveInitialEntryCount,
-          PROGRESSIVE_RENDER_ITEM_BATCH_TARGET,
-        ),
-      );
-    }, PROGRESSIVE_RENDER_BATCH_DELAY_MS);
+      if (progressiveRenderPauseSignal?.current) {
+        return;
+      }
+      if (retainedProgressiveWindowActive) {
+        retainedProgressiveHydrationStartedKeyRef.current =
+          progressiveRenderCycleKey;
+      }
+      startTransition(() => {
+        setProgressiveEntryCount((current) =>
+          getNextProgressiveEntryCount(
+            visibleTimelineEntries,
+            current ?? progressiveInitialEntryCount,
+            PROGRESSIVE_RENDER_ITEM_BATCH_TARGET,
+          ),
+        );
+      });
+    }, resumeDelayMs);
 
     return () => clearTimeout(timer);
   }, [
     effectiveProgressiveEntryCount,
     progressiveInitialEntryCount,
-    progressiveRevealActive,
+    progressiveHydrationActive,
+    progressiveRenderPaused,
+    progressiveRenderPauseSignal,
+    progressiveRenderCycleKey,
+    retainedProgressiveWindowActive,
     visibleTimelineEntries,
   ]);
   useEffect(() => {
     if (
-      !progressiveRevealActive ||
+      progressiveRenderPaused ||
+      !progressiveHydrationActive ||
       effectiveProgressiveEntryCount < visibleTimelineEntries.length
     ) {
       return;
     }
 
     const timer = setTimeout(() => {
-      progressiveCompletedRenderKeyRef.current = progressiveRenderCycleKey;
-      progressiveActiveRenderKeyRef.current = null;
+      if (retainedProgressiveWindowActive) {
+        setRetainedProgressiveWindowKey(null);
+      } else {
+        progressiveCompletedRenderKeyRef.current = progressiveRenderCycleKey;
+        progressiveActiveRenderKeyRef.current = null;
+      }
       setProgressiveRenderStateKey(progressiveRenderCycleKey);
       setProgressiveEntryCount(visibleTimelineEntries.length);
       setProgressiveRenderRevealed(true);
@@ -2342,18 +2432,20 @@ export const MessageList = memo(function MessageList({
     return () => clearTimeout(timer);
   }, [
     effectiveProgressiveEntryCount,
-    progressiveRevealActive,
+    progressiveHydrationActive,
     progressiveRenderCycleKey,
+    progressiveRenderPaused,
+    retainedProgressiveWindowActive,
     visibleTimelineEntries.length,
   ]);
   useLayoutEffect(() => {
     const wasProgressiveRevealActive =
       previousProgressiveRevealActiveRef.current;
-    previousProgressiveRevealActiveRef.current = progressiveRevealActive;
+    previousProgressiveRevealActiveRef.current = progressiveHydrationActive;
 
     if (
       !wasProgressiveRevealActive ||
-      progressiveRevealActive ||
+      progressiveHydrationActive ||
       !shouldAutoScrollRef.current
     ) {
       return;
@@ -2363,9 +2455,9 @@ export const MessageList = memo(function MessageList({
     if (container) {
       scrollToBottom(container);
     }
-  }, [progressiveRevealActive, scrollToBottom]);
+  }, [progressiveHydrationActive, scrollToBottom]);
 
-  const scrollSnapshotWritesSuppressed = progressiveRevealActive;
+  const scrollSnapshotWritesSuppressed = progressiveHydrationActive;
   scrollSnapshotWritesSuppressedRef.current = scrollSnapshotWritesSuppressed;
   const publishScrollSnapshot = useCallback(() => {
     if (scrollSnapshotWritesSuppressedRef.current || !onScrollSnapshotChange) {
@@ -2819,6 +2911,7 @@ export const MessageList = memo(function MessageList({
   const completeProgressiveReveal = useCallback(() => {
     progressiveCompletedRenderKeyRef.current = progressiveRenderCycleKey;
     progressiveActiveRenderKeyRef.current = null;
+    setRetainedProgressiveWindowKey(null);
   }, [progressiveRenderCycleKey]);
 
   const commitSearchJump = useCallback(

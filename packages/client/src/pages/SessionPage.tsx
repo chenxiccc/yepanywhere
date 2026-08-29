@@ -362,6 +362,10 @@ export interface SessionPageProps {
   sessionId?: string;
   routeLocation?: SessionPageRouteLocation;
   isDomLingerParked?: boolean;
+  progressiveRenderPauseSignal?: {
+    readonly current: boolean;
+    supportsCompaction?: boolean;
+  };
 }
 
 export function SessionPage({
@@ -369,6 +373,7 @@ export function SessionPage({
   sessionId: sessionIdProp,
   routeLocation,
   isDomLingerParked = false,
+  progressiveRenderPauseSignal,
 }: SessionPageProps = {}) {
   const params = useParams<{
     projectId: string;
@@ -394,6 +399,7 @@ export function SessionPage({
             sessionId={sessionId}
             routeLocation={routeLocation}
             isDomLingerParked={isDomLingerParked}
+            progressiveRenderPauseSignal={progressiveRenderPauseSignal}
           />
         </RenderModeProvider>
       </StreamingMarkdownProvider>
@@ -431,11 +437,13 @@ function SessionPageContent({
   sessionId,
   routeLocation,
   isDomLingerParked,
+  progressiveRenderPauseSignal,
 }: {
   projectId: string;
   sessionId: string;
   routeLocation?: SessionPageRouteLocation;
   isDomLingerParked: boolean;
+  progressiveRenderPauseSignal?: { readonly current: boolean };
 }) {
   const { t } = useI18n();
   const { showToast } = useToastContext();
@@ -5565,6 +5573,7 @@ function SessionPageContent({
                       sessionLoadingProgressDetailsVisible
                     }
                     progressiveRenderKey={`${clientSummarySourceKey}:${projectId}:${sessionId}:${location.search}`}
+                    progressiveRenderPauseSignal={progressiveRenderPauseSignal}
                     conversationViewStateKey={`${clientSummarySourceKey}:${projectId}:${sessionId}:${location.search}`}
                     initialScrollSnapshot={initialScrollSnapshot}
                     onScrollSnapshotChange={updateRouteScrollSnapshot}

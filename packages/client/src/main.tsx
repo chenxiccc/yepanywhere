@@ -262,13 +262,19 @@ if (import.meta.env.DEV && window.location.port === String(__VITE_DEV_PORT__)) {
                     element={
                       <RouteModule>
                         <NavigationLayout
-                          sessionElement={(route, { parked }) => (
+                          sessionElement={(
+                            route,
+                            { parked, progressiveRenderPauseSignal },
+                          ) => (
                             <RouteModule key={route.key}>
                               <SessionPage
                                 projectId={route.projectId}
                                 sessionId={route.sessionId}
                                 routeLocation={route.location}
                                 isDomLingerParked={parked}
+                                progressiveRenderPauseSignal={
+                                  progressiveRenderPauseSignal
+                                }
                               />
                             </RouteModule>
                           )}

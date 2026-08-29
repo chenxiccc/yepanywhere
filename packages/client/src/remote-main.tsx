@@ -328,13 +328,17 @@ const APP_ROUTES = (
       element={
         <RouteModule>
           <NavigationLayout
-            sessionElement={(route, { parked }) => (
+            sessionElement={(
+              route,
+              { parked, progressiveRenderPauseSignal },
+            ) => (
               <RouteModule key={route.key}>
                 <SessionPage
                   projectId={route.projectId}
                   sessionId={route.sessionId}
                   routeLocation={route.location}
                   isDomLingerParked={parked}
+                  progressiveRenderPauseSignal={progressiveRenderPauseSignal}
                 />
               </RouteModule>
             )}
