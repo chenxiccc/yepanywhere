@@ -429,10 +429,12 @@ without mutating the DOM, so it does not fight React re-renders or the
 streaming-markdown container swaps inside `TextBlock`.
 
 Robustness is **best-effort by design**: the tint is a reminder of what you
-quoted, not load-bearing. If a re-render or virtualization drops a range it
-re-resolves after the registered source DOM mutates from the anchor descriptor.
-Exact source-offset anchors resolve the original occurrence even when the same
-text appears elsewhere. The source-mode
+quoted, not load-bearing. Each transcript anchor records its render id and its
+registered copy-source index. While that anchor is live, the transcript render
+window retains the owning semantic row as a sparse island; if React replaces
+the source element, the descriptor re-resolves it in the remounted row. Exact
+source-offset anchors resolve the original occurrence even when the same text
+appears elsewhere. The source-mode
 `<pre className="text-block-source">` case is trivial — wrap the offset range
 directly.
 

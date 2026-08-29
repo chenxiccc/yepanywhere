@@ -303,6 +303,12 @@ export function useMessageListIsearch({
     }
     searchArrowRepeatDirectionRef.current = null;
   }, []);
+  useEffect(
+    () => () => {
+      stopSearchArrowRepeat();
+    },
+    [stopSearchArrowRepeat],
+  );
   const startSearchArrowRepeat = useCallback(
     (direction: "previous" | "next") => {
       if (

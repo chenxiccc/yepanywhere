@@ -1,10 +1,17 @@
-import { type RefObject, useCallback, useEffect, useRef } from "react";
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   createCommentAnchor,
   type CommentAnchor,
   draftQuoteSignaturesContainAnchor,
   getCommentAnchorRange,
   getDraftQuoteLineSignatures,
+  resolveCommentAnchorSource,
 } from "../lib/commentAnchors";
 import type {
   ComposerDraftChange,
@@ -23,6 +30,7 @@ interface UseSelectionQuoteAnchorsOptions {
 }
 
 export interface SelectionQuoteAnchorController {
+  anchoredRenderIds: readonly string[];
   applyQuoteAnchors: (
     anchors: readonly CommentAnchor[],
     typedPrefix?: string,
@@ -38,6 +46,9 @@ export function useSelectionQuoteAnchors({
 }: UseSelectionQuoteAnchorsOptions): SelectionQuoteAnchorController {
   const quoteInsertionDraftRef = useRef<string | null>(null);
   const commentAnchorsRef = useRef<readonly CommentAnchor[]>([]);
+  const [anchoredRenderIds, setAnchoredRenderIds] = useState<readonly string[]>(
+    [],
+  );
   const commentHighlightObserverRef = useRef<MutationObserver | null>(null);
   const draftSubscriptionRef = useRef<(() => void) | null>(null);
   const composerDraftSignalRef = useRef(composerDraftSignal);
@@ -61,6 +72,9 @@ export function useSelectionQuoteAnchors({
       }
 
       const ranges = anchors
+        .filter((anchor) =>
+          resolveCommentAnchorSource(anchor, containerRef.current),
+        )
         .map(getCommentAnchorRange)
         .filter((range): range is Range => range !== null);
       if (ranges.length === 0) {
@@ -69,7 +83,7 @@ export function useSelectionQuoteAnchors({
       }
       CSS.highlights.set("comment-tint", new Highlight(...ranges));
     },
-    [],
+    [containerRef],
   );
 
   const releaseDraftSubscription = useCallback(() => {
@@ -131,6 +145,15 @@ export function useSelectionQuoteAnchors({
         return;
       }
       commentAnchorsRef.current = next;
+      setAnchoredRenderIds(
+        Array.from(
+          new Set(
+            next
+              .map((anchor) => anchor.renderId)
+              .filter((id): id is string => id !== undefined),
+          ),
+        ),
+      );
       applyCommentHighlight(next);
       refreshCommentHighlightObserver(next);
       if (previous.length === 0 && next.length > 0) {
@@ -237,5 +260,5 @@ export function useSelectionQuoteAnchors({
     }
   }, [quoteClearSignal, updateCommentAnchors]);
 
-  return { applyQuoteAnchors, applyQuoteFromSelection };
+  return { anchoredRenderIds, applyQuoteAnchors, applyQuoteFromSelection };
 }

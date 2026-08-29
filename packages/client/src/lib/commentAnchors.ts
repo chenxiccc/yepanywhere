@@ -5,6 +5,8 @@ import { generateUUID } from "./uuid";
 export interface CommentAnchor {
   id: string;
   sourceElement: HTMLElement;
+  renderId?: string;
+  sourceIndex?: number;
   range: Range;
   selectedText: string;
   quotedText: string;
@@ -34,9 +36,22 @@ export function quoteMarkdown(markdown: string): string {
 export function createCommentAnchor(
   snippet: MarkdownSelectionSnippet,
 ): CommentAnchor {
+  const renderRow =
+    snippet.sourceElement.closest<HTMLElement>("[data-render-id]");
+  const renderId = renderRow?.dataset.renderId;
+  const copySources = renderRow
+    ? Array.from(
+        renderRow.querySelectorAll<HTMLElement>(
+          '[data-markdown-copy-source="true"]',
+        ),
+      )
+    : [];
+  const sourceIndex = copySources.indexOf(snippet.sourceElement);
   return {
     id: generateUUID(),
     sourceElement: snippet.sourceElement,
+    ...(renderId ? { renderId } : {}),
+    ...(sourceIndex >= 0 ? { sourceIndex } : {}),
     range: snippet.range,
     selectedText: snippet.selectedText,
     quotedText: quoteMarkdown(snippet.markdown),
@@ -44,6 +59,25 @@ export function createCommentAnchor(
     sourceStart: snippet.sourceStart,
     sourceEnd: snippet.sourceEnd,
   };
+}
+
+export function resolveCommentAnchorSource(
+  anchor: CommentAnchor,
+  transcriptRoot: HTMLElement | null,
+): boolean {
+  if (anchor.sourceElement.isConnected) return true;
+  if (!transcriptRoot || !anchor.renderId || anchor.sourceIndex === undefined) {
+    return false;
+  }
+  const renderRow = Array.from(
+    transcriptRoot.querySelectorAll<HTMLElement>("[data-render-id]"),
+  ).find((row) => row.dataset.renderId === anchor.renderId);
+  const sourceElement = renderRow?.querySelectorAll<HTMLElement>(
+    '[data-markdown-copy-source="true"]',
+  )[anchor.sourceIndex];
+  if (!sourceElement) return false;
+  anchor.sourceElement = sourceElement;
+  return true;
 }
 
 export function getCommentAnchorRange(anchor: CommentAnchor): Range | null {

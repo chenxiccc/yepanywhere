@@ -16,6 +16,7 @@ interface UseMessageListSelectionQuoteOptions {
 }
 
 interface MessageListSelectionQuoteState {
+  anchoredRenderIds: readonly string[];
   alwaysShowQuoteCircles: boolean;
   paragraphQuoteCirclesEnabled: boolean;
   handleQuoteTextBlock: (anchor: CommentAnchor) => void;
@@ -58,6 +59,7 @@ export function useSelectionActions({
   );
 
   return {
+    anchoredRenderIds: quoteAnchors.anchoredRenderIds,
     alwaysShowQuoteCircles: quoteReplyButtonMode === "paragraph-always",
     paragraphQuoteCirclesEnabled: quoteReplyButtonMode !== "block",
     handleQuoteTextBlock,

@@ -42,6 +42,12 @@ function ToolProviders({ children }: { children: ReactNode }) {
 describe("MessageList rendering", () => {
   const galleryMediaHtml = (label: string, path: string) =>
     `<span class="local-media-link-group"><button type="button" class="local-media-inline-toggle" data-media-path="${path}" data-media-type="image" data-expanded="false" aria-label="Expand image" aria-expanded="false">+</button><a href="/api/local-image?path=${encodeURIComponent(path)}" class="local-media-link" data-media-type="image" data-ya-path="${path}" data-ya-media-type="image">${label}<span class="local-media-type">(image)</span></a></span><span class="local-media-inline-preview" data-media-path="${path}" data-media-type="image" data-expanded="false"></span>`;
+  const transcriptRenderWeight = (container: HTMLElement) =>
+    Number(
+      container
+        .querySelector(".message-list")
+        ?.getAttribute("data-transcript-render-weight") ?? 0,
+    );
 
   it("offers a real after fork on the first turn and before on later turns", () => {
     const onForkBefore = vi.fn();
@@ -462,7 +468,12 @@ describe("MessageList rendering", () => {
         />
       </Profiler>,
     );
-    expect(container.querySelectorAll("[data-render-id]")).toHaveLength(1_000);
+    expect(
+      container.querySelectorAll("[data-render-id]").length,
+    ).toBeGreaterThan(0);
+    expect(
+      container.querySelectorAll("[data-render-id]").length,
+    ).toBeLessThanOrEqual(48);
     const initialCommitCount = onRender.mock.calls.length;
 
     act(() => {
@@ -908,21 +919,28 @@ describe("MessageList rendering", () => {
     expect(screen.getByText("Updated current plan")).toBeTruthy();
   });
 
-  it("bounds history to 100 turns on explicit Conversation activation", () => {
+  it("bounds history to 100 turns on explicit Conversation activation", async () => {
     window.localStorage.setItem(UI_KEYS.conversationView, "false");
     const messages = Array.from({ length: 105 }, (_, index) => [
       userMessage(`user-${index + 1}`, `request ${index + 1}`),
       assistantMessage(`assistant-${index + 1}`, `response ${index + 1}`),
     ]).flat();
 
-    render(
+    const { rerender } = render(
       <MessageList
         messages={messages}
         conversationViewStateKey="session-window"
       />,
     );
 
-    expect(screen.getByText("request 1")).toBeTruthy();
+    rerender(
+      <MessageList
+        messages={messages}
+        conversationViewStateKey="session-window"
+        scrollToTurnRequest={{ id: "user-1", token: 1 }}
+      />,
+    );
+    expect(await screen.findByText("request 1")).toBeTruthy();
 
     act(() => {
       setConversationViewPreference(true);
@@ -936,27 +954,41 @@ describe("MessageList rendering", () => {
       screen.getByRole("button", { name: "Load 5 earlier user turns" }),
     );
 
-    expect(screen.getByText("request 1")).toBeTruthy();
+    rerender(
+      <MessageList
+        messages={messages}
+        conversationViewStateKey="session-window"
+        scrollToTurnRequest={{ id: "user-1", token: 2 }}
+      />,
+    );
+    expect(await screen.findByText("request 1")).toBeTruthy();
     expect(
       screen.queryByRole("button", { name: /earlier user turns/ }),
     ).toBeNull();
   });
 
-  it("does not bound history when Conversation view is already active on load", () => {
+  it("does not bound history when Conversation view is already active on load", async () => {
     window.localStorage.setItem(UI_KEYS.conversationView, "true");
     const messages = Array.from({ length: 105 }, (_, index) => [
       userMessage(`user-${index + 1}`, `request ${index + 1}`),
       assistantMessage(`assistant-${index + 1}`, `response ${index + 1}`),
     ]).flat();
 
-    render(
+    const { rerender } = render(
       <MessageList
         messages={messages}
         conversationViewStateKey="session-default-window"
       />,
     );
 
-    expect(screen.getByText("request 1")).toBeTruthy();
+    rerender(
+      <MessageList
+        messages={messages}
+        conversationViewStateKey="session-default-window"
+        scrollToTurnRequest={{ id: "user-1", token: 1 }}
+      />,
+    );
+    expect(await screen.findByText("request 1")).toBeTruthy();
     expect(
       screen.queryByRole("button", { name: /earlier user turns/ }),
     ).toBeNull();
@@ -1156,15 +1188,13 @@ describe("MessageList rendering", () => {
         progressiveRenderKey="parked-session"
       />,
     );
-    const renderedRowCount = () =>
-      container.querySelectorAll("[data-render-id]").length;
-    const parkedRowCount = renderedRowCount();
+    const parkedRenderWeight = transcriptRenderWeight(container);
 
-    expect(parkedRowCount).toBeLessThan(messages.length);
+    expect(parkedRenderWeight).toBeGreaterThan(0);
     await act(async () => {
       vi.advanceTimersByTime(1_000);
     });
-    expect(renderedRowCount()).toBe(parkedRowCount);
+    expect(transcriptRenderWeight(container)).toBe(parkedRenderWeight);
 
     await act(async () => {
       rerender(
@@ -1178,8 +1208,8 @@ describe("MessageList rendering", () => {
     await act(async () => {
       vi.advanceTimersByTime(1_501);
     });
-    const resumedRowCount = renderedRowCount();
-    expect(resumedRowCount).toBeGreaterThan(parkedRowCount);
+    const resumedRenderWeight = transcriptRenderWeight(container);
+    expect(resumedRenderWeight).toBeGreaterThan(parkedRenderWeight);
 
     await act(async () => {
       rerender(
@@ -1194,7 +1224,7 @@ describe("MessageList rendering", () => {
     await act(async () => {
       vi.advanceTimersByTime(1_000);
     });
-    expect(renderedRowCount()).toBe(resumedRowCount);
+    expect(transcriptRenderWeight(container)).toBe(resumedRenderWeight);
   });
 
   it("compacts a completed transcript while parked and resumes without a loader", async () => {
@@ -1212,9 +1242,6 @@ describe("MessageList rendering", () => {
         progressiveRenderPauseSignal={pauseSignal}
       />,
     );
-    const renderedRowCount = () =>
-      container.querySelectorAll("[data-render-id]").length;
-
     for (let batch = 0; batch < 40; batch += 1) {
       await act(async () => {
         vi.advanceTimersByTime(33);
@@ -1223,7 +1250,7 @@ describe("MessageList rendering", () => {
     await act(async () => {
       vi.advanceTimersByTime(200);
     });
-    const completedRowCount = renderedRowCount();
+    const completedRenderWeight = transcriptRenderWeight(container);
     expect(container.querySelector(".session-render-progress")).toBeNull();
     expect(pauseSignal.supportsCompaction).toBe(true);
 
@@ -1239,8 +1266,8 @@ describe("MessageList rendering", () => {
         />,
       );
     });
-    const parkedRowCount = renderedRowCount();
-    expect(parkedRowCount).toBeLessThan(completedRowCount);
+    const parkedRenderWeight = transcriptRenderWeight(container);
+    expect(parkedRenderWeight).toBeLessThan(completedRenderWeight);
 
     pauseSignal.current = false;
     await act(async () => {
@@ -1258,12 +1285,16 @@ describe("MessageList rendering", () => {
     await act(async () => {
       vi.advanceTimersByTime(1_499);
     });
-    expect(renderedRowCount()).toBe(parkedRowCount);
+    expect(transcriptRenderWeight(container)).toBe(parkedRenderWeight);
     await act(async () => {
       vi.advanceTimersByTime(2);
     });
-    expect(renderedRowCount()).toBeGreaterThan(parkedRowCount);
-    expect(renderedRowCount()).toBeLessThan(completedRowCount);
+    expect(transcriptRenderWeight(container)).toBeGreaterThan(
+      parkedRenderWeight,
+    );
+    expect(transcriptRenderWeight(container)).toBeLessThan(
+      completedRenderWeight,
+    );
   });
 
   it("can hide progressive details while hydrating", () => {

@@ -7,6 +7,7 @@ import type {
 } from "@yep-anywhere/shared";
 import {
   createElement,
+  Fragment,
   memo,
   startTransition,
   useCallback,
@@ -30,6 +31,7 @@ import { useWiderConversationActivityPreviews } from "../hooks/useWiderConversat
 import { useMessageListIsearch } from "../hooks/useMessageListIsearch";
 import { useMessageListSelectionQuote } from "../hooks/useMessageListSelectionQuote";
 import { useRelativeNow } from "../hooks/useRelativeNow";
+import { useTranscriptRenderWindow } from "../hooks/useTranscriptRenderWindow";
 import { useI18n } from "../i18n";
 import {
   createRememberedDisclosureStateRegistry,
@@ -135,6 +137,12 @@ const PROGRESSIVE_RETAINED_RESUME_DELAY_MS = 1_500;
 const PROGRESSIVE_RENDER_REVEAL_DELAY_MS = 180;
 const OLDER_PAGE_PREPEND_BATCH_TARGET = 24;
 const EMPTY_THINKING_PREVIEW_SLOTS = new Set<ConversationThinkingPreviewSlot>();
+const TRANSCRIPT_RENDER_MARKER_STYLE = {
+  display: "block",
+  height: 0,
+  overflow: "hidden",
+  pointerEvents: "none",
+} as const;
 
 interface KeyedTimelineRow {
   key: string;
@@ -152,6 +160,29 @@ function getTimelineRowRenderWeight(row: KeyedTimelineRow): number {
   }
   const assistantRows = row.rows;
   return Array.isArray(assistantRows) ? Math.max(1, assistantRows.length) : 1;
+}
+
+function getTimelineRowTargetIds(
+  row: TimelineEntryDisplayRow<RenderTurnGroup, BtwAsideTimelineItem>,
+): string[] {
+  if (row.kind === "btw") {
+    return [`btw-${row.aside.id}`];
+  }
+  if (row.kind === "empty") {
+    return [];
+  }
+  if (row.kind === "standalone" || row.kind === "user") {
+    return [row.item.id];
+  }
+  const ids = new Set(row.group.items.map((item) => item.id));
+  for (const assistantRow of row.rows) {
+    if (assistantRow.kind === "explored") {
+      ids.add(assistantRow.id);
+    } else {
+      ids.add(assistantRow.item.id);
+    }
+  }
+  return [...ids];
 }
 
 function getPreviousTimelineBatchStart<TRow extends KeyedTimelineRow>(
@@ -502,34 +533,41 @@ function getAdjacentHiddenUserTurnTarget(
   messageList: HTMLDivElement,
   scrollContainer: HTMLElement,
   direction: "previous" | "next",
+  getRenderIdTop?: (id: string) => number | null,
 ): string | null {
   const viewport = scrollContainer.getBoundingClientRect();
-  const alignmentTop = viewport.top + USER_TURN_NAV_SCROLL_OFFSET_PX;
+  const viewportTop = scrollContainer.scrollTop;
+  const viewportBottom = viewportTop + scrollContainer.clientHeight;
+  const alignmentTop = viewportTop + USER_TURN_NAV_SCROLL_OFFSET_PX;
   let candidate: { id: string; top: number } | null = null;
 
   for (const anchor of anchors) {
     const targetId = anchor.targetId ?? anchor.id;
     const row = findRenderRow(messageList, targetId);
-    if (!row) continue;
-    const rect = row.getBoundingClientRect();
+    const rect = row?.getBoundingClientRect();
+    const top = rect
+      ? scrollContainer.scrollTop + rect.top - viewport.top
+      : getRenderIdTop?.(targetId);
+    if (top === null || top === undefined) continue;
+    const bottom = rect ? top + rect.height : top + 1;
     const fullyVisible =
-      rect.top >= viewport.top - USER_TURN_NAV_VISIBILITY_TOLERANCE_PX &&
-      rect.bottom <= viewport.bottom + USER_TURN_NAV_VISIBILITY_TOLERANCE_PX;
+      top >= viewportTop - USER_TURN_NAV_VISIBILITY_TOLERANCE_PX &&
+      bottom <= viewportBottom + USER_TURN_NAV_VISIBILITY_TOLERANCE_PX;
     if (fullyVisible) continue;
 
     if (
       direction === "previous" &&
-      rect.top < alignmentTop - USER_TURN_NAV_VISIBILITY_TOLERANCE_PX &&
-      (!candidate || rect.top > candidate.top)
+      top < alignmentTop - USER_TURN_NAV_VISIBILITY_TOLERANCE_PX &&
+      (!candidate || top > candidate.top)
     ) {
-      candidate = { id: targetId, top: rect.top };
+      candidate = { id: targetId, top };
     }
     if (
       direction === "next" &&
-      rect.top > alignmentTop + USER_TURN_NAV_VISIBILITY_TOLERANCE_PX &&
-      (!candidate || rect.top < candidate.top)
+      top > alignmentTop + USER_TURN_NAV_VISIBILITY_TOLERANCE_PX &&
+      (!candidate || top < candidate.top)
     ) {
-      candidate = { id: targetId, top: rect.top };
+      candidate = { id: targetId, top };
     }
   }
 
@@ -1470,6 +1508,7 @@ export const MessageList = memo(function MessageList({
   > | null>(null);
   const previousProgressiveRevealActiveRef = useRef(false);
   const settleSearchJumpFrameRef = useRef<number | null>(null);
+  const revealRenderTargetFrameRef = useRef<number | null>(null);
   const scrollSnapshotWritesSuppressedRef = useRef(false);
   const previousScrollSnapshotWritesSuppressedRef = useRef(false);
   const previousActiveWindowTrimRevisionRef = useRef(activeWindowTrimRevision);
@@ -2218,6 +2257,7 @@ export const MessageList = memo(function MessageList({
     [onTranscriptPositionTimestampChange],
   );
   const {
+    anchoredRenderIds,
     alwaysShowQuoteCircles,
     paragraphQuoteCirclesEnabled,
     handleQuoteTextBlock,
@@ -2414,6 +2454,27 @@ export const MessageList = memo(function MessageList({
     timelineEntryRows,
     pendingOlderPageScrollRef.current !== null,
   );
+  const initialScrollRestoreDecision = decideSessionScrollRestore({
+    mode: scrollBehaviorMode,
+    snapshot: initialScrollSnapshot,
+    topTolerancePx: FOLLOW_BOTTOM_TOLERANCE_PX,
+  });
+  const renderWindowPinnedId =
+    pendingOlderPageScrollRef.current?.anchor?.id ??
+    pendingInitialScrollRestoreRef.current?.anchor?.id ??
+    (isInitialLoadRef.current &&
+    initialScrollRestoreDecision === "restore-position"
+      ? (initialScrollSnapshot?.anchor?.id ?? null)
+      : null);
+  const transcriptRenderWindow = useTranscriptRenderWindow({
+    containerRef,
+    followTail: isScrolledToBottom || shouldAutoScrollRef.current,
+    getRowTargetIds: getTimelineRowTargetIds,
+    getRowWeight: getTimelineRowRenderWeight,
+    pinnedRenderId: renderWindowPinnedId,
+    retainedRenderIds: anchoredRenderIds,
+    rows: chunkedTimelinePrepend.rows,
+  });
   const firstPromptActionId = useMemo(() => {
     for (const row of timelineEntryRows) {
       if (row.kind === "user" && row.allowsPromptActions) {
@@ -2970,33 +3031,87 @@ export const MessageList = memo(function MessageList({
     ) => {
       const messageList = containerRef.current;
       const scrollContainer = messageList?.parentElement;
-      const row = findRenderRow(messageList, id);
-      if (!scrollContainer || !row) return;
+      if (!scrollContainer) return;
       pendingInitialScrollRestoreRef.current = null;
       shouldAutoScrollRef.current = false;
       setIsScrolledToBottom(false);
-      const scrollRect = scrollContainer.getBoundingClientRect();
-      const rowRect = row.getBoundingClientRect();
-      const offset =
-        align === "center"
-          ? Math.max(0, (scrollContainer.clientHeight - rowRect.height) / 2)
-          : 12;
-      const nextTop = Math.max(
-        0,
-        scrollContainer.scrollTop + rowRect.top - scrollRect.top - offset,
-      );
-      if (Math.abs(nextTop - scrollContainer.scrollTop) < 1) {
+      const scrollMountedRow = (withMotionCue: boolean): boolean => {
+        const currentList = containerRef.current;
+        const currentContainer = currentList?.parentElement;
+        const row = findRenderRow(currentList, id);
+        if (!currentContainer || !row) return false;
+        const scrollRect = currentContainer.getBoundingClientRect();
+        const rowRect = row.getBoundingClientRect();
+        const offset =
+          align === "center"
+            ? Math.max(0, (currentContainer.clientHeight - rowRect.height) / 2)
+            : 12;
+        const nextTop = Math.max(
+          0,
+          currentContainer.scrollTop + rowRect.top - scrollRect.top - offset,
+        );
+        if (Math.abs(nextTop - currentContainer.scrollTop) < 1) {
+          return true;
+        }
+        if (withMotionCue) {
+          showNavMotionCue(
+            nextTop < currentContainer.scrollTop ? "up" : "down",
+          );
+        }
+        if (typeof currentContainer.scrollTo === "function") {
+          currentContainer.scrollTo({ top: nextTop, behavior });
+        } else {
+          currentContainer.scrollTop = nextTop;
+        }
+        return true;
+      };
+
+      if (scrollMountedRow(showMotionCue)) return;
+      const estimatedTop = transcriptRenderWindow.getRenderIdTop(id);
+      if (estimatedTop === null || !transcriptRenderWindow.revealRenderId(id)) {
         return;
       }
+      const estimatedOffset =
+        align === "center" ? scrollContainer.clientHeight / 2 : 12;
+      const nextTop = Math.max(0, estimatedTop - estimatedOffset);
       if (showMotionCue) {
         showNavMotionCue(nextTop < scrollContainer.scrollTop ? "up" : "down");
       }
-      scrollContainer.scrollTo({
-        top: nextTop,
-        behavior,
-      });
+      if (typeof scrollContainer.scrollTo === "function") {
+        scrollContainer.scrollTo({ top: nextTop, behavior });
+      } else {
+        scrollContainer.scrollTop = nextTop;
+      }
+      if (revealRenderTargetFrameRef.current !== null) {
+        cancelAnimationFrame(revealRenderTargetFrameRef.current);
+      }
+      let attemptsRemaining = 2;
+      const settleRevealedRow = () => {
+        revealRenderTargetFrameRef.current = requestAnimationFrame(() => {
+          revealRenderTargetFrameRef.current = null;
+          if (!scrollMountedRow(false) && attemptsRemaining > 0) {
+            attemptsRemaining -= 1;
+            settleRevealedRow();
+          }
+        });
+      };
+      settleRevealedRow();
     },
-    [showNavMotionCue],
+    [
+      showNavMotionCue,
+      transcriptRenderWindow.getRenderIdTop,
+      transcriptRenderWindow.revealRenderId,
+    ],
+  );
+
+  useEffect(
+    () => () => {
+      if (revealRenderTargetFrameRef.current !== null) {
+        cancelAnimationFrame(revealRenderTargetFrameRef.current);
+        revealRenderTargetFrameRef.current = null;
+      }
+    },
+    [],
   );
 
   const beginTurnNavigation = useCallback(() => {
@@ -3093,6 +3208,7 @@ export const MessageList = memo(function MessageList({
         messageList,
         scrollContainer,
         direction,
+        transcriptRenderWindow.getRenderIdTop,
       );
       if (!targetId) {
         if (direction === "previous" && requestOlderWhenMissing) {
@@ -3109,6 +3225,7 @@ export const MessageList = memo(function MessageList({
       reportFollowingBottom,
       scheduleSettledScrollState,
       scrollToRenderId,
+      transcriptRenderWindow.getRenderIdTop,
     ],
   );
 
@@ -3207,7 +3324,6 @@ export const MessageList = memo(function MessageList({
     return () => {
       window.removeEventListener("keydown", handleKeyDown, true);
       window.removeEventListener("keyup", handleKeyUp, true);
-      stopSearchArrowRepeat();
     };
   }, [
     closeSearch,
@@ -3784,11 +3900,6 @@ export const MessageList = memo(function MessageList({
 
   // Restore same-tab route scroll before the default first-load follow behavior
   // moves the viewport to the tail.
-  const initialScrollRestoreDecision = decideSessionScrollRestore({
-    mode: scrollBehaviorMode,
-    snapshot: initialScrollSnapshot,
-    topTolerancePx: FOLLOW_BOTTOM_TOLERANCE_PX,
-  });
   const mountedTimelineRowCount = timelineEntryRows.length;
   const shouldWaitForInitialAnchorRestore =
     initialScrollRestoreDecision === "restore-position" &&
@@ -3939,6 +4050,8 @@ export const MessageList = memo(function MessageList({
         forkAfterDisabled={forkAfterUserMessageDisabled}
         onCopyAnchor={onCopyUserMessage}
         onPreviewTimestampChange={setHoveredMarkerTimestampMs}
+        getRenderIdTop={transcriptRenderWindow.getRenderIdTop}
+        revealRenderId={transcriptRenderWindow.revealRenderId}
         searchState={userTurnNavSearchState}
       />
       {searchPanel}
@@ -3956,6 +4069,7 @@ export const MessageList = memo(function MessageList({
           .join(" ")}
         ref={containerRef}
         aria-busy={progressiveRevealActive ? true : undefined}
+        data-transcript-render-weight={transcriptRenderWindow.totalWeight}
         onPointerOver={handleTranscriptPointerOver}
         onPointerLeave={handleTranscriptPointerLeave}
       >
@@ -4036,102 +4150,168 @@ export const MessageList = memo(function MessageList({
             )}
           </div>
         )}
-        {chunkedTimelinePrepend.rows.map((timelineRow) => {
-          if (timelineRow.kind === "btw") {
-            return (
-              <BtwAsideTimelineCard
-                key={timelineRow.key}
-                aside={timelineRow.aside}
-                onFocus={onFocusBtwAside}
-                onDone={onDoneBtwAside}
-                onStop={onStopBtwAside}
-                onToggleExpanded={onToggleBtwAsideExpanded}
-                onTransferTurn={onTransferBtwAsideTurn}
-              />
-            );
-          }
+        {transcriptRenderWindow.active && (
+          <span
+            ref={transcriptRenderWindow.registerListStart}
+            aria-hidden="true"
+            data-transcript-render-boundary="start"
+            style={TRANSCRIPT_RENDER_MARKER_STYLE}
+          />
+        )}
+        {transcriptRenderWindow.beforeHeightPx > 0 && (
+          <div
+            aria-hidden="true"
+            data-transcript-render-spacer="before"
+            style={{ height: transcriptRenderWindow.beforeHeightPx }}
+          />
+        )}
+        {transcriptRenderWindow.rows.map((timelineRow) => {
+          const renderedRow = (() => {
+            if (timelineRow.kind === "btw") {
+              return (
+                <BtwAsideTimelineCard
+                  key={timelineRow.key}
+                  aside={timelineRow.aside}
+                  onFocus={onFocusBtwAside}
+                  onDone={onDoneBtwAside}
+                  onStop={onStopBtwAside}
+                  onToggleExpanded={onToggleBtwAsideExpanded}
+                  onTransferTurn={onTransferBtwAsideTurn}
+                />
+              );
+            }
 
-          if (timelineRow.kind === "empty") {
-            return null;
-          }
+            if (timelineRow.kind === "empty") {
+              return null;
+            }
 
-          if (timelineRow.kind === "standalone") {
-            const { item } = timelineRow;
-            return (
-              <RenderItemComponent
-                key={timelineRow.key}
-                item={item}
-                isStreaming={isStreaming}
-                thinkingExpanded={false}
-                toggleThinkingExpanded={noopToggleThinkingExpanded}
-                sessionProvider={provider}
-                getForkSummaryTargetHref={getForkSummaryTargetHref}
-                onCancelForkSummary={onCancelForkSummary}
-                onToggleForkSummaryAutoOpen={onToggleForkSummaryAutoOpen}
-                onFollowForkSummary={onFollowForkSummary}
-                bangCommandHandlers={bangCommandHandlers}
-              />
-            );
-          }
+            if (timelineRow.kind === "standalone") {
+              const { item } = timelineRow;
+              return (
+                <RenderItemComponent
+                  key={timelineRow.key}
+                  item={item}
+                  isStreaming={isStreaming}
+                  thinkingExpanded={false}
+                  toggleThinkingExpanded={noopToggleThinkingExpanded}
+                  sessionProvider={provider}
+                  getForkSummaryTargetHref={getForkSummaryTargetHref}
+                  onCancelForkSummary={onCancelForkSummary}
+                  onToggleForkSummaryAutoOpen={onToggleForkSummaryAutoOpen}
+                  onFollowForkSummary={onFollowForkSummary}
+                  bangCommandHandlers={bangCommandHandlers}
+                />
+              );
+            }
 
-          if (timelineRow.kind === "user") {
+            if (timelineRow.kind === "user") {
+              return (
+                <UserTimelineEntry
+                  key={timelineRow.key}
+                  row={timelineRow}
+                  isStreaming={isStreaming}
+                  sessionProvider={provider}
+                  latestCorrectablePromptId={latestCorrectablePrompt?.id}
+                  latestCorrectablePromptContent={
+                    latestCorrectablePrompt?.content
+                  }
+                  onCorrectLatestUserMessage={onCorrectLatestUserMessage}
+                  onCancelUnconfirmedUserMessage={
+                    onCancelUnconfirmedUserMessage
+                  }
+                  onTrimBeforeUserMessage={onTrimBeforeUserMessage}
+                  onForkBeforeUserMessage={onForkBeforeUserMessage}
+                  onForkAfterUserMessage={onForkAfterUserMessage}
+                  onForkAfterSummaryUserMessage={onForkAfterSummaryUserMessage}
+                  canForkBeforePrompt={canForkBeforePrompt}
+                  forkAfterUserMessageDisabled={forkAfterUserMessageDisabled}
+                  noopToggleThinkingExpanded={noopToggleThinkingExpanded}
+                />
+              );
+            }
+
             return (
-              <UserTimelineEntry
+              <AssistantTimelineEntry
                 key={timelineRow.key}
                 row={timelineRow}
                 isStreaming={isStreaming}
                 sessionProvider={provider}
-                latestCorrectablePromptId={latestCorrectablePrompt?.id}
-                latestCorrectablePromptContent={
-                  latestCorrectablePrompt?.content
-                }
-                onCorrectLatestUserMessage={onCorrectLatestUserMessage}
-                onCancelUnconfirmedUserMessage={onCancelUnconfirmedUserMessage}
+                getThinkingItemExpanded={getThinkingItemExpanded}
+                toggleThinkingItemExpanded={toggleThinkingItemExpanded}
+                noopToggleThinkingExpanded={noopToggleThinkingExpanded}
                 onTrimBeforeUserMessage={onTrimBeforeUserMessage}
                 onForkBeforeUserMessage={onForkBeforeUserMessage}
                 onForkAfterUserMessage={onForkAfterUserMessage}
                 onForkAfterSummaryUserMessage={onForkAfterSummaryUserMessage}
                 canForkBeforePrompt={canForkBeforePrompt}
                 forkAfterUserMessageDisabled={forkAfterUserMessageDisabled}
-                noopToggleThinkingExpanded={noopToggleThinkingExpanded}
+                handleQuoteTextBlock={handleQuoteTextBlock}
+                alwaysShowQuoteCircles={alwaysShowQuoteCircles}
+                paragraphQuoteCirclesEnabled={paragraphQuoteCirclesEnabled}
+                onToggleConversationActivity={toggleConversationActivity}
+                widerConversationActivityPreviews={
+                  widerConversationActivityPreviews
+                }
+                collapsedConversationThinkingPreviewSlots={
+                  collapsedConversationThinkingPreviewSlots
+                }
+                onToggleConversationThinkingPreview={
+                  toggleConversationThinkingPreview
+                }
+                onDismissConversationThinkingPreview={
+                  dismissConversationThinkingPreview
+                }
               />
             );
+          })();
+          if (!transcriptRenderWindow.active) {
+            return renderedRow;
           }
-
+          const spacerBefore = transcriptRenderWindow.getRowSpacerBefore(
+            timelineRow.key,
+          );
           return (
-            <AssistantTimelineEntry
-              key={timelineRow.key}
-              row={timelineRow}
-              isStreaming={isStreaming}
-              sessionProvider={provider}
-              getThinkingItemExpanded={getThinkingItemExpanded}
-              toggleThinkingItemExpanded={toggleThinkingItemExpanded}
-              noopToggleThinkingExpanded={noopToggleThinkingExpanded}
-              onTrimBeforeUserMessage={onTrimBeforeUserMessage}
-              onForkBeforeUserMessage={onForkBeforeUserMessage}
-              onForkAfterUserMessage={onForkAfterUserMessage}
-              onForkAfterSummaryUserMessage={onForkAfterSummaryUserMessage}
-              canForkBeforePrompt={canForkBeforePrompt}
-              forkAfterUserMessageDisabled={forkAfterUserMessageDisabled}
-              handleQuoteTextBlock={handleQuoteTextBlock}
-              alwaysShowQuoteCircles={alwaysShowQuoteCircles}
-              paragraphQuoteCirclesEnabled={paragraphQuoteCirclesEnabled}
-              onToggleConversationActivity={toggleConversationActivity}
-              widerConversationActivityPreviews={
-                widerConversationActivityPreviews
-              }
-              collapsedConversationThinkingPreviewSlots={
-                collapsedConversationThinkingPreviewSlots
-              }
-              onToggleConversationThinkingPreview={
-                toggleConversationThinkingPreview
-              }
-              onDismissConversationThinkingPreview={
-                dismissConversationThinkingPreview
-              }
-            />
+            <Fragment key={timelineRow.key}>
+              {spacerBefore > 0 && (
+                <div
+                  aria-hidden="true"
+                  data-transcript-render-spacer="between"
+                  style={{ height: spacerBefore }}
+                />
+              )}
+              <span
+                ref={(element) =>
+                  transcriptRenderWindow.registerRowStart(
+                    timelineRow.key,
+                    element,
+                  )
+                }
+                aria-hidden="true"
+                data-transcript-render-boundary="row-start"
+                style={TRANSCRIPT_RENDER_MARKER_STYLE}
+              />
+              {renderedRow}
+              <span
+                ref={(element) =>
+                  transcriptRenderWindow.registerRowEnd(
+                    timelineRow.key,
+                    element,
+                  )
+                }
+                aria-hidden="true"
+                data-transcript-render-boundary="row-end"
+                style={TRANSCRIPT_RENDER_MARKER_STYLE}
+              />
+            </Fragment>
           );
         })}
+        {transcriptRenderWindow.afterHeightPx > 0 && (
+          <div
+            aria-hidden="true"
+            data-transcript-render-spacer="after"
+            style={{ height: transcriptRenderWindow.afterHeightPx }}
+          />
+        )}
         {composerTailRows.map((tailRow) => {
           const { hasMessageAge, showAgeByDefault, timestampMs } = tailRow;
 

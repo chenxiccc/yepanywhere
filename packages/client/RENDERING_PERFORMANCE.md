@@ -45,9 +45,15 @@ stable component identity, and lower update cadence.
    large older page enters the DOM in bounded turn-aligned commits separated
    by animation-frame yields; each commit restores the original visible
    anchor in its layout phase before paint.
-6. `RenderItemComponent` routes exactly one render item to one block/tool
+6. At 200 units of semantic row weight, `useTranscriptRenderWindow` replaces
+   distant loaded rows with measured-height spacers and mounts the viewport,
+   1.25 viewports of overscan, and at most 48 ordinary timeline rows. Search,
+   turn navigation, route restoration, and live quote anchors wake or retain
+   rows through the same render-id-to-height-model mapping. Short transcripts
+   keep the unmodified full-DOM path.
+7. `RenderItemComponent` routes exactly one render item to one block/tool
    renderer: text, thinking, tool call, user prompt, session setup, or system.
-7. Rich renderers operate on block/tool-sized input:
+8. Rich renderers operate on block/tool-sized input:
    - text blocks use server markdown HTML when available, streaming markdown
      DOM while live, and local fixed-font math as fallback after completion;
    - tool renderers receive one tool input/result or one file/diff/output
@@ -87,6 +93,12 @@ stable component identity, and lower update cadence.
   current-message updates. User and assistant timeline entries are memoized at
   the turn boundary: a live-tail replacement may enter the changed current
   turn, but must not re-enter historical turn galleries or render items.
+- Loaded transcript length must not determine mounted DOM length once semantic
+  row weight reaches the render-window threshold. Off-window geometry comes
+  from stable-key height measurements or conservative estimates. A scroll
+  shift or estimate correction preserves the visible render-row anchor;
+  explicit search/turn/route targets mount before their exact alignment pass,
+  and rows carrying live quote anchors remain mounted as sparse islands.
 - Native transcript scroll handlers perform only constant-time follow/intent
   bookkeeping and schedule one trailing position read. Transcript-position
   context is measured after 200 ms of scroll rest, indexes rendered rows once,

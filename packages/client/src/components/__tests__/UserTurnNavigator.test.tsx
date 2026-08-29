@@ -211,6 +211,62 @@ describe("UserTurnNavigator", () => {
     ).toBeTruthy();
   });
 
+  it("lays out and wakes a turn outside the mounted render window", async () => {
+    let scrollTop = 0;
+    const scrollContainer = document.createElement("div");
+    const messageList = document.createElement("div");
+    const mountedRow = document.createElement("div");
+    const revealRenderId = vi.fn(() => true);
+    const scrollTo = vi.fn((options: ScrollToOptions) => {
+      scrollTop = Number(options.top ?? 0);
+    });
+
+    mountedRow.dataset.renderId = "user-2";
+    messageList.append(mountedRow);
+    scrollContainer.append(messageList);
+    document.body.append(scrollContainer);
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      get: () => scrollTop,
+      set: (value) => {
+        scrollTop = Number(value);
+      },
+    });
+    setReadonlyNumber(scrollContainer, "scrollHeight", 1000);
+    setReadonlyNumber(scrollContainer, "clientHeight", 200);
+    setReadonlyNumber(scrollContainer, "clientWidth", 360);
+    setReadonlyNumber(scrollContainer, "offsetWidth", 380);
+    scrollContainer.getBoundingClientRect = () =>
+      rect({ top: 100, height: 200 });
+    mountedRow.getBoundingClientRect = () =>
+      rect({ top: 720 - scrollTop, height: 30 });
+    scrollContainer.scrollTo = scrollTo as typeof scrollContainer.scrollTo;
+
+    render(
+      <UserTurnNavigator
+        anchors={[
+          { id: "user-1", preview: "Windowed request" },
+          { id: "user-2", preview: "Mounted request" },
+        ]}
+        messageListRef={{ current: messageList }}
+        getRenderIdTop={(id) => (id === "user-1" ? 120 : null)}
+        revealRenderId={revealRenderId}
+      />,
+    );
+
+    act(() => {
+      dispatchPointerMove(scrollContainer, 492, 150);
+    });
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Jump to turn: Windowed request",
+      }),
+    );
+
+    expect(revealRenderId).toHaveBeenCalledWith("user-1");
+    expect(scrollTo).toHaveBeenCalledWith({ top: 108, behavior: "auto" });
+  });
+
   it("opens compact turn context actions for fork before and after", async () => {
     const scrollContainer = document.createElement("div");
     const messageList = document.createElement("div");

@@ -18,11 +18,13 @@ See also:
 
 Topic: transcript-virtualization
 
-Status: Stage 1 item 1 landed (stabilize MessageList's callback props): idle CPU
-~22% → ~9%, per-second O(rows) re-render gone. The Stage 2
+Status: Stage 1 removed the per-second O(rows) re-render. The Stage 2
 `content-visibility: auto` experiment was retired on 2026-08-26 after confirmed
 scroll-position failures and severe amplification in a real long-session
-reload. The bounded semantic client window is the shipped transcript bound.
+reload. The bounded semantic client data window is shipped. A measured-height
+semantic render window landed on 2026-08-29 after a 360-turn profile still
+settled at roughly 19,000 elements; its system-observed recovery measurement is
+pending.
 
 2026-07-09 (follow-up, measured): **Stage 1 items 2–3 are moot, not
 "re-prioritized."** Direct render-count instrumentation on the full-transcript
@@ -220,7 +222,7 @@ window rather than CSS, but the experiment amplified the unbounded state and
 made scroll recovery unreliable. The comparison toggle, preference plumbing,
 and transcript CSS were removed; no runtime path now enables this experiment.
 
-### Approved direction: bounded semantic client window
+### Shipped bounded semantic client window
 
 Do not hide an unbounded transcript behind estimated-height spacers. Keep the
 full transcript canonical on the server and model the active client transcript
@@ -231,8 +233,7 @@ semantic compaction/turn limits rather than a byte bound; one unusually large
 retained turn may therefore remain large. Trimming must also prune
 message-associated augment and tool/agent maps.
 
-This direction is approved for implementation but has not landed. The tactical
-contract is
+This direction is shipped. Its original tactical contract is
 [`060-bounded-active-transcript-window.md`](../docs/tactical/060-bounded-active-transcript-window.md):
 default-on with a Performance setting to disable it, only while following the
 bottom, a greater-than-60-second boundary-age guard, two-compaction retention,
@@ -251,9 +252,9 @@ Implement it against:
   which already warned that `content-visibility` risked scroll height, browser
   find, selection, and search anchors.
 
-The JS spacer-window design below remains research, not the chosen fallback. It
-preserves a continuous synthetic scroll range but shares the same hard geometry
-and anchoring problems that invalidated the CSS shortcut.
+This data bound and the render window below compose. The data window limits
+what the client retains; the render window limits live DOM for the loaded rows
+without hiding or dropping them from search and navigation.
 
 ### Open architecture: whole-session search across a bounded window
 
@@ -282,42 +283,43 @@ grows. This is a single-session windowing concern. The independent
 cross-session corpus and indexing proposal remains in
 [`all-session-content-search.md`](all-session-content-search.md).
 
-### Research design: JS windowed rendering
+### Measured-height semantic render window
 
-Render only rows near the viewport (plus a small overscan); replace off-screen
-runs with spacer elements sized from measured/estimated row heights. Bounds both
-DOM size and per-tick work to the viewport.
+`MessageList` keeps every loaded timeline row in its semantic model but mounts
+only the viewport, 1.25 viewports of overscan, and at most 48 ordinary rows.
+Windowing activates only at 200 units of semantic render weight, so the short
+session path keeps its original DOM. One top-level user, assistant, standalone,
+or `/btw` row is the identity and measurement unit; an assistant row's weight
+includes its display subrows. A single unusually large turn can therefore
+remain larger than the ordinary bound.
 
-This is not a drop-in list virtualizer — it must integrate with existing
-transcript machinery. Known couplings to solve (each currently assumes all rows
-are in the DOM):
+Off-window runs become spacer elements. Boundary markers measure mounted row
+heights, keyed by stable timeline-row keys; unmeasured rows use a fixed
+weight-based estimate. Before a window shift or height-model correction, the
+first visible render-row anchor is captured and restored in the layout phase.
+Follow-bottom remains owned by `MessageList` rather than the window hook.
 
-- **Variable row heights.** Text/tool/code/thinking rows differ widely and
-  reflow (ResizeObserver in `TextBlock`, media previews, code highlight). Need a
-  measured-height cache keyed by stable row id, with estimate-then-correct so the
-  scrollbar and anchoring don't jump.
-- **Scroll anchoring / follow-bottom.** `MessageList` already has substantial
-  anchor/follow/snapshot logic (rect reads, `isAtScrollBottom`, scroll snapshot
-  publish). Virtualization changes what "scrollHeight" means; anchoring must be
-  driven by the height model, not by rects of rows that may be unmounted.
-- **Turn rail (`UserTurnNavigator`).** It computes marker positions by calling
-  `getBoundingClientRect` on every user-turn row (`UserTurnNavigator.tsx` ~519).
-  Off-screen rows won't exist. Marker layout must derive from the height model /
-  row offsets, not live DOM rects. This is a real, required sub-task.
-- **In-transcript search / isearch** (`useMessageListIsearch`) scans and scrolls
-  to matches across the whole transcript. Jumping to a match must mount its row
-  (scroll the height model to it), and match highlighting must survive
-  mount/unmount.
-- **Selection, quote anchors, comment anchors** reference live DOM; ensure
-  anchors resolve after a row remounts (store by row id + offset, re-resolve on
-  mount).
-- **Progressive initial render** (`getProgressiveTimelineVisibility`) already
-  stages the first paint; fold it into the window model rather than layering a
-  second mechanism.
+Every render id maps to its owning semantic row and cumulative height-model
+offset. Search, recall, route restoration, keyboard turn navigation, and turn
+rail marker clicks can therefore position an unmounted target, mount its row,
+and settle on the real DOM geometry. `UserTurnNavigator` uses live rects when a
+row is mounted and height-model offsets otherwise. Progressive initial render
+still controls which semantic rows are available; once their aggregate weight
+crosses the threshold, the render window bounds the mounted subset.
 
-Default/rollout: keep behavior identical for short sessions (window ≥ list ⇒ no
-change). Gate behind a setting or size threshold initially so the non-buggy
-short-session path is untouched (see the UI-changes-preserve-defaults rule).
+Comment anchors record their owning render id and copy-source index. Rows with
+live quote anchors are retained as sparse semantic islands even when the main
+viewport window moves elsewhere, preserving DOM-backed tint ranges without
+mounting the intervening transcript. Disclosure state remains in the existing
+remembered-disclosure registry, outside row component lifetime, so unmounting a
+row does not reset explicit activity/tool disclosure.
+
+The 2026-08-29 unit contract covers the 48-row bound, waking a distant requested
+turn, virtual turn-rail geometry, short-session DOM identity, older-page
+chunking, scroll/snapshot behavior, and retaining a distant live quote anchor.
+System-observed browser latency, DOM/layout counts, tooltip amplification, and
+visual traversal remain the acceptance gate before closing the implementation
+gap.
 
 ## Non-goals
 
