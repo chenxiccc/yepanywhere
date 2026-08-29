@@ -88,6 +88,14 @@ and post-activity phases. Because those phases execute in order, an apparent
 phase difference is not a causal activity-versus-time attribution until an
 interleaved or separately randomized control reproduces it.
 
+The `cached-sidebar-switch-routine` scenario is the bounded exception: ordinary
+push/PR CI loads two 120-turn sessions, alternates six times without injected
+activity, and excludes the first cold destination load from its latency
+distribution. Every later switch must reuse the same retained session layer,
+and retained switch-to-first-readable-frame p95 must stay at or below 200 ms.
+This gate does not cover expiry, append catch-up, or sustained concurrent
+updates.
+
 ### Built client
 
 The built-client driver prepares one production build before host sampling and
@@ -153,6 +161,8 @@ The manual `.github/workflows/performance.yml` workflow is diagnostic, not a
 push/PR gate. It uploads result, history, and logs on failure as well as success
 and emits the capacity registration needed for later review. Small cloud hosts
 follow the same eligibility, marker, teardown, and deletion rules.
+Ordinary `.github/workflows/ci.yml` separately runs the small retained-sidebar
+scenario as a push/PR gate.
 
 ## Provider-backed tiers
 

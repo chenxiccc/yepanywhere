@@ -167,7 +167,11 @@ export function validateScenario(scenario, name) {
           scenario.interactionTrace.idleBeforeSecondSwitchMs < 0)) ||
       (scenario.interactionTrace.alternateCausalArms !== undefined &&
         (scenario.interactionTrace.alternateCausalArms !== true ||
-          scenario.interactionTrace.beforeAndAfterAppend !== true)))
+          scenario.interactionTrace.beforeAndAfterAppend !== true)) ||
+      (scenario.interactionTrace.requireRetainedAfterFirstSwitch !==
+        undefined &&
+        (scenario.interactionTrace.scope !== "sidebar-switch" ||
+          scenario.interactionTrace.requireRetainedAfterFirstSwitch !== true)))
   ) {
     throw new Error(
       `scenarios.${name}.interactionTrace has invalid scope or timing`,

@@ -130,6 +130,41 @@
         "alternateCausalArms": true
       },
       "interactionTraceOnly": true
+    },
+    "cached-sidebar-switch-routine": {
+      "projects": 1,
+      "sessionsPerProject": 2,
+      "initialTurns": 120,
+      "newTurns": 1,
+      "concurrentClients": 1,
+      "browserCacheBudgetsMiB": [256],
+      "browserWorkingSetSessions": 1,
+      "payloadBytes": 2048,
+      "repetitions": 1,
+      "settleMs": 250,
+      "browserSettings": {
+        "yep-anywhere-conversation-view-enabled": "true",
+        "yep-anywhere-conversation-view-turn-limit": "120",
+        "yep-anywhere-session-dom-linger-enabled": "true",
+        "yep-anywhere-session-active-window-trim-enabled": "false",
+        "yep-anywhere-session-transcript-cache-enabled": "true",
+        "yep-anywhere-session-transcript-cache-budget-mb": "256",
+        "yep-anywhere-session-transcript-cache-ttl-hours": "72",
+        "yep-anywhere-session-scroll-behavior": "manual-follow"
+      },
+      "browserViewport": {
+        "width": 1000,
+        "height": 600
+      },
+      "interactionTrace": {
+        "enabled": true,
+        "scope": "sidebar-switch",
+        "tooltipDelayMs": 80,
+        "hoverCardDelayMs": 240,
+        "sidebarSwitchRounds": 3,
+        "requireRetainedAfterFirstSwitch": true
+      },
+      "interactionTraceOnly": true
     }
   }
 }

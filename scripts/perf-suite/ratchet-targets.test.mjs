@@ -193,6 +193,21 @@ test("ratchets one-target append separately from fleet contention", () => {
   );
 });
 
+test("ratchets routine retained sidebar switches at 200 ms", () => {
+  const selected = selectRatchetTargets(productionRatchets, {
+    capacityKey: "host-v1-unregistered-test",
+    driver: "browser",
+    scenario: "cached-sidebar-switch-routine",
+  });
+
+  assert.equal(
+    selected.targets.browser["256"][
+      "interaction.sidebarSwitchRetainedNextPaint.p95Ms"
+    ].max,
+    200,
+  );
+});
+
 test("keeps native process memory capacity-specific", () => {
   const capacityKey = "host-v1-linux-x64-16cpu-126720mib-ecfa1407f7322835";
   const local = selectRatchetTargets(productionRatchets, {

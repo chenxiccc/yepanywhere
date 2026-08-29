@@ -228,6 +228,7 @@ export function aggregateBrowserRuns(runs) {
         "olderHistoryNextPaint.p95Ms",
         "projectionNextPaint.p95Ms",
         "sidebarSwitchNextPaint.p95Ms",
+        "sidebarSwitchRetainedNextPaint.p95Ms",
         "tooltipWorkAfterDelay.p95Ms",
       ]) {
         const values = modes

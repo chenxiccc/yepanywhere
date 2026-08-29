@@ -701,6 +701,16 @@
               }
             }
           }
+        },
+        "cached-sidebar-switch-routine": {
+          "browser": {
+            "256": {
+              "interaction.sidebarSwitchRetainedNextPaint.p95Ms": {
+                "max": 200,
+                "rationale": "The routine low-activity trace requires every switch after the cold destination load to reuse retained DOM and keeps its first readable frame within the accepted 200 ms ceiling."
+              }
+            }
+          }
         }
       }
     },

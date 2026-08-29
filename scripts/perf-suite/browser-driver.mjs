@@ -47,6 +47,11 @@ export function summarizeInteractionTrials(trials) {
   const sidebarSwitchValues = trials.flatMap((trial) =>
     (trial.sidebarSwitch?.switches ?? []).map((entry) => entry.nextPaintMs),
   );
+  const sidebarSwitchRetainedValues = trials.flatMap((trial) =>
+    (trial.sidebarSwitch?.switches ?? [])
+      .filter((entry) => entry.dom?.reused === true)
+      .map((entry) => entry.nextPaintMs),
+  );
   return {
     conversation: {
       typingKeyToFrameP95: summarizeInteractionMetric(
@@ -90,6 +95,10 @@ export function summarizeInteractionTrials(trials) {
     ),
     sidebarSwitchNextPaint:
       sidebarSwitchValues.length > 0 ? summarize(sidebarSwitchValues) : null,
+    sidebarSwitchRetainedNextPaint:
+      sidebarSwitchRetainedValues.length > 0
+        ? summarize(sidebarSwitchRetainedValues)
+        : null,
     tooltipWorkAfterDelay: summarizeInteractionMetric(
       trials,
       (trial) => trial.tooltip?.workAfterDelayMs,
@@ -906,6 +915,14 @@ async function measureSidebarSwitches(
       }),
       targetPath,
     });
+  }
+  if (
+    trace.requireRetainedAfterFirstSwitch &&
+    switches.slice(1).some((entry) => entry.dom.reused !== true)
+  ) {
+    throw new Error(
+      "sidebar switch trace remounted after both sessions were warm",
+    );
   }
   return {
     initialPath,

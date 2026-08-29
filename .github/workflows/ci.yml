@@ -82,6 +82,50 @@ jobs:
       - run: pnpm -F @yep-anywhere/client exec playwright install chromium
       - run: pnpm test
 
+  cached-sidebar-performance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/checkout@v6
+        with:
+          repository: graehl/agents
+          ref: 496159563aafd1f5abd15e4315bf502187d2e9d1
+          path: .perf-tools/agents
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20.12
+          cache: "pnpm"
+      - run: pnpm install
+      - run: pnpm -F @yep-anywhere/client exec playwright install chromium
+      - name: Run retained sidebar switch ratchet
+        env:
+          YA_PERF_SWEEP: ${{ github.workspace }}/.perf-tools/agents/scripts/perf-sweep
+        run: >-
+          node scripts/perf-suite/run.mjs
+          --checkout "$GITHUB_WORKSPACE"
+          --driver browser
+          --scenario cached-sidebar-switch-routine
+          --label "github-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          --output cached-sidebar-performance.json
+      - name: Upload retained sidebar switch evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cached-sidebar-performance-${{ github.run_attempt }}
+          if-no-files-found: ignore
+          path: cached-sidebar-performance.json
+      - name: Verify no performance process debris remains
+        if: always()
+        env:
+          YA_PERF_SWEEP: ${{ github.workspace }}/.perf-tools/agents/scripts/perf-sweep
+        run: |
+          "$YA_PERF_SWEEP" 'ya-perf-suite-' --kill --kill-group
+
   markdown-performance:
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -217,6 +217,13 @@ one-second user-concern threshold. Working-set identity, zero-budget behavior,
 delayed-refresh behavior, and the configured cache byte budget remain hard
 correctness checks rather than probabilistic ratchets.
 
+`cached-sidebar-switch-routine` is the small push/PR browser gate. It loads two
+120-turn sessions and alternates six times under no injected activity. The
+first cold destination load is observational; every later switch must reuse a
+retained session layer, and the retained switch-to-first-readable-frame p95 has
+a portable 200 ms ceiling. The larger `cached-sidebar-switch` scenario remains
+the diagnostic arm for idle expiry and append catch-up.
+
 The suite never uses port 3400 and never restarts the shared YA server.
 Generated fixtures and isolated app data live under `work/` only for a run.
 Raw result JSON is written under `results/`; both directories are ignored when
@@ -263,14 +270,15 @@ baseline must show the configured CPU and effective-memory headroom. Treat a
 diagnostic-grade result as a sampling lead and rerun before changing history or
 a ratchet.
 
-The GitHub workflow runs server and built-client `fleet-small` arms, a browser
-`focused-append` arm, and the `specialized-contracts` arm on relevant client,
-server, shared-package, or suite changes. Only browser-capable arms install
-Chromium; every matrix arm receives a fresh runner and its own driver/scenario-
-keyed history. It uploads `result.json`, `history.jsonl`, and the complete run
-log on success or failure, and copies the four `YA_PERF_*_JSON` records into the
-job summary. The checkout uses full history because the deterministic fixture
-is pinned to an older revision.
+The manual GitHub performance workflow runs server and built-client
+`fleet-small` arms, a browser `focused-append` arm, and the
+`specialized-contracts` arm. Only browser-capable arms install Chromium; every
+matrix arm receives a fresh runner and its own driver/scenario-keyed history.
+It uploads `result.json`, `history.jsonl`, and the complete run log on success
+or failure, and copies the four `YA_PERF_*_JSON` records into the job summary.
+Ordinary push/PR CI runs `cached-sidebar-switch-routine` in its own browser job
+and uploads its result. Both checkouts use full history because the
+deterministic fixture is pinned to an older revision.
 
 Provider-backed drivers should prefer a simulated harness process over the
 browser drivers' post-provider mock so process startup, adapter protocol,
