@@ -831,6 +831,14 @@ async function measureSidebarSwitches(
                 ) * 10,
               ) / 10,
             sessionLayerRenderBySession,
+            sessionLayerRenderEvents: sessionLayerRenders.map((mark) => ({
+              actualDurationMs:
+                Math.round((mark.detail?.actualDuration ?? 0) * 10) / 10,
+              afterClickMs: duration(marks[0]?.atMs, mark.atMs),
+              phase: mark.detail?.phase ?? null,
+              sessionId: mark.detail?.sessionId ?? null,
+              subtreeParked: mark.detail?.subtreeParked ?? null,
+            })),
           },
         };
       },
