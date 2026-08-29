@@ -165,6 +165,57 @@ describe("ActivityDetailModal", () => {
     ).toBeTruthy();
   });
 
+  it("preserves a detail selection while its source rerenders", async () => {
+    function RerenderHarness() {
+      const [activity, setActivity] = useState(0);
+      return (
+        <I18nProvider>
+          <SessionMetadataProvider
+            projectId="project-1"
+            projectPath="/workspace"
+            sessionId="session-1"
+          >
+            <SessionViewerProvider sessionId="session-1">
+              <ActivityDetailModal
+                title="Bash Command"
+                label="Bash Command"
+                onClose={() => {}}
+              >
+                <pre>{`first line\nactivity detail ${activity}`}</pre>
+              </ActivityDetailModal>
+              <button
+                type="button"
+                onClick={() => setActivity((value) => value + 1)}
+              >
+                Activity {activity}
+              </button>
+            </SessionViewerProvider>
+          </SessionMetadataProvider>
+        </I18nProvider>
+      );
+    }
+
+    render(<RerenderHarness />);
+    const detail = await screen.findByText(/first line/);
+    const detailText = detail.firstChild;
+    expect(detailText).toBeTruthy();
+    if (!detailText) throw new Error("Activity detail text is missing");
+    const range = document.createRange();
+    range.setStart(detailText, "first line\n".length);
+    range.setEnd(detailText, "first line\nactivity".length);
+    document.getSelection()?.removeAllRanges();
+    document.getSelection()?.addRange(range);
+
+    fireEvent.click(screen.getByRole("button", { name: "Activity 0" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Activity 1" })).toBeTruthy(),
+    );
+
+    expect(detail.firstChild).toBe(detailText);
+    expect(detail.textContent).toBe("first line\nactivity detail 0");
+    expect(document.getSelection()?.toString()).toBe("activity");
+  });
+
   it("does not let a retained session host clear another session's detail", async () => {
     render(
       <I18nProvider>

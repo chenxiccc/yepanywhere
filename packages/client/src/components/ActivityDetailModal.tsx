@@ -38,6 +38,32 @@ export function ActivityDetailModal({
       />
     </>
   );
+  const managedPanelRef = useRef<{
+    sessionId: string;
+    title: ReactNode;
+    actions: ReactNode;
+    label: string;
+    briefLabel?: string;
+    children: ReactNode;
+  } | null>(null);
+
+  // The source row can rerender for every transcript update and selection
+  // event. Keep the opened detail's React nodes fixed so those unrelated
+  // renders cannot replace the browser's live selection boundaries.
+  if (
+    sessionId &&
+    (!managedPanelRef.current ||
+      managedPanelRef.current.sessionId !== sessionId)
+  ) {
+    managedPanelRef.current = {
+      sessionId,
+      title,
+      actions: headerActions,
+      label,
+      briefLabel,
+      children,
+    };
+  }
 
   if (!sessionId) {
     return (
@@ -52,17 +78,20 @@ export function ActivityDetailModal({
     );
   }
 
+  const managedPanel = managedPanelRef.current;
+  if (!managedPanel) return null;
+
   return (
     <SessionManagedPanel
-      sessionId={sessionId}
-      title={title}
-      actions={headerActions}
+      sessionId={managedPanel.sessionId}
+      title={managedPanel.title}
+      actions={managedPanel.actions}
       contentRef={contentRef}
-      label={label}
-      briefLabel={briefLabel}
+      label={managedPanel.label}
+      briefLabel={managedPanel.briefLabel}
       onClose={onClose}
     >
-      {children}
+      {managedPanel.children}
     </SessionManagedPanel>
   );
 }

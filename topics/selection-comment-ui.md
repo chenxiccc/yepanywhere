@@ -292,12 +292,17 @@ The quote block itself:
   `Ctrl/Cmd+A`; a viewer that does not own focus does not intercept it. The
   floating controls mount outside the content-owning render subtree, so their
   appearance and pointer hover must not remount that content or collapse the
-  native selection before an action is reached.
+  native selection before an action is reached. An expanded activity detail
+  retains the content instance captured when it opened until it closes; live
+  transcript/source rerenders neither refresh that detail nor displace a range
+  inside it.
 - While a primary pointer is dragging a selection, selection controls remain
-  absent and do not chase the changing range. Pointer release publishes the
-  completed range once, including for upward drags. Keyboard and programmatic
-  selections still publish from `selectionchange`, and pressing an already
-  visible selection control does not dismiss it before its action fires.
+  absent and do not chase the changing range. After pointer-down clears any
+  prior controls, intermediate `selectionchange` events do no React state work.
+  Pointer release publishes the completed range once, including for upward
+  drags. Keyboard and programmatic selections still publish from
+  `selectionchange`, and pressing an already visible selection control does not
+  dismiss it before its action fires.
 - In a collapsed textual activity preview, a non-collapsed native selection
   wins over click-to-expand. Forward and upward drags both leave the detail
   closed and preserve the selected text for copying. Forming a transcript

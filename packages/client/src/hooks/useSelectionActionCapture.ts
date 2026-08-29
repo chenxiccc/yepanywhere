@@ -557,7 +557,6 @@ export function useSelectionActionCapture({
     const updateFromSelectionRange = () => {
       if (selectionPointerStartedRef.current) {
         cancelRateLimitedUpdate();
-        setState(null);
         return;
       }
       const selection = rootDocument.getSelection();
