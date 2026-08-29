@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -114,6 +114,70 @@ describe("Incremental Session Loading", () => {
       expect(json.messages).toHaveLength(2);
       expect(json.messages[0].uuid).toBe(msg2Id);
       expect(json.messages[1].uuid).toBe(msg3Id);
+    });
+
+    it("reports that delta augmentation excludes unchanged rows", async () => {
+      const userId = randomUUID();
+      const assistantId = randomUUID();
+      const newUserId = randomUUID();
+      const newAssistantId = randomUUID();
+      const sessionPath = join(projectDir, "session.jsonl");
+      await writeFile(
+        sessionPath,
+        `${[
+          JSON.stringify({
+            type: "user",
+            uuid: userId,
+            parentUuid: null,
+            cwd: projectPath,
+            message: { content: "First" },
+          }),
+          JSON.stringify({
+            type: "assistant",
+            uuid: assistantId,
+            parentUuid: userId,
+            message: { content: `Old ${assistantId}` },
+          }),
+        ].join("\n")}\n`,
+      );
+
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const initial = await app.request(
+        `/api/projects/${projectId}/sessions/session`,
+      );
+      expect(initial.status).toBe(200);
+
+      await appendFile(
+        sessionPath,
+        `${[
+          JSON.stringify({
+            type: "user",
+            uuid: newUserId,
+            parentUuid: assistantId,
+            cwd: projectPath,
+            message: { content: "New question" },
+          }),
+          JSON.stringify({
+            type: "assistant",
+            uuid: newAssistantId,
+            parentUuid: newUserId,
+            message: { content: `New ${newAssistantId}` },
+          }),
+        ].join("\n")}\n`,
+      );
+
+      const delta = await app.request(
+        `/api/projects/${projectId}/sessions/session?afterMessageId=${assistantId}`,
+      );
+      const json = await delta.json();
+
+      expect(delta.status).toBe(200);
+      expect(
+        json.messages.map((message: { uuid?: string }) => message.uuid),
+      ).toEqual([newUserId, newAssistantId]);
+      expect(delta.headers.get("Server-Timing")).toContain(
+        'desc="messages=2 changed=1 cache-hit=0 cache-join=0 cache-miss=1"',
+      );
     });
 
     it("returns empty array when afterMessageId is the last message", async () => {

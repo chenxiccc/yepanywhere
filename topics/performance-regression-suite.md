@@ -53,6 +53,13 @@ samples; RSS uses their median. Current source emits session-detail clocks and
 bounded cache/V8 gauges. Older checkpoints report missing owner telemetry as
 unavailable, never as synthetic zero.
 
+The session-detail augmentation clock carries a description with input-message,
+changed-message, and Markdown cache hit/join/miss counts. Those counts are
+request-local even when detail requests overlap. A tracked suite process may set
+`YA_PERF_PERSISTED_AUGMENT_DELAY_MS` to place a bounded test-only delay inside
+that same clock; an untracked server rejects the variable. This probe validates
+the clock path and is not an optimization result.
+
 ### Browser
 
 The browser driver adds the measured checkout's React dev client and one real

@@ -550,7 +550,11 @@ describe("Sessions API", () => {
 
     it("reports additive detail phases through Server-Timing", async () => {
       await writeCompactedSession("sess-timed");
-      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({
+        sdk: mockSdk,
+        projectsDir: testDir,
+        persistedAugmentDelayMs: 50,
+      });
 
       const res = await app.request(
         `/api/projects/${projectId}/sessions/sess-timed`,
@@ -558,9 +562,10 @@ describe("Sessions API", () => {
       );
 
       expect(res.status).toBe(200);
+      const serverTiming = res.headers.get("Server-Timing") ?? "";
       const entries = Object.fromEntries(
-        (res.headers.get("Server-Timing") ?? "").split(", ").map((entry) => {
-          const match = /^(ya-[a-z]+);dur=([0-9.]+)$/.exec(entry);
+        serverTiming.split(", ").map((entry) => {
+          const match = /^(ya-[a-z]+);dur=([0-9.]+)/.exec(entry);
           expect(match).not.toBeNull();
           return [match?.[1], Number(match?.[2])];
         }),
@@ -580,6 +585,10 @@ describe("Sessions API", () => {
           entries["ya-route"] +
           entries["ya-augment"] -
           0.5,
+      );
+      expect(entries["ya-augment"]).toBeGreaterThanOrEqual(45);
+      expect(serverTiming).toMatch(
+        /ya-augment;dur=[0-9.]+;desc="messages=5 changed=[0-5] cache-hit=[0-9]+ cache-join=[0-9]+ cache-miss=[0-9]+"/,
       );
     });
 

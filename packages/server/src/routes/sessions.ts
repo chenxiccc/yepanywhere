@@ -91,6 +91,7 @@ import {
   pruneTaskListSnapshotsToLatest,
 } from "../augments/task-list-augments.js";
 import {
+  type PersistedAugmentDiagnostics,
   augmentEditToolUses,
   augmentPersistedSessionMessages,
 } from "../sessions/persisted-augments.js";
@@ -258,6 +259,8 @@ export interface SessionsDeps {
   toolResultMediaStore?: ToolResultMediaStore;
   /** Data directory for local security/audit logs */
   dataDir?: string;
+  /** Test-only session-detail augmentation delay for performance clock probes. */
+  persistedAugmentDelayMs?: number;
   /** Authenticated exact probes for bare absolute-path viewer links. */
   resolveAbsoluteFilePaths?: (
     paths: readonly string[],
@@ -3361,19 +3364,24 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     }
 
     // Keep persisted rendering in lockstep with stream augmentation behavior.
+    let augmentDiagnostics: PersistedAugmentDiagnostics | undefined;
     if (publicShare) {
       await augmentEditToolUses(session.messages);
     } else {
       const pathIndex = await tryClaimProjectPathIndex(project.path);
       try {
-        await augmentPersistedSessionMessages(session.messages, {
-          projectFileLinks: {
-            projectId: effectiveProjectId,
-            projectPath: project.path,
-            ...(pathIndex ? { index: pathIndex } : {}),
-            resolveAbsoluteFilePaths: deps.resolveAbsoluteFilePaths,
+        augmentDiagnostics = await augmentPersistedSessionMessages(
+          session.messages,
+          {
+            projectFileLinks: {
+              projectId: effectiveProjectId,
+              projectPath: project.path,
+              ...(pathIndex ? { index: pathIndex } : {}),
+              resolveAbsoluteFilePaths: deps.resolveAbsoluteFilePaths,
+            },
           },
-        });
+          { delayMs: deps.persistedAugmentDelayMs },
+        );
       } finally {
         pathIndex?.release();
       }
@@ -3434,7 +3442,13 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     c.header(
       "Server-Timing",
       Object.entries(detailTimings)
-        .map(([name, duration]) => `ya-${name};dur=${duration}`)
+        .map(([name, duration]) => {
+          const description =
+            name === "augment" && augmentDiagnostics
+              ? `;desc="messages=${augmentDiagnostics.inputMessages} changed=${augmentDiagnostics.changedMessages} cache-hit=${augmentDiagnostics.cacheHits} cache-join=${augmentDiagnostics.cacheJoins} cache-miss=${augmentDiagnostics.cacheMisses}"`
+              : "";
+          return `ya-${name};dur=${duration}${description}`;
+        })
         .join(", "),
     );
     if (

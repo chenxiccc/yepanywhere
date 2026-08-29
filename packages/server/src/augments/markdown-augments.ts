@@ -6,6 +6,7 @@
  * to ensure identical rendering to the streaming path.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { SourceVersionedSingleFlight } from "../lib/sourceVersionedSingleFlight.js";
 import {
   type AugmentGenerator,
@@ -69,6 +70,19 @@ function createMarkdownHtmlOwner(): SourceVersionedSingleFlight<
 let markdownHtmlOwner = createMarkdownHtmlOwner();
 let fileExistsIdentityClock = 0;
 let fileExistsIdentities = new WeakMap<(...args: never[]) => unknown, number>();
+
+export type MarkdownAugmentCacheResult = "hit" | "joined" | "miss";
+
+const markdownCacheObserver = new AsyncLocalStorage<
+  (result: MarkdownAugmentCacheResult) => void
+>();
+
+export function observeMarkdownAugmentCache<T>(
+  observer: (result: MarkdownAugmentCacheResult) => void,
+  work: () => Promise<T>,
+): Promise<T> {
+  return markdownCacheObserver.run(observer, work);
+}
 
 function fileExistsIdentity(
   fileExists:
@@ -244,11 +258,17 @@ export async function renderMarkdownToHtml(
       isCurrent: () =>
         !index || markdownSourceVersion(safeMarkdownOptions) === sourceVersion,
     });
-    if (result.status !== "stale") return result.value.html;
+    if (result.status !== "stale") {
+      markdownCacheObserver.getStore()?.(
+        result.status === "computed" ? "miss" : result.status,
+      );
+      return result.value.html;
+    }
   }
 
   // Continuous watcher churn must not prevent the response itself. The direct
   // result is deliberately outside retention after two fenced attempts.
+  markdownCacheObserver.getStore()?.("miss");
   return (
     await renderMarkdownToHtmlUncached(markdown, key, safeMarkdownOptions)
   ).html;

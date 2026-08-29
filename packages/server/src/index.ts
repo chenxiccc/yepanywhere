@@ -162,6 +162,24 @@ process.on("unhandledRejection", (reason) => {
 
 const desktopBootstrapService = await readDesktopBootstrapServiceFromStdin();
 const config = loadConfig();
+
+function readPerfPersistedAugmentDelayMs(): number | undefined {
+  const raw = process.env.YA_PERF_PERSISTED_AUGMENT_DELAY_MS;
+  if (raw === undefined) return undefined;
+  if (!process.env.PERF_RUN_ID) {
+    throw new Error(
+      "YA_PERF_PERSISTED_AUGMENT_DELAY_MS requires a tracked performance run",
+    );
+  }
+  const delayMs = Number(raw);
+  if (!Number.isFinite(delayMs) || delayMs < 0 || delayMs > 10_000) {
+    throw new Error(
+      "YA_PERF_PERSISTED_AUGMENT_DELAY_MS must be between 0 and 10000",
+    );
+  }
+  return delayMs;
+}
+
 const ATTACHMENT_STAGING_CLEANUP_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const PROVIDER_WATCH_ACTIVATION_DELAY_MS = 1_000;
 const PROVIDER_WATCH_ACTIVATION_YIELD_MS = 100;
@@ -943,6 +961,7 @@ async function startServer() {
     realSdk,
     projectsDir: config.claudeProjectsDir,
     idleTimeoutMs,
+    persistedAugmentDelayMs: readPerfPersistedAugmentDelayMs(),
     defaultPermissionMode: config.defaultPermissionMode,
     eventBus,
     // Note: uploadeWebSocket not passed yet - will be added below

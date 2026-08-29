@@ -35,12 +35,44 @@ const NEGATIVE_PROJECT_PATHS = [
 export function requestProfile(response) {
   const header = response.headers?.["server-timing"];
   const serverTimings = {};
+  const serverTimingDescriptions = {};
   if (typeof header === "string") {
     for (const entry of header.split(",")) {
-      const match = /^\s*([^;\s]+);dur=([0-9.]+)\s*$/.exec(entry);
-      if (match) serverTimings[match[1]] = Number(match[2]);
+      const match = /^\s*([^;\s]+);dur=([0-9.]+)(?:;desc="([^"]*)")?\s*$/.exec(
+        entry,
+      );
+      if (match) {
+        serverTimings[match[1]] = Number(match[2]);
+        if (match[3] !== undefined)
+          serverTimingDescriptions[match[1]] = match[3];
+      }
     }
   }
+  const augmentDescription = serverTimingDescriptions["ya-augment"];
+  const augmentCounts = Object.fromEntries(
+    typeof augmentDescription === "string"
+      ? augmentDescription
+          .split(" ")
+          .map((part) => /^([^=]+)=([0-9]+)$/.exec(part))
+          .filter((match) => match !== null)
+          .map((match) => [match[1], Number(match[2])])
+      : [],
+  );
+  const augmentation = [
+    "messages",
+    "changed",
+    "cache-hit",
+    "cache-join",
+    "cache-miss",
+  ].every((name) => Number.isFinite(augmentCounts[name]))
+    ? {
+        inputMessages: augmentCounts.messages,
+        changedMessages: augmentCounts.changed,
+        cacheHits: augmentCounts["cache-hit"],
+        cacheJoins: augmentCounts["cache-join"],
+        cacheMisses: augmentCounts["cache-miss"],
+      }
+    : null;
   const owners = [
     "ya-project",
     "ya-read",
@@ -99,6 +131,8 @@ export function requestProfile(response) {
     markedServerMs,
     nonOverlappingPhases,
     serverPhaseResidualMs,
+    augmentation,
+    serverTimingDescriptions,
     serverTimings,
   };
 }
@@ -224,6 +258,23 @@ export function summarizeRequestProfiles(profiles) {
       marked: summarize(values((profile) => profile.markedServerMs, available)),
       residual: summarize(
         values((profile) => profile.serverPhaseResidualMs, available),
+      ),
+    },
+    augmentation: {
+      inputMessages: summarize(
+        values((profile) => profile.augmentation?.inputMessages),
+      ),
+      changedMessages: summarize(
+        values((profile) => profile.augmentation?.changedMessages),
+      ),
+      cacheHits: summarize(
+        values((profile) => profile.augmentation?.cacheHits),
+      ),
+      cacheJoins: summarize(
+        values((profile) => profile.augmentation?.cacheJoins),
+      ),
+      cacheMisses: summarize(
+        values((profile) => profile.augmentation?.cacheMisses),
       ),
     },
     frameworkSerializeLoopback: summarize(

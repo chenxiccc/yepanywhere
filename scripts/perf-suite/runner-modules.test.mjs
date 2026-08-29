@@ -163,7 +163,7 @@ test("telemetry preserves one non-overlapping request profile", () => {
         "ya-read;dur=2",
         "ya-normalize;dur=1",
         "ya-route;dur=1",
-        "ya-augment;dur=3",
+        'ya-augment;dur=3;desc="messages=6 changed=3 cache-hit=2 cache-join=1 cache-miss=4"',
         "ya-total;dur=10",
       ].join(","),
     },
@@ -175,6 +175,13 @@ test("telemetry preserves one non-overlapping request profile", () => {
   assert.equal(profile.frameworkSerializeLoopbackMs, 10);
   assert.equal(profile.serverPhaseResidualMs, 2);
   assert.equal(profile.coverage.fraction, 1);
+  assert.deepEqual(profile.augmentation, {
+    inputMessages: 6,
+    changedMessages: 3,
+    cacheHits: 2,
+    cacheJoins: 1,
+    cacheMisses: 4,
+  });
 });
 
 test("browser driver deadlines settle and reject independently", async () => {

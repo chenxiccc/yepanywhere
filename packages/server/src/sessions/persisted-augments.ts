@@ -4,8 +4,60 @@ import {
   augmentFinalizedMessage,
   augmentWriteToolUsesInMessage,
 } from "../augments/finalized-message-augmenter.js";
+import {
+  type MarkdownAugmentCacheResult,
+  observeMarkdownAugmentCache,
+} from "../augments/markdown-augments.js";
 import type { SafeMarkdownRenderOptions } from "../augments/safe-markdown.js";
 import type { Message } from "../supervisor/types.js";
+
+export interface PersistedAugmentDiagnostics {
+  cacheHits: number;
+  cacheJoins: number;
+  cacheMisses: number;
+  changedMessages: number;
+  inputMessages: number;
+}
+
+export interface PersistedAugmentOptions {
+  /** Test-only delay used to validate the session-detail augmentation clock. */
+  delayMs?: number;
+}
+
+const AUGMENT_OUTPUT_FIELDS = new Set([
+  "_diffHtml",
+  "_highlightedContentHtml",
+  "_highlightedLanguage",
+  "_highlightedTruncated",
+  "_html",
+  "_projectPathLinks",
+  "_rawPatch",
+  "_renderedHtml",
+  "_renderedMarkdownHtml",
+  "_structuredPatch",
+]);
+
+function countAugmentOutputFields(value: unknown): number {
+  if (!value || typeof value !== "object") return 0;
+  if (Array.isArray(value)) {
+    return value.reduce(
+      (count, item) => count + countAugmentOutputFields(item),
+      0,
+    );
+  }
+
+  let count = 0;
+  for (const [key, nested] of Object.entries(value)) {
+    if (AUGMENT_OUTPUT_FIELDS.has(key)) count += 1;
+    count += countAugmentOutputFields(nested);
+  }
+  return count;
+}
+
+function waitForDelay(delayMs: number | undefined): Promise<void> | undefined {
+  if (delayMs === undefined || delayMs <= 0) return undefined;
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
 
 function asAugmentableMessage(message: Message): Record<string, unknown> {
   return message as unknown as Record<string, unknown>;
@@ -54,12 +106,36 @@ export async function augmentExitPlanModeAndReadResults(
 export async function augmentPersistedSessionMessages(
   messages: Message[],
   safeMarkdownOptions?: SafeMarkdownRenderOptions,
-): Promise<void> {
-  await Promise.all(
-    messages.map((message) =>
-      augmentFinalizedMessage(asAugmentableMessage(message), {
-        safeMarkdownOptions,
+  options: PersistedAugmentOptions = {},
+): Promise<PersistedAugmentDiagnostics> {
+  const diagnostics: PersistedAugmentDiagnostics = {
+    cacheHits: 0,
+    cacheJoins: 0,
+    cacheMisses: 0,
+    changedMessages: 0,
+    inputMessages: messages.length,
+  };
+  const observeCacheResult = (result: MarkdownAugmentCacheResult): void => {
+    if (result === "hit") diagnostics.cacheHits += 1;
+    else if (result === "joined") diagnostics.cacheJoins += 1;
+    else diagnostics.cacheMisses += 1;
+  };
+
+  await observeMarkdownAugmentCache(observeCacheResult, async () => {
+    await waitForDelay(options.delayMs);
+    await Promise.all(
+      messages.map(async (message) => {
+        const augmentableMessage = asAugmentableMessage(message);
+        const fieldsBefore = countAugmentOutputFields(augmentableMessage);
+        await augmentFinalizedMessage(augmentableMessage, {
+          safeMarkdownOptions,
+        });
+        if (countAugmentOutputFields(augmentableMessage) !== fieldsBefore) {
+          diagnostics.changedMessages += 1;
+        }
       }),
-    ),
-  );
+    );
+  });
+
+  return diagnostics;
 }

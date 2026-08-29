@@ -264,6 +264,8 @@ export interface AppOptions {
   grokSessionsDir?: string; // override for testing
   piSessionsDir?: string; // override for testing
   idleTimeoutMs?: number;
+  /** Test-only session-detail augmentation delay for performance clock probes. */
+  persistedAugmentDelayMs?: number;
   defaultPermissionMode?: PermissionMode;
   /** EventBus for file change events */
   eventBus?: EventBus;
@@ -1776,6 +1778,7 @@ export function createApp(options: AppOptions): AppResult {
       sessionQueuePersistenceService: options.sessionQueuePersistenceService,
       toolResultMediaStore,
       dataDir: options.dataDir,
+      persistedAugmentDelayMs: options.persistedAugmentDelayMs,
       resolveAbsoluteFilePaths: localResourcePathPolicy.findAllowedFilePaths,
     }),
   );
