@@ -147,7 +147,7 @@ function renderNavigationLayoutWithSessionLinger(
           <Route
             element={
               <NavigationLayout
-                sessionElement={(route, { parked }) => {
+                sessionElement={(route, { onSessionNavigate, parked }) => {
                   options.onSessionRender?.(parked, route.sessionId);
                   return (
                     <div
@@ -160,15 +160,29 @@ function renderNavigationLayoutWithSessionLinger(
                         File
                       </Link>
                       <Link
-                        className="session-list-item__link"
                         to="/projects/project-1/sessions/session-2"
+                        onClick={(event) =>
+                          onSessionNavigate({
+                            event,
+                            href: "/projects/project-1/sessions/session-2",
+                            projectId: "project-1",
+                            sessionId: "session-2",
+                          })
+                        }
                       >
                         Session 2
                       </Link>
                       {route.sessionId === "session-2" && (
                         <Link
-                          className="session-list-item__link"
                           to="/projects/project-1/sessions/session-1"
+                          onClick={(event) =>
+                            onSessionNavigate({
+                              event,
+                              href: "/projects/project-1/sessions/session-1",
+                              projectId: "project-1",
+                              sessionId: "session-1",
+                            })
+                          }
                         >
                           Session 1
                         </Link>

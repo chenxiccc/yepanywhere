@@ -3165,6 +3165,9 @@ export const MessageList = memo(function MessageList({
       jumpToSearchTarget(targetId, false);
       preserveScrollAfterTranscriptHeightChange(() => {
         closeSearch(false);
+        requestAnimationFrame(() => {
+          scrollToRenderId(targetId, "auto", "center", false);
+        });
       }, targetId);
     },
     [
@@ -3172,6 +3175,7 @@ export const MessageList = memo(function MessageList({
       completeProgressiveReveal,
       jumpToSearchTarget,
       preserveScrollAfterTranscriptHeightChange,
+      scrollToRenderId,
     ],
   );
 

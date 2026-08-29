@@ -279,23 +279,17 @@ truncated transcript. The exact contract remains in
 accepted measurement in the
 [`2026-08-29 follow-up`](20260829-system-observed-followups.md).
 
-### 2. Attribute and reduce cached cross-session remount
+### 2. Retain bounded direct-session DOM
 
-Scenario and evidence: cached A/B switching remained 0.6–1.4 seconds with
-119–465 ms long-task work while the compact destination had 42 rows and stable
-heap/DOM counts. `NavigationLayout` currently retains one session only across a
-session-to-non-session route; direct A-to-B navigation replaces that route.
-`useSessionMessages` hydrates the destination snapshot and `MessageList`
-rebuilds its rendered projection.
-
-Predicted marginal value: route-phase marks should separate synchronous cache
-read from hydration, commit, and layout in one measurement pass. If remount and
-layout dominate, preserving a bounded second DOM could avoid them, but it also
-doubles the most expensive retained state and risks duplicate streams, focus,
-and liveness ownership. Do not implement two-session keepalive before the
-phase and memory evidence. The new
-[`gaps/cached-large-session-sidebar-remount-latency.md`](../../gaps/cached-large-session-sidebar-remount-latency.md)
-owns this work.
+The original cached A/B baseline remained 0.6–1.4 seconds with 119–465 ms
+long-task work. The 2026-08-29 retained-DOM follow-up above resolved that
+pointer: one active and one eligible parked session now reuse their keyed DOM
+layers, while the parked session releases background consumers and remains
+bounded by expiry, project/source identity, element admission, and Conversation
+View compaction. The accepted three-repetition candidate measured a 21.9 ms
+median and 56.2 ms p95 on actual retained switches. The current contract and
+remaining resource verification live in
+[`session-dom-linger-speedup.md`](../session-dom-linger-speedup.md).
 
 ### 3. Reuse or narrow server augmentation work
 
@@ -411,7 +405,6 @@ landed; the table omits that closed gap.
 | `remote-session-project-views-use-local-files` | XL | Critical | Now | Remote session views can present the wrong machine's files. |
 | `session-transcript-project-from-launch-cwd` | L | Critical | Now | Wrong cwd/project identity can misplace resume work and transcript ownership. |
 | `background-relay-reconnect-blank-page` | L | Critical | Now | A live session can become unusably blank after reconnect. |
-| `cached-large-session-sidebar-remount-latency` | M measure / L fix | High | Now | Reproduced 0.6–1.4 second cached cross-session switches; cause still needs separation. |
 | `long-session-old-content-motion-recurrence` | M | High | Next | Potential transcript instability is severe, but current reproduction confidence is low. |
 | `lower-websocket-message-admission` | L | High | Now | Reduces a large production memory/denial-of-service exposure. |
 | `native-server-no-new-privs` | L | High | Next | Meaningful native-host security boundary; needs cross-platform handling. |
@@ -451,10 +444,10 @@ task beyond the selected gap.
 
 ## Final disposition
 
-Render-window virtualization is complete; pursue route-switch phase
-attribution as the remaining measured browser front. Augmentation counts showed
-that unchanged messages already hit the source-versioned cache, so no delta
-reuse edit is warranted. Park automatic recurring performance sprints until a
-single scenario can compute the full frozen weighted score. Preserve the
-semantic action, cohort, and interaction-trace facilities for the next
-candidate rather than rebuilding the measurement seam.
+Render-window virtualization and bounded direct-session DOM retention are
+complete. Augmentation counts showed that unchanged messages already hit the
+source-versioned cache, so no delta reuse edit is warranted. Park automatic
+recurring performance sprints until a single scenario can compute the full
+frozen weighted score. Preserve the semantic action, cohort, and
+interaction-trace facilities for the next candidate rather than rebuilding the
+measurement seam.

@@ -47,6 +47,13 @@ import { SessionStatusBadge } from "./StatusBadge";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import styles from "./SessionListItem.module.css";
 
+export interface SessionNavigationIntent {
+  event: React.MouseEvent<HTMLAnchorElement>;
+  href: string;
+  projectId: string;
+  sessionId: string;
+}
+
 interface SessionListItemProps {
   // Core (required)
   sessionId: string;
@@ -102,6 +109,7 @@ interface SessionListItemProps {
   isSelectionMode?: boolean;
   onSelect?: (sessionId: string, selected: boolean) => void;
   onNavigate?: () => void;
+  onSessionNavigate?: (intent: SessionNavigationIntent) => void;
 
   // For sidebar compact mode
   hasDraft?: boolean;
@@ -202,6 +210,7 @@ export function SessionListItem({
   isSelectionMode = false,
   onSelect,
   onNavigate,
+  onSessionNavigate,
   // Sidebar
   hasDraft = false,
   hasProjectQueue = false,
@@ -649,9 +658,22 @@ export function SessionListItem({
         return;
       }
 
+      onSessionNavigate?.({
+        event: e,
+        href: sessionHref,
+        projectId,
+        sessionId,
+      });
       onNavigate?.();
     },
-    [isSelectionMode, onNavigate, sessionHref],
+    [
+      isSelectionMode,
+      onNavigate,
+      onSessionNavigate,
+      projectId,
+      sessionHref,
+      sessionId,
+    ],
   );
 
   const handleSessionMouseDown = useCallback(

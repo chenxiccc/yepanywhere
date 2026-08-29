@@ -70,13 +70,16 @@ dev server's load/highlight timing is noisy; only quiescence-gated samples
 (DOM-mutation rate below threshold before measuring) are trustworthy — a fixed
 settle sometimes catches load-time shiki highlighting.
 
-## Problem (one line)
+## Historical problem
 
-`MessageList` mounts every message as live DOM and re-renders the whole list
-~once per second even when idle, so both DOM footprint and per-tick main-thread
-work are O(transcript length). Native browser memory (Blink style/layout/paint,
-allocator high-water) grows over hours to many GB while the V8 heap stays flat.
-Full measurement and evidence: `memory-growth.md`.
+Before Stage 1 and the measured-height render window landed, `MessageList`
+mounted every loaded message as live DOM and the surrounding session tree could
+re-enter large historical subtrees during active output. DOM footprint and
+render work therefore scaled with transcript length; native browser memory
+(Blink style/layout/paint and allocator high-water) could grow to many GB while
+the V8 heap stayed flat. The current client instead combines a bounded semantic
+data window with a measured-height mounted window. Full baseline evidence:
+`memory-growth.md`.
 
 ## Measurement harness (reproduce before and after each stage)
 

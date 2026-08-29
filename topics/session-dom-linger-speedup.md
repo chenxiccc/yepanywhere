@@ -104,7 +104,7 @@ the user's scroll position.
 
 ## Implementation Shape
 
-Introduce a small `SessionDomLingerHost` near route layout, keyed by source,
+`SessionDomLingerHost` sits beside route layout, keyed by source,
 project, session id, route params, and query params. When leaving a session
 route for a non-session route, park the route subtree in the host instead of
 unmounting it. Prefer the underlay shape for the first pass:
@@ -272,10 +272,11 @@ still cannot share the session DOM.
 
 ## 2026-07-01 Implementation Notes
 
-`NavigationLayout` owns the linger layer. Session routes render through that
-layout-owned layer; the React Router child route is only a marker. Non-session
-routes continue through the normal `Outlet` as the foreground layer. Session
-route identity is parsed from `location.pathname`, not inherited child
+`SessionDomLingerHost` owns route identity, keyed layers, expiry, admission,
+resource deferral, and pre-navigation visual swaps. `NavigationLayout` composes
+sidebar and foreground layout around that host; the React Router child route is
+only a marker. Non-session routes continue through the normal `Outlet` as the
+foreground layer. Session route identity is parsed from `location.pathname`, not inherited child
 `useParams()`, because a parent layout can otherwise retain stale session params
 after navigation to `/git-status`.
 
@@ -368,12 +369,14 @@ consumers, cache bytes, heap, listeners, and browser process memory. Its causal
 mode alternates idle and immediate-append arms by repetition so elapsed idle
 time is not silently attributed to session activity.
 
-Sidebar activation performs the wrapper visibility, `inert`, accessibility,
-and pause-signal swap synchronously before urgent router navigation. The keyed
-session subtree is memoized, so that navigation can commit without traversing
-the retained transcript. Background-resource state follows after the first
-paint, on the next animation frame plus 500 ms, and is cancelled if another
-switch supersedes it.
+Sidebar rows publish typed project/session/href navigation intent to
+`SessionDomLingerHost`. The host performs wrapper visibility, `inert`,
+accessibility, and pause-signal swaps synchronously before urgent router
+navigation; it does not discover navigation through the Sidebar's CSS classes.
+The keyed session subtree is memoized, so that navigation can commit without
+traversing the retained transcript. Background-resource state follows after
+the first paint, on the next animation frame plus 500 ms, and is cancelled if
+another switch supersedes it.
 
 A completed, bottom-following Conversation View compacts to the existing
 120-render-item progressive tail while parked. On reveal, that useful tail is

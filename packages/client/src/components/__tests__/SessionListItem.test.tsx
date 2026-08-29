@@ -112,6 +112,35 @@ describe("SessionListItem links", () => {
     );
   });
 
+  it("publishes typed session navigation intent for an ordinary click", () => {
+    const onSessionNavigate = vi.fn();
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ul>
+            <SessionListItem
+              sessionId="session-1"
+              projectId="project-1"
+              title="Build logs"
+              mode="compact"
+              onSessionNavigate={onSessionNavigate}
+            />
+          </ul>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: /Build logs/ }));
+
+    expect(onSessionNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        href: "/projects/project-1/sessions/session-1",
+        projectId: "project-1",
+        sessionId: "session-1",
+      }),
+    );
+  });
+
   it("labels /btw aside sessions separately from their truncated title text", () => {
     render(
       <I18nProvider>

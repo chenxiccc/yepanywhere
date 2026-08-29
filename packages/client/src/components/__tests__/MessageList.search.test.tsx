@@ -104,6 +104,66 @@ function installSearchGeometry(rowOffsets: Record<string, number>) {
 }
 
 describe("MessageList reverse search", () => {
+  it.each([
+    {
+      shortcut: "r",
+      inputName: "Reverse search user turns",
+      targetId: "user-0",
+      needle: "oldest user needle",
+    },
+    {
+      shortcut: "s",
+      inputName: "Reverse search all turns",
+      targetId: "assistant-0",
+      needle: "oldest assistant needle",
+    },
+  ])(
+    "wakes and keeps an off-window $shortcut match aligned after commit",
+    async ({ shortcut, inputName, targetId, needle }) => {
+      const messages = Array.from({ length: 130 }, (_, index) => [
+        userMessage(
+          `user-${index}`,
+          index === 0 ? "oldest user needle" : `Request ${index}`,
+        ),
+        assistantMessage(
+          `assistant-${index}`,
+          index === 0 ? "oldest assistant needle" : `Answer ${index}`,
+        ),
+      ]).flat();
+      const { container } = render(<MessageList messages={messages} />);
+
+      expect(
+        container.querySelector(`[data-render-id="${targetId}"]`),
+      ).toBeNull();
+      expect(
+        container.querySelectorAll("[data-render-id]").length,
+      ).toBeLessThanOrEqual(48);
+
+      fireEvent.keyDown(window, { key: shortcut, ctrlKey: true });
+      const input = await screen.findByRole("textbox", { name: inputName });
+      fireEvent.change(input, { target: { value: needle } });
+      await waitFor(() => {
+        expect(
+          container.querySelector(`[data-render-id="${targetId}"]`),
+        ).not.toBeNull();
+      });
+      const { scrollTo } = installSearchGeometry({ [targetId]: 900 });
+
+      fireEvent.keyDown(window, { key: "Enter" });
+
+      await waitFor(() => {
+        expect(screen.queryByRole("textbox", { name: inputName })).toBeNull();
+        expect(
+          container.querySelector(`[data-render-id="${targetId}"]`),
+        ).not.toBeNull();
+      });
+      expect(scrollTo).toHaveBeenCalledWith({ top: 812, behavior: "auto" });
+      expect(
+        container.querySelectorAll("[data-render-id]").length,
+      ).toBeLessThanOrEqual(48);
+    },
+  );
+
   it("opens reverse user-turn search with Ctrl+R and hides nonmatches", async () => {
     Object.defineProperty(HTMLElement.prototype, "scrollTo", {
       configurable: true,

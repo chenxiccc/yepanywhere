@@ -54,6 +54,7 @@ import { getSessionDisplayTitle } from "../utils";
 import { AgentsNavItem } from "./AgentsNavItem";
 import { CompactResumeButton } from "./CompactResumeButton";
 import { SessionListItem } from "./SessionListItem";
+import type { SessionNavigationIntent } from "./SessionListItem";
 import sidebarStyles from "./Sidebar.module.css";
 import { SidebarLauncher } from "./SidebarLauncher";
 import {
@@ -293,6 +294,7 @@ interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
   onNavigate: () => void;
+  onSessionNavigate?: (intent: SessionNavigationIntent) => void;
 
   /** Current session ID (for highlighting in sidebar) */
   currentSessionId?: string;
@@ -319,6 +321,7 @@ export function Sidebar({
   isOpen,
   onClose,
   onNavigate,
+  onSessionNavigate,
   currentSessionId,
   // Desktop mode props
   isDesktop = false,
@@ -892,6 +895,7 @@ export function Sidebar({
         isCurrent={session.id === currentSessionId}
         activity={getSidebarRowActivity(session)}
         onNavigate={onNavigate}
+        onSessionNavigate={onSessionNavigate}
         showProjectName
         projectName={
           projectNameById.get(session.projectId) ?? session.projectName

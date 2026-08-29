@@ -1,34 +1,17 @@
 import {
-  Profiler,
   createContext,
-  memo,
-  startTransition,
-  type MouseEvent as ReactMouseEvent,
-  type ReactNode,
   useCallback,
   useContext,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import {
-  Link,
-  Outlet,
-  UNSAFE_LocationContext,
-  UNSAFE_NavigationContext,
-  UNSAFE_RouteContext,
-  useLocation,
-  useNavigate,
-  useOutletContext,
-} from "react-router-dom";
+import { Link, Outlet, useLocation, useOutletContext } from "react-router-dom";
 import { Sidebar, SidebarToggleIcon } from "../components/Sidebar";
 import { GlossaryProjectProvider } from "../contexts/GlossaryContext";
-import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
 import { MOBILE_KEYBOARD_OPEN_VIEWPORT_RATIO } from "../lib/mobileKeyboardViewport";
 import { useSidebarPreference } from "../hooks/useSidebarPreference";
-import { useSessionPerformanceSettings } from "../hooks/useSessionPerformanceSettings";
 import {
   DESKTOP_BREAKPOINT,
   MIN_CONTENT_WIDTH,
@@ -36,7 +19,13 @@ import {
 } from "../hooks/useSidebarWidth";
 import { SidebarSessionFeedsProvider } from "../hooks/useSidebarSessionFeeds";
 import { useI18n } from "../i18n";
-import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
+import {
+  SessionDomLingerHost,
+  SessionDomLingerRouteMarker,
+  type SessionDomLingerElement,
+} from "./SessionDomLingerHost";
+
+export { SessionDomLingerRouteMarker };
 
 export interface NavigationLayoutContext {
   /** Open the mobile sidebar */
@@ -50,9 +39,6 @@ export interface NavigationLayoutContext {
 }
 
 const NOOP = () => {};
-const SESSION_DOM_LINGER_TTL_MS = 60_000;
-const SESSION_DOM_LINGER_MAX_PARKED_ELEMENTS = 5_000;
-const SESSION_DOM_LINGER_RESOURCE_TRANSITION_DELAY_MS = 500;
 const NON_TEXT_INPUT_TYPES = new Set([
   "button",
   "checkbox",
@@ -68,173 +54,8 @@ const NON_TEXT_INPUT_TYPES = new Set([
 const NavigationLayoutReactContext =
   createContext<NavigationLayoutContext | null>(null);
 
-interface SessionRouteLocationSnapshot {
-  hash: string;
-  key: string;
-  pathname: string;
-  search: string;
-  state: unknown;
-}
-
-interface SessionDomLingerRoute {
-  key: string;
-  sourceKey: string;
-  projectId: string;
-  sessionId: string;
-  location: SessionRouteLocationSnapshot;
-  status: "active" | "parked";
-  parkedAtMs?: number;
-  expiresAtMs?: number;
-}
-
-interface PendingSessionDomLingerSwap {
-  fromKey: string;
-  retainOutgoing: boolean;
-  targetKey: string;
-}
-
-interface SessionDomLingerRenderSignal {
-  current: boolean;
-  supportsCompaction: boolean;
-}
-
 interface NavigationLayoutProps {
-  sessionElement?: (
-    route: SessionDomLingerRoute,
-    options: {
-      parked: boolean;
-      progressiveRenderPauseSignal: SessionDomLingerRenderSignal;
-    },
-  ) => ReactNode;
-}
-
-interface SessionDomLingerLayerHandle {
-  element: HTMLDivElement;
-  progressiveRenderPauseSignal: SessionDomLingerRenderSignal;
-}
-
-interface SessionDomLingerLayerProps {
-  parked: boolean;
-  route: SessionDomLingerRoute;
-  sessionElement: NonNullable<NavigationLayoutProps["sessionElement"]>;
-  layerRefs: React.MutableRefObject<Map<string, SessionDomLingerLayerHandle>>;
-  subtreeParked: boolean;
-}
-
-interface SessionDomLingerSubtreeProps {
-  parked: boolean;
-  progressiveRenderPauseSignal: SessionDomLingerRenderSignal;
-  route: SessionDomLingerRoute;
-  sessionElement: NonNullable<NavigationLayoutProps["sessionElement"]>;
-}
-
-const SessionDomLingerSubtree = memo(function SessionDomLingerSubtree({
-  parked,
-  progressiveRenderPauseSignal,
-  route,
-  sessionElement,
-}: SessionDomLingerSubtreeProps) {
-  return sessionElement(route, {
-    parked,
-    progressiveRenderPauseSignal,
-  });
-});
-
-function SessionDomLingerLayer({
-  parked,
-  route,
-  sessionElement,
-  layerRefs,
-  subtreeParked,
-}: SessionDomLingerLayerProps) {
-  const parentLocationContext = useContext(UNSAFE_LocationContext);
-  const parentRouteContext = useContext(UNSAFE_RouteContext);
-  if (!parentLocationContext) {
-    throw new Error("Session DOM linger requires a router location context");
-  }
-  const [sessionRoute] = useState(route);
-  const [progressiveRenderPauseSignal] = useState(() => ({
-    current: parked,
-    supportsCompaction: false,
-  }));
-  progressiveRenderPauseSignal.current = parked;
-  const [committedSubtreeParked, setCommittedSubtreeParked] =
-    useState(subtreeParked);
-  useEffect(() => {
-    if (committedSubtreeParked === subtreeParked) {
-      return;
-    }
-    let timeoutId: number | null = null;
-    const frameId = window.requestAnimationFrame(() => {
-      timeoutId = window.setTimeout(() => {
-        startTransition(() => setCommittedSubtreeParked(subtreeParked));
-      }, SESSION_DOM_LINGER_RESOURCE_TRANSITION_DELAY_MS);
-    });
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      if (timeoutId !== null) {
-        window.clearTimeout(timeoutId);
-      }
-    };
-  }, [committedSubtreeParked, subtreeParked]);
-  const [sessionLocationContext] = useState(() => ({
-    location: sessionRoute.location,
-    navigationType: parentLocationContext.navigationType,
-  }));
-  const [sessionRouteContext] = useState(parentRouteContext);
-  const scopedSubtree = (
-    <UNSAFE_LocationContext.Provider value={sessionLocationContext}>
-      <UNSAFE_RouteContext.Provider value={sessionRouteContext}>
-        <SessionDomLingerSubtree
-          parked={committedSubtreeParked}
-          progressiveRenderPauseSignal={progressiveRenderPauseSignal}
-          route={sessionRoute}
-          sessionElement={sessionElement}
-        />
-      </UNSAFE_RouteContext.Provider>
-    </UNSAFE_LocationContext.Provider>
-  );
-  const handleRender = useCallback<React.ProfilerOnRenderCallback>(
-    (_id, phase, actualDuration, baseDuration) => {
-      markReloadPerfPhase("session_dom_linger_layer_render", {
-        actualDuration,
-        baseDuration,
-        phase,
-        sessionId: sessionRoute.sessionId,
-        subtreeParked: committedSubtreeParked,
-      });
-    },
-    [committedSubtreeParked, sessionRoute.sessionId],
-  );
-
-  return (
-    <div
-      ref={(element) => {
-        if (element) {
-          layerRefs.current.set(sessionRoute.key, {
-            element,
-            progressiveRenderPauseSignal,
-          });
-        } else {
-          layerRefs.current.delete(sessionRoute.key);
-        }
-      }}
-      className={`navigation-route-layer session-dom-linger-layer ${
-        parked ? "is-parked" : "is-active"
-      }`}
-      aria-hidden={parked ? true : undefined}
-      data-session-dom-linger={parked ? "parked" : "active"}
-    >
-      {typeof window !== "undefined" &&
-      window.__YA_RELOAD_PERF_PROBE__?.mark ? (
-        <Profiler id={sessionRoute.key} onRender={handleRender}>
-          {scopedSubtree}
-        </Profiler>
-      ) : (
-        scopedSubtree
-      )}
-    </div>
-  );
+  sessionElement?: SessionDomLingerElement;
 }
 
 interface ResponsiveLayoutState {
@@ -304,35 +125,6 @@ function responsiveLayoutStateEquals(
   );
 }
 
-function createSessionDomLingerKey(options: {
-  sourceKey: string;
-  projectId: string;
-  sessionId: string;
-  search: string;
-}): string {
-  return [
-    encodeURIComponent(options.sourceKey),
-    encodeURIComponent(options.projectId),
-    encodeURIComponent(options.sessionId),
-    encodeURIComponent(options.search),
-  ].join(":");
-}
-
-function readSessionRouteFromPathname(
-  pathname: string,
-): { projectId: string; sessionId: string } | null {
-  const match = pathname.match(
-    /(?:^|\/)projects\/([^/]+)\/sessions\/([^/]+)\/?$/,
-  );
-  if (!match?.[1] || !match[2]) {
-    return null;
-  }
-  return {
-    projectId: decodeURIComponent(match[1]),
-    sessionId: decodeURIComponent(match[2]),
-  };
-}
-
 function readSidebarSessionRouteFromPathname(
   pathname: string,
 ): { projectId: string; sessionId: string } | null {
@@ -355,10 +147,6 @@ function isContentFrameRoutePathname(pathname: string): boolean {
   return /(?:^|\/)projects\/[^/]+\/file\/?$/.test(pathname);
 }
 
-export function SessionDomLingerRouteMarker() {
-  return null;
-}
-
 /**
  * Shared layout for all pages that need a sidebar.
  * Renders the Sidebar once so it persists across route changes.
@@ -368,16 +156,9 @@ export function NavigationLayout(props: NavigationLayoutProps) {
 }
 
 function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
-  const { sessionDomLingerEnabled } = useSessionPerformanceSettings();
   const { t } = useI18n();
 
   const location = useLocation();
-  const navigate = useNavigate();
-  const navigationContext = useContext(UNSAFE_NavigationContext);
-  const currentSessionMatch = useMemo(
-    () => readSessionRouteFromPathname(location.pathname),
-    [location.pathname],
-  );
   const sidebarSessionMatch = useMemo(
     () => readSidebarSessionRouteFromPathname(location.pathname),
     [location.pathname],
@@ -390,7 +171,6 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
     () => isContentFrameRoutePathname(location.pathname),
     [location.pathname],
   );
-  const sourceKey = useClientSummarySourceKey();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const forceExpandedSidebar =
     new URLSearchParams(location.search).get("sidebar") === "expanded";
@@ -540,397 +320,108 @@ function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
     () => ({ width: effectivelyCollapsed ? undefined : sidebarWidth }),
     [effectivelyCollapsed, sidebarWidth],
   );
-  const currentSessionRoute = useMemo<SessionDomLingerRoute | null>(() => {
-    if (!currentSessionMatch) {
-      return null;
-    }
-    const { projectId, sessionId } = currentSessionMatch;
-    return {
-      key: createSessionDomLingerKey({
-        sourceKey,
-        projectId,
-        sessionId,
-        search: location.search,
-      }),
-      sourceKey,
-      projectId,
-      sessionId,
-      location: {
-        hash: location.hash,
-        key: location.key,
-        pathname: location.pathname,
-        search: location.search,
-        state: location.state,
-      },
-      status: "active",
-    };
-  }, [
-    currentSessionMatch,
-    location.pathname,
-    location.hash,
-    location.key,
-    location.search,
-    location.state,
-    sourceKey,
-  ]);
-  const [parkedSessionRoute, setParkedSessionRoute] =
-    useState<SessionDomLingerRoute | null>(null);
-  const [committedActiveSessionRoute, setCommittedActiveSessionRoute] =
-    useState(currentSessionRoute);
-  const pendingSessionSwapRef = useRef<PendingSessionDomLingerSwap | null>(
-    null,
-  );
-  const pendingSessionSwap = pendingSessionSwapRef.current;
-  const sessionLayerRefs = useRef(
-    new Map<string, SessionDomLingerLayerHandle>(),
-  );
-  const pendingSwapRejectsOutgoing =
-    pendingSessionSwap?.retainOutgoing === false &&
-    committedActiveSessionRoute?.key === pendingSessionSwap.fromKey &&
-    currentSessionRoute?.key === pendingSessionSwap.targetKey;
-  const transitioningFromSessionRoute =
-    sessionDomLingerEnabled &&
-    !pendingSwapRejectsOutgoing &&
-    committedActiveSessionRoute &&
-    committedActiveSessionRoute.key !== currentSessionRoute?.key &&
-    committedActiveSessionRoute.sourceKey === sourceKey &&
-    (!currentSessionRoute ||
-      (committedActiveSessionRoute.projectId ===
-        currentSessionRoute.projectId &&
-        committedActiveSessionRoute.sessionId !==
-          currentSessionRoute.sessionId))
-      ? committedActiveSessionRoute
-      : null;
-  const parkedSessionCandidate =
-    transitioningFromSessionRoute ?? parkedSessionRoute;
-  const renderedParkedSessionRoute =
-    sessionDomLingerEnabled &&
-    parkedSessionCandidate &&
-    parkedSessionCandidate.key !== currentSessionRoute?.key &&
-    parkedSessionCandidate.sourceKey === sourceKey &&
-    (!currentSessionRoute ||
-      parkedSessionCandidate.projectId === currentSessionRoute.projectId)
-      ? { ...parkedSessionCandidate, status: "parked" as const }
-      : null;
-  const renderedSessionRoutes = currentSessionRoute
-    ? [currentSessionRoute, renderedParkedSessionRoute].filter(
-        (route): route is SessionDomLingerRoute => route !== null,
-      )
-    : renderedParkedSessionRoute
-      ? [renderedParkedSessionRoute]
-      : [];
-  const sessionLayerVisible = Boolean(currentSessionRoute);
-
-  useLayoutEffect(() => {
-    const pendingSwap = pendingSessionSwapRef.current;
-    if (
-      pendingSwap &&
-      (!sessionDomLingerEnabled ||
-        currentSessionRoute?.key !== pendingSwap.fromKey)
-    ) {
-      pendingSessionSwapRef.current = null;
-    }
-  }, [currentSessionRoute?.key, sessionDomLingerEnabled]);
-
-  useLayoutEffect(() => {
-    const previousActiveRoute = committedActiveSessionRoute;
-    setCommittedActiveSessionRoute(currentSessionRoute);
-    setParkedSessionRoute((previousParkedRoute) => {
-      if (!sessionDomLingerEnabled) {
-        return null;
-      }
-
-      let nextParkedRoute = previousParkedRoute;
-      if (
-        previousActiveRoute &&
-        previousActiveRoute.key !== currentSessionRoute?.key &&
-        previousActiveRoute.sourceKey === sourceKey &&
-        (!currentSessionRoute ||
-          (previousActiveRoute.projectId === currentSessionRoute.projectId &&
-            previousActiveRoute.sessionId !== currentSessionRoute.sessionId))
-      ) {
-        const now = Date.now();
-        nextParkedRoute = {
-          ...previousActiveRoute,
-          status: "parked",
-          parkedAtMs: now,
-          expiresAtMs: now + SESSION_DOM_LINGER_TTL_MS,
-        };
-      }
-
-      if (!nextParkedRoute) {
-        return null;
-      }
-      if (
-        nextParkedRoute.key === currentSessionRoute?.key ||
-        nextParkedRoute.sourceKey !== sourceKey ||
-        (currentSessionRoute &&
-          nextParkedRoute.projectId !== currentSessionRoute.projectId)
-      ) {
-        return null;
-      }
-      if (currentSessionRoute) {
-        const layer = sessionLayerRefs.current.get(nextParkedRoute.key);
-        if (
-          !layer ||
-          (!layer.progressiveRenderPauseSignal.supportsCompaction &&
-            layer.element.querySelectorAll("*").length >
-              SESSION_DOM_LINGER_MAX_PARKED_ELEMENTS)
-        ) {
-          return null;
-        }
-      }
-      return nextParkedRoute;
-    });
-  }, [
-    committedActiveSessionRoute,
-    currentSessionRoute,
-    sessionDomLingerEnabled,
-    sourceKey,
-  ]);
-
-  useEffect(() => {
-    if (parkedSessionRoute?.status !== "parked") {
-      return;
-    }
-    const timeoutMs = Math.max(
-      0,
-      (parkedSessionRoute.expiresAtMs ?? 0) - Date.now(),
-    );
-    const timer = window.setTimeout(() => {
-      setParkedSessionRoute((previous) =>
-        previous?.key === parkedSessionRoute.key && previous.status === "parked"
-          ? null
-          : previous,
-      );
-    }, timeoutMs);
-    return () => window.clearTimeout(timer);
-  }, [parkedSessionRoute]);
-
-  useLayoutEffect(() => {
-    for (const [key, layer] of sessionLayerRefs.current) {
-      (layer.element as HTMLDivElement & { inert?: boolean }).inert =
-        key !== currentSessionRoute?.key;
-      layer.progressiveRenderPauseSignal.current =
-        key !== currentSessionRoute?.key;
-    }
-  }, [currentSessionRoute?.key]);
-
-  const handleSessionLinkCapture = useCallback(
-    (event: ReactMouseEvent<HTMLDivElement>) => {
-      if (
-        !sessionDomLingerEnabled ||
-        !currentSessionRoute ||
-        event.button !== 0 ||
-        event.metaKey ||
-        event.ctrlKey ||
-        event.shiftKey ||
-        event.altKey
-      ) {
-        return;
-      }
-      const target = event.target;
-      if (!(target instanceof Element)) {
-        return;
-      }
-      const anchor = target.closest<HTMLAnchorElement>(
-        "a.session-list-item__link[href]",
-      );
-      if (!anchor) {
-        return;
-      }
-      const targetUrl = new URL(anchor.href, window.location.href);
-      if (targetUrl.origin !== window.location.origin) {
-        return;
-      }
-      const targetMatch = readSessionRouteFromPathname(targetUrl.pathname);
-      if (
-        !targetMatch ||
-        targetMatch.projectId !== currentSessionRoute.projectId ||
-        targetMatch.sessionId === currentSessionRoute.sessionId
-      ) {
-        return;
-      }
-      const targetKey = createSessionDomLingerKey({
-        sourceKey,
-        projectId: targetMatch.projectId,
-        sessionId: targetMatch.sessionId,
-        search: targetUrl.search,
-      });
-      if (!sessionLayerRefs.current.has(targetKey)) {
-        return;
-      }
-      const outgoingLayer = sessionLayerRefs.current.get(
-        currentSessionRoute.key,
-      );
-      const retainOutgoing =
-        outgoingLayer !== undefined &&
-        (outgoingLayer.progressiveRenderPauseSignal.supportsCompaction ||
-          outgoingLayer.element.querySelectorAll("*").length <=
-            SESSION_DOM_LINGER_MAX_PARKED_ELEMENTS);
-
-      event.preventDefault();
-      for (const [key, layer] of sessionLayerRefs.current) {
-        const active = key === targetKey;
-        const { element, progressiveRenderPauseSignal } = layer;
-        progressiveRenderPauseSignal.current = !active;
-        element.classList.toggle("is-active", active);
-        element.classList.toggle("is-parked", !active);
-        if (active) {
-          element.removeAttribute("aria-hidden");
-        } else {
-          element.setAttribute("aria-hidden", "true");
-        }
-        element.dataset.sessionDomLinger = active ? "active" : "parked";
-        (element as HTMLDivElement & { inert?: boolean }).inert = !active;
-      }
-      pendingSessionSwapRef.current = {
-        fromKey: currentSessionRoute.key,
-        retainOutgoing,
-        targetKey,
-      };
-      markReloadPerfPhase("session_dom_linger_visual_swap", {
-        sessionId: targetMatch.sessionId,
-      });
-      const basename = navigationContext?.basename ?? "/";
-      const pathname =
-        basename !== "/" &&
-        (targetUrl.pathname === basename ||
-          targetUrl.pathname.startsWith(`${basename}/`))
-          ? targetUrl.pathname.slice(basename.length) || "/"
-          : targetUrl.pathname;
-      navigate({
-        hash: targetUrl.hash,
-        pathname,
-        search: targetUrl.search,
-      });
-    },
-    [
-      currentSessionRoute,
-      navigate,
-      navigationContext?.basename,
-      sessionDomLingerEnabled,
-      sourceKey,
-    ],
-  );
 
   const sidebarFeedsEnabled = isContentFrameRoute
     ? sidebarOpen
     : (isWideScreen && !isMinimized) || (!isWideScreen && sidebarOpen);
 
   return (
-    <SidebarSessionFeedsProvider enabled={sidebarFeedsEnabled}>
-      <div
-        ref={layoutFrameRef}
-        onClickCapture={handleSessionLinkCapture}
-        className={`session-page ${isWideScreen ? "desktop-layout" : ""} ${
-          isContentFrameRoute ? "content-frame-layout" : ""
-        } ${isResizing ? "resizing" : ""}`}
-        style={containerStyle}
-      >
-        {/* Desktop sidebar - always visible on wide screens; the minimized mode
+    <SessionDomLingerHost sessionElement={sessionElement}>
+      {({ onSessionNavigate, renderRouteStack }) => (
+        <SidebarSessionFeedsProvider enabled={sidebarFeedsEnabled}>
+          <div
+            ref={layoutFrameRef}
+            className={`session-page ${isWideScreen ? "desktop-layout" : ""} ${
+              isContentFrameRoute ? "content-frame-layout" : ""
+            } ${isResizing ? "resizing" : ""}`}
+            style={containerStyle}
+          >
+            {/* Desktop sidebar - always visible on wide screens; the minimized mode
           renders the floating restore toggle in its place */}
-        {isWideScreen &&
-          !isContentFrameRoute &&
-          (isMinimized ? (
-            <Link
-              to={{
-                pathname: location.pathname,
-                search: location.search,
-                hash: location.hash,
-              }}
-              className="sidebar-toggle sidebar-floating-restore"
-              role="button"
-              onClick={(event) => {
-                if (
-                  event.button !== 0 ||
-                  event.metaKey ||
-                  event.ctrlKey ||
-                  event.shiftKey ||
-                  event.altKey
-                ) {
-                  return;
-                }
-                event.preventDefault();
-                restoreCollapsedSidebar();
-              }}
-              onKeyDown={(event) => {
-                if (event.key !== " ") {
-                  return;
-                }
-                event.preventDefault();
-                restoreCollapsedSidebar();
-              }}
-              title={t("actionRestoreSidebar")}
-              aria-label={t("actionRestoreSidebar")}
-            >
-              <SidebarToggleIcon />
-            </Link>
-          ) : (
-            <aside
-              className={`sidebar-desktop ${effectivelyCollapsed ? "sidebar-collapsed" : ""} ${isResizing ? "resizing" : ""}`}
-              style={desktopSidebarStyle}
-            >
+            {isWideScreen &&
+              !isContentFrameRoute &&
+              (isMinimized ? (
+                <Link
+                  to={{
+                    pathname: location.pathname,
+                    search: location.search,
+                    hash: location.hash,
+                  }}
+                  className="sidebar-toggle sidebar-floating-restore"
+                  role="button"
+                  onClick={(event) => {
+                    if (
+                      event.button !== 0 ||
+                      event.metaKey ||
+                      event.ctrlKey ||
+                      event.shiftKey ||
+                      event.altKey
+                    ) {
+                      return;
+                    }
+                    event.preventDefault();
+                    restoreCollapsedSidebar();
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== " ") {
+                      return;
+                    }
+                    event.preventDefault();
+                    restoreCollapsedSidebar();
+                  }}
+                  title={t("actionRestoreSidebar")}
+                  aria-label={t("actionRestoreSidebar")}
+                >
+                  <SidebarToggleIcon />
+                </Link>
+              ) : (
+                <aside
+                  className={`sidebar-desktop ${effectivelyCollapsed ? "sidebar-collapsed" : ""} ${isResizing ? "resizing" : ""}`}
+                  style={desktopSidebarStyle}
+                >
+                  <Sidebar
+                    isOpen={true}
+                    onClose={NOOP}
+                    onNavigate={NOOP}
+                    onSessionNavigate={onSessionNavigate}
+                    currentSessionId={sidebarSessionMatch?.sessionId}
+                    isDesktop={true}
+                    isCollapsed={effectivelyCollapsed}
+                    onToggleExpanded={handleToggleExpanded}
+                    onMinimize={minimizeToFloatingToggle}
+                    sidebarWidth={sidebarWidth}
+                    onResizeStart={handleResizeStart}
+                    onResize={setSidebarWidth}
+                    onResizeEnd={handleResizeEnd}
+                  />
+                </aside>
+              ))}
+
+            {/* Mobile sidebar - modal overlay (also used for constrained desktop overlay) */}
+            {(isContentFrameRoute
+              ? sidebarOpen
+              : !isWideScreen || sidebarOpen) && (
               <Sidebar
-                isOpen={true}
-                onClose={NOOP}
-                onNavigate={NOOP}
+                isOpen={sidebarOpen}
+                onClose={closeSidebar}
+                onNavigate={closeSidebar}
+                onSessionNavigate={onSessionNavigate}
                 currentSessionId={sidebarSessionMatch?.sessionId}
-                isDesktop={true}
-                isCollapsed={effectivelyCollapsed}
-                onToggleExpanded={handleToggleExpanded}
-                onMinimize={minimizeToFloatingToggle}
-                sidebarWidth={sidebarWidth}
-                onResizeStart={handleResizeStart}
-                onResize={setSidebarWidth}
-                onResizeEnd={handleResizeEnd}
               />
-            </aside>
-          ))}
+            )}
 
-        {/* Mobile sidebar - modal overlay (also used for constrained desktop overlay) */}
-        {(isContentFrameRoute ? sidebarOpen : !isWideScreen || sidebarOpen) && (
-          <Sidebar
-            isOpen={sidebarOpen}
-            onClose={closeSidebar}
-            onNavigate={closeSidebar}
-            currentSessionId={sidebarSessionMatch?.sessionId}
-          />
-        )}
-
-        <GlossaryProjectProvider
-          projectId={currentProjectId ?? ""}
-          enabled={currentProjectId !== null}
-        >
-          <NavigationLayoutReactContext.Provider value={context}>
-            <div className="navigation-route-stack">
-              {sessionElement &&
-                renderedSessionRoutes.map((route) => {
-                  const parked = route.key !== currentSessionRoute?.key;
-                  return (
-                    <SessionDomLingerLayer
-                      key={route.key}
-                      parked={parked}
-                      route={route}
-                      sessionElement={sessionElement}
-                      layerRefs={sessionLayerRefs}
-                      subtreeParked={parked}
-                    />
-                  );
-                })}
-              <div
-                className={`navigation-route-layer navigation-route-foreground ${
-                  sessionLayerVisible ? "is-hidden" : "is-active"
-                }`}
-                aria-hidden={sessionLayerVisible ? true : undefined}
-              >
-                <Outlet context={context} />
-              </div>
-            </div>
-          </NavigationLayoutReactContext.Provider>
-        </GlossaryProjectProvider>
-      </div>
-    </SidebarSessionFeedsProvider>
+            <GlossaryProjectProvider
+              projectId={currentProjectId ?? ""}
+              enabled={currentProjectId !== null}
+            >
+              <NavigationLayoutReactContext.Provider value={context}>
+                {renderRouteStack(<Outlet context={context} />)}
+              </NavigationLayoutReactContext.Provider>
+            </GlossaryProjectProvider>
+          </div>
+        </SidebarSessionFeedsProvider>
+      )}
+    </SessionDomLingerHost>
   );
 }
 
