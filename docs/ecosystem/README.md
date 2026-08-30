@@ -19,6 +19,7 @@ Tools that spawn and manage multiple CLI coding agents (Claude Code, Codex, Gemi
 
 | Project | Stars | What It Does |
 |---------|-------|-------------|
+| [Gas City](gas-city.md) | ~1.2k | Configurable orchestration toolkit extracted from Gas Town: roles, rigs, work routing, runtime providers, and reconciliation |
 | [Composio Agent Orchestrator](https://github.com/ComposioHQ/agent-orchestrator) | ~1k+ | Plans tasks, spawns agents in worktrees, handles CI/merge/review |
 | [agtx](https://github.com/fynnfluegge/agtx) | New | Terminal kanban — orchestrator delegates to parallel agents in tmux |
 | [ccswarm](https://github.com/nwiizo/ccswarm) | New | Template-based task delegation with Claude Code CLI + worktree isolation |
@@ -57,4 +58,4 @@ General-purpose workflow platforms with AI agent capabilities. None natively sup
 
 ## Last Updated
 
-2026-03-17
+2026-08-30
