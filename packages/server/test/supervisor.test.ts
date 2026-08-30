@@ -420,6 +420,126 @@ describe("Supervisor", () => {
       expect(process.sessionId).toBe("sess-123");
     });
 
+    it("waits for provider attachment before accepting a required resume", async () => {
+      let releaseAttachment!: () => void;
+      const attachmentGate = new Promise<void>((resolve) => {
+        releaseAttachment = resolve;
+      });
+      const startSession = vi.fn(
+        async (options: Parameters<AgentProvider["startSession"]>[0]) => {
+          const queue = new MessageQueue();
+          async function* iterator() {
+            for await (const message of queue) {
+              void message;
+              await attachmentGate;
+              yield {
+                type: "system" as const,
+                subtype: "init" as const,
+                session_id: options.resumeSessionId,
+              };
+            }
+          }
+          return { iterator: iterator(), queue, abort: () => {} };
+        },
+      );
+      const providerSupervisor = new Supervisor({
+        provider: testProvider(startSession),
+      });
+      const settled = vi.fn();
+
+      const resume = providerSupervisor.resumeSession(
+        "native-session",
+        "/tmp/test",
+        { text: "continue" },
+        undefined,
+        undefined,
+        { requireProviderSessionId: true },
+      );
+      void resume.then(settled);
+      await waitFor(() => expect(startSession).toHaveBeenCalledOnce());
+      expect(settled).not.toHaveBeenCalled();
+
+      releaseAttachment();
+      const process = await resume;
+
+      expect(settled).toHaveBeenCalledWith(process);
+      expect(process).toMatchObject({ sessionId: "native-session" });
+    });
+
+    it("rejects and unregisters a required resume when attachment fails", async () => {
+      const errorLog = vi
+        .spyOn(getLogger(), "error")
+        .mockImplementation(() => undefined);
+      const abort = vi.fn();
+      const provider = testProvider(async () => {
+        const queue = new MessageQueue();
+        async function* iterator() {
+          for await (const message of queue) {
+            void message;
+            yield await Promise.reject(new Error("native session is missing"));
+          }
+        }
+        return { iterator: iterator(), queue, abort };
+      });
+      const providerSupervisor = new Supervisor({ provider });
+
+      await expect(
+        providerSupervisor.resumeSession(
+          "missing-session",
+          "/tmp/test",
+          { text: "continue" },
+          undefined,
+          undefined,
+          { requireProviderSessionId: true },
+        ),
+      ).rejects.toEqual(
+        expect.objectContaining({
+          name: RetryableSessionLaunchError.name,
+          message: expect.stringContaining("native session is missing"),
+        }),
+      );
+
+      expect(abort).toHaveBeenCalledOnce();
+      expect(providerSupervisor.getAllProcesses()).toEqual([]);
+      errorLog.mockRestore();
+    });
+
+    it("rejects a required resume that attaches a different native session", async () => {
+      const abort = vi.fn();
+      const provider = testProvider(async () => {
+        const queue = new MessageQueue();
+        async function* iterator() {
+          for await (const message of queue) {
+            void message;
+            yield {
+              type: "system" as const,
+              subtype: "init" as const,
+              session_id: "replacement-session",
+            };
+            return;
+          }
+        }
+        return { iterator: iterator(), queue, abort };
+      });
+      const providerSupervisor = new Supervisor({ provider });
+
+      await expect(
+        providerSupervisor.resumeSession(
+          "missing-session",
+          "/tmp/test",
+          { text: "continue" },
+          undefined,
+          undefined,
+          { requireProviderSessionId: true },
+        ),
+      ).rejects.toThrow(
+        "Provider attached session replacement-session instead of missing-session",
+      );
+
+      expect(abort).toHaveBeenCalledOnce();
+      expect(providerSupervisor.getAllProcesses()).toEqual([]);
+    });
+
     it("inherits durable settings on a cold direct-message resume", async () => {
       const startSession = vi.fn(
         async (options: Parameters<AgentProvider["startSession"]>[0]) => {

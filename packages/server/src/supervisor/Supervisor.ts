@@ -446,7 +446,7 @@ export interface SessionLaunchOptions {
   onRetryableFailure?: (reason: string) => void | Promise<void>;
   /** Classify provider startup rejection as retryable for a durable caller. */
   retryProviderStartupFailure?: boolean;
-  /** Do not accept a temporary YA id as successful provider startup. */
+  /** Await provider init and reject a resumed session whose native id changed. */
   requireProviderSessionId?: boolean;
 }
 
@@ -1336,6 +1336,7 @@ export class Supervisor {
   private async settleProviderSessionId(
     process: Process,
     required: boolean,
+    expectedSessionId?: string,
   ): Promise<void> {
     if (!required) {
       await process.waitForSessionId();
@@ -1343,7 +1344,15 @@ export class Supervisor {
     }
 
     try {
-      await process.waitForProviderSessionId();
+      const providerSessionId = await process.waitForProviderSessionId();
+      if (
+        expectedSessionId !== undefined &&
+        providerSessionId !== expectedSessionId
+      ) {
+        throw new Error(
+          `Provider attached session ${providerSessionId} instead of ${expectedSessionId}`,
+        );
+      }
     } catch (error) {
       try {
         await process.abort();
@@ -2723,10 +2732,22 @@ export class Supervisor {
       const provider = this.resolveProvider(resolved.modelSettings);
       const resumeMode = resolved.modelSettings.resumeMode ?? "full";
 
+      let process: Process;
+
       // Use provider if available (preferred)
       if (provider) {
         if (resumeMode === "compact-first") {
-          return this.startCompactFirstProviderResume(
+          process = await this.startCompactFirstProviderResume(
+            projectPath,
+            projectId,
+            message,
+            sessionId,
+            resolved.permissionMode,
+            resolved.modelSettings,
+            provider,
+          );
+        } else {
+          process = await this.startProviderSession(
             projectPath,
             projectId,
             message,
@@ -2736,22 +2757,19 @@ export class Supervisor {
             provider,
           );
         }
-
-        return this.startProviderSession(
-          projectPath,
-          projectId,
-          message,
-          sessionId,
-          resolved.permissionMode,
-          resolved.modelSettings,
-          provider,
-        );
-      }
-
-      // Use real SDK if available
-      if (this.realSdk) {
+      } else if (this.realSdk) {
+        // Use real SDK if available
         if (resumeMode === "compact-first") {
-          return this.startCompactFirstRealResume(
+          process = await this.startCompactFirstRealResume(
+            projectPath,
+            projectId,
+            message,
+            sessionId,
+            resolved.permissionMode,
+            resolved.modelSettings,
+          );
+        } else {
+          process = await this.startRealSession(
             projectPath,
             projectId,
             message,
@@ -2760,8 +2778,20 @@ export class Supervisor {
             resolved.modelSettings,
           );
         }
+      } else {
+        // Fall back to legacy mock SDK
+        if (resumeMode === "compact-first") {
+          throw new ResumeCompactionError({
+            sessionId,
+            provider: "claude",
+            attempt: {
+              status: "unavailable",
+              reason: "legacy mock SDK does not support compact-first resume",
+            },
+          });
+        }
 
-        return this.startRealSession(
+        process = await this.startLegacySession(
           projectPath,
           projectId,
           message,
@@ -2771,26 +2801,10 @@ export class Supervisor {
         );
       }
 
-      // Fall back to legacy mock SDK
-      if (resumeMode === "compact-first") {
-        throw new ResumeCompactionError({
-          sessionId,
-          provider: "claude",
-          attempt: {
-            status: "unavailable",
-            reason: "legacy mock SDK does not support compact-first resume",
-          },
-        });
+      if (launchOptions?.requireProviderSessionId) {
+        await this.settleProviderSessionId(process, true, sessionId);
       }
-
-      return this.startLegacySession(
-        projectPath,
-        projectId,
-        message,
-        sessionId,
-        resolved.permissionMode,
-        resolved.modelSettings,
-      );
+      return process;
     });
   }
 

@@ -1070,6 +1070,11 @@ export class Process {
   /** Resolvers waiting for the real session ID */
   private sessionIdResolvers: Array<(id: string) => void> = [];
   private sessionIdResolved = false;
+  private readonly providerSessionIdSettlement: Promise<string>;
+  private resolveProviderSessionIdSettlement: ((id: string) => void) | null =
+    null;
+  private rejectProviderSessionIdSettlement: ((error: Error) => void) | null =
+    null;
 
   /** Timestamp of last SDK message received (for staleness detection) */
   private _lastMessageTime: Date;
@@ -1229,6 +1234,11 @@ export class Process {
     this._exitPromise = new Promise((resolve) => {
       this._exitResolve = resolve;
     });
+    this.providerSessionIdSettlement = new Promise((resolve, reject) => {
+      this.resolveProviderSessionIdSettlement = resolve;
+      this.rejectProviderSessionIdSettlement = reject;
+    });
+    void this.providerSessionIdSettlement.catch(() => undefined);
 
     const viewerLifecycleOptions: ProcessViewerLifecycleOptions = {
       processId: this.id,
@@ -2524,24 +2534,17 @@ export class Process {
   }
 
   /**
-   * Wait for the provider's canonical session id, rejecting startup failures
-   * instead of accepting the temporary YA id used by interactive launches.
+   * Wait for provider init to report its canonical session id. The retained
+   * settlement prevents a caller from missing an earlier startup failure.
    */
   waitForProviderSessionId(timeoutMs = 60_000): Promise<string> {
-    if (this.sessionIdResolved) {
-      return Promise.resolve(this._sessionId);
-    }
-
     return new Promise((resolve, reject) => {
       let settled = false;
-      let timeout: ReturnType<typeof setTimeout> | undefined;
-      let unsubscribe: (() => void) | undefined;
 
       const finish = (result: { id: string } | { error: Error }) => {
         if (settled) return;
         settled = true;
-        if (timeout) clearTimeout(timeout);
-        unsubscribe?.();
+        clearTimeout(timeout);
         if ("id" in result) {
           resolve(result.id);
         } else {
@@ -2549,44 +2552,7 @@ export class Process {
         }
       };
 
-      unsubscribe = this.subscribe((event) => {
-        if (event.type === "session-id-changed") {
-          finish({ id: event.newSessionId });
-          return;
-        }
-        if (
-          event.type === "message" &&
-          event.message.type === "system" &&
-          event.message.subtype === "init" &&
-          event.message.session_id
-        ) {
-          finish({ id: event.message.session_id });
-          return;
-        }
-        if (event.type === "error") {
-          finish({ error: event.error });
-          return;
-        }
-        if (event.type === "terminated") {
-          finish({
-            error:
-              event.error ??
-              new Error(
-                `Provider session terminated during startup: ${event.reason}`,
-              ),
-          });
-          return;
-        }
-        if (event.type === "complete") {
-          finish({
-            error: new Error(
-              "Provider session completed before reporting a session id",
-            ),
-          });
-        }
-      });
-
-      timeout = setTimeout(
+      const timeout = setTimeout(
         () =>
           finish({
             error: new Error(
@@ -2596,7 +2562,24 @@ export class Process {
         timeoutMs,
       );
       timeout.unref?.();
+
+      void this.providerSessionIdSettlement.then(
+        (id) => finish({ id }),
+        (error) => finish({ error }),
+      );
     });
+  }
+
+  private resolveProviderSessionId(id: string): void {
+    this.resolveProviderSessionIdSettlement?.(id);
+    this.resolveProviderSessionIdSettlement = null;
+    this.rejectProviderSessionIdSettlement = null;
+  }
+
+  private rejectProviderSessionId(error: Error): void {
+    this.rejectProviderSessionIdSettlement?.(error);
+    this.resolveProviderSessionIdSettlement = null;
+    this.rejectProviderSessionIdSettlement = null;
   }
 
   getProviderRuntimeStatus(): ProviderRuntimeStatus {
@@ -4581,6 +4564,13 @@ export class Process {
 
         if (result.done) {
           this.iteratorDone = true;
+          if (!this.sessionIdResolved) {
+            this.rejectProviderSessionId(
+              new Error(
+                "Provider session completed before reporting a session id",
+              ),
+            );
+          }
           // Don't transition to idle if we're waiting for input
           if (this._state.type !== "waiting-input") {
             this.transitionToIdle({ applyPendingEffort: false });
@@ -4643,6 +4633,7 @@ export class Process {
           const oldSessionId = this._sessionId;
           this._sessionId = message.session_id;
           this.sessionIdResolved = true;
+          this.resolveProviderSessionId(this._sessionId);
 
           log.info(
             {
@@ -4760,6 +4751,7 @@ export class Process {
       }
     } catch (error) {
       const err = error as Error;
+      this.rejectProviderSessionId(err);
 
       if (
         this.viewerLifecycle.hasUnverifiedProviderOwnership &&

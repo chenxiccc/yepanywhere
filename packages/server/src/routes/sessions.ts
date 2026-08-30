@@ -118,6 +118,7 @@ import type {
 } from "../supervisor/Supervisor.js";
 import {
   ResumeCompactionError,
+  RetryableSessionLaunchError,
   SessionConfigurationConflictError,
 } from "../supervisor/Supervisor.js";
 import type { QueuedResponse } from "../supervisor/WorkerQueue.js";
@@ -4412,6 +4413,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             ],
           }),
         },
+        { requireProviderSessionId: true },
       );
     } catch (error) {
       if (error instanceof ResumeCompactionError) {
@@ -4436,6 +4438,19 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           },
           409,
         );
+      }
+      if (error instanceof RetryableSessionLaunchError) {
+        getLogger().warn(
+          {
+            event: "provider_resume_attachment_failed",
+            sessionId,
+            projectId,
+            providerName,
+            error: error.message,
+          },
+          "Provider resume failed before native session attachment",
+        );
+        return c.json({ error: error.message }, 409);
       }
       throw error;
     }

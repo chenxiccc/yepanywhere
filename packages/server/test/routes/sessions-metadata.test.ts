@@ -30,6 +30,7 @@ import type {
 } from "../../src/sessions/types.js";
 import {
   ResumeCompactionError,
+  RetryableSessionLaunchError,
   SessionConfigurationConflictError,
 } from "../../src/supervisor/Supervisor.js";
 import type {
@@ -2457,6 +2458,74 @@ describe("Sessions metadata route", () => {
       expect.objectContaining({ text: "continue" }),
       undefined,
       expect.objectContaining({ providerName: "codex" }),
+      { requireProviderSessionId: true },
+    );
+  });
+
+  it("returns attachment rejection before claiming resume started", async () => {
+    const warn = vi
+      .spyOn(getLogger(), "warn")
+      .mockImplementation(() => undefined);
+    const project = createProject();
+    const resumeSession = vi.fn(async () => {
+      throw new RetryableSessionLaunchError(
+        new Error("native session is missing"),
+      );
+    });
+    const routes = createSessionsRoutes({
+      supervisor: {
+        resumeSession,
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSessionSummary: vi.fn(async () => null),
+            getSessionFilePath: vi.fn(
+              async () => "/home/user/.codex/sessions/sess-1.jsonl",
+            ),
+          }) as unknown as ISessionReader,
+      ),
+      sessionMetadataService: {
+        getProvider: vi.fn(() => "codex"),
+        getRequestedModel: vi.fn(() => undefined),
+        setRequestedModel: vi.fn(async () => undefined),
+        getExecutor: vi.fn(() => undefined),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/resume`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "continue" }),
+      },
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error:
+        "Provider session startup did not settle: native session is missing",
+    });
+    expect(resumeSession).toHaveBeenCalledWith(
+      "sess-1",
+      project.path,
+      expect.objectContaining({ text: "continue" }),
+      undefined,
+      expect.objectContaining({ providerName: "codex" }),
+      { requireProviderSessionId: true },
+    );
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "provider_resume_attachment_failed",
+        sessionId: "sess-1",
+        projectId: project.id,
+        providerName: "codex",
+      }),
+      "Provider resume failed before native session attachment",
     );
   });
 
@@ -2522,6 +2591,7 @@ describe("Sessions metadata route", () => {
       expect.objectContaining({ text: "continue" }),
       undefined,
       expect.objectContaining({ providerName: "codex" }),
+      { requireProviderSessionId: true },
     );
   });
 
@@ -2617,6 +2687,7 @@ describe("Sessions metadata route", () => {
       expect.objectContaining({ text: "continue" }),
       undefined,
       expect.objectContaining({ providerName: "claude" }),
+      { requireProviderSessionId: true },
     );
   });
 
@@ -2834,6 +2905,7 @@ describe("Sessions metadata route", () => {
         providerName: "claude",
         resumeSessionAt: goodUuid,
       }),
+      { requireProviderSessionId: true },
     );
   });
 
@@ -2898,6 +2970,7 @@ describe("Sessions metadata route", () => {
         providerName: "claude",
         resumeMode: "compact-first",
       }),
+      { requireProviderSessionId: true },
     );
     const json = await response.json();
     expect(json.recovery).toBe("full-resume");

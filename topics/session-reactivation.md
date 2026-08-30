@@ -129,6 +129,31 @@ resume:
   liveness, ownership, idempotency, first-message wake, ordinary idle reaping,
   and recovered patient-message promotion.
 
+## Direct-message resume readiness
+
+`POST …/sessions/:sessionId/resume` reports `resume.outcome: "started"` only
+after the provider emits its initialization boundary for the requested native
+session. `Process` retains that one-shot settlement, so a load error or iterator
+completion that occurs before the route begins waiting is still observed. The
+provider-reported id must equal the requested resume id; a provider fallback
+that silently creates a replacement session is rejection, not attachment.
+
+Attachment failure aborts and unregisters the admitted process, and the route
+returns `409` with the provider startup error. The wait is bounded to 60
+seconds. Queue admission remains distinct: a capacity-delayed request still
+returns `resume.outcome: "queued"`, which makes no attachment claim.
+
+Message-less reactivation retains its narrower contract. It may return an idle
+process before the provider is initialized because it delivers no turn and
+claims only process activation, not native-session attachment.
+
+Compatibility review covered core releases `v0.6.0`, `v0.6.1`, `v0.6.2`, and
+`v0.7.0`, all of which return the same success payload before attachment. The
+fix changes only when the existing success response is allowed and uses the
+existing error-response convention, so no capability gate or client request
+change is required. A current client against an older server retains the
+legacy early acknowledgement.
+
 ## The plan
 
 ### Server primitive
@@ -188,6 +213,10 @@ billed provider call, the button must surface it per the economics rule.
 
 ## Design decisions
 
+- **Retain provider initialization as a one-shot settlement** (vs. subscribing
+  only when the route is ready to wait): lazy provider iterators can reject
+  before process construction and route execution converge, so readiness must
+  preserve both success and failure for a later observer.
 - **One per-session coordinator state** (vs. independent activation,
   configuration, and persistence maps on `Supervisor`): activation,
   configuration ordering, and snapshot retry are transitions of the same
