@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 describe("useSelectionActionCapture", () => {
-  it("rate-limits range and viewport geometry updates", () => {
+  it("rate-limits geometry without letting viewport events dismiss actions", () => {
     vi.useFakeTimers();
     vi.spyOn(window, "matchMedia").mockReturnValue({
       matches: false,
@@ -110,6 +110,16 @@ describe("useSelectionActionCapture", () => {
     act(() => vi.advanceTimersByTime(50));
 
     expect(range.getBoundingClientRect).toHaveBeenCalledTimes(4);
+
+    const capturedState = result.current.state;
+    selection?.removeAllRanges();
+    act(() => window.dispatchEvent(new Event("scroll")));
+
+    expect(result.current.state).toBe(capturedState);
+
+    act(() => document.dispatchEvent(new Event("selectionchange")));
+
+    expect(result.current.state).toBeNull();
     unmount();
     unregister();
   });

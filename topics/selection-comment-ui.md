@@ -302,7 +302,11 @@ The quote block itself:
   Pointer release publishes the completed range once, including for upward
   drags. Keyboard and programmatic selections still publish from
   `selectionchange`, and pressing an already visible selection control does not
-  dismiss it before its action fires.
+  dismiss it before its action fires. Resize and scroll events only reposition
+  a still-usable native range; if the browser drops that range without a
+  `selectionchange`, they retain the captured action snapshot. A
+  `selectionchange` that reports no usable range, or an explicit dismissal,
+  owns removal.
 - In a collapsed textual activity preview, a non-collapsed native selection
   wins over click-to-expand. Forward and upward drags both leave the detail
   closed and preserve the selected text for copying. Forming a transcript

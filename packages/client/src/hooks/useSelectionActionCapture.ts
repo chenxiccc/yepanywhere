@@ -514,7 +514,6 @@ export function useSelectionActionCapture({
       const selection = rootDocument.getSelection();
       if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
         cancelRateLimitedUpdate();
-        setState(null);
         return;
       }
       scheduleRateLimitedUpdate();
