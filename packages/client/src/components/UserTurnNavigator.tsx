@@ -49,16 +49,22 @@ interface Props {
   onSearchMatchSelect?: (id: string, targetId: string) => void;
   /** "Show from": load the client transcript from this turn (drop earlier). */
   onTrimAnchor?: (id: string) => void;
+  /** Whether "Show from" is valid for a particular loaded turn. */
+  canTrimAnchor?: (id: string) => boolean;
   /** Fork the session before this turn. */
   onForkBeforeAnchor?: (id: string) => void;
   /** Whether a before-turn boundary exists for a particular anchor. */
   canForkBeforeAnchor?: (id: string) => boolean;
   /** Fork after this completed turn. */
   onForkAfterAnchor?: (id: string) => void;
+  /** Whether an after-turn fork is valid for a particular loaded turn. */
+  canForkAfterAnchor?: (id: string) => boolean;
   /** Disable after-turn actions while the selected/latest response is active. */
   forkAfterDisabled?: boolean;
   /** Copy this turn's text to the clipboard. */
   onCopyAnchor?: (id: string) => void;
+  /** Whether the external copy callback can resolve a particular turn. */
+  canCopyAnchor?: (id: string) => boolean;
   /** Reports the timestamp for a hovered/focused turn marker, if any. */
   onPreviewTimestampChange?: (timestampMs: number | null) => void;
   /** Estimated transcript offset for a render row outside the mounted window. */
@@ -742,11 +748,14 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
   onNavigateStart,
   onSearchMatchSelect,
   onTrimAnchor,
+  canTrimAnchor,
   onForkBeforeAnchor,
   canForkBeforeAnchor,
   onForkAfterAnchor,
+  canForkAfterAnchor,
   forkAfterDisabled = false,
   onCopyAnchor,
+  canCopyAnchor,
   onPreviewTimestampChange,
   getRenderIdTop,
   revealRenderId,
@@ -1441,7 +1450,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
             >
               <span className={styles.markerLine} />
             </button>
-            {onTrimAnchor && (
+            {onTrimAnchor && (canTrimAnchor?.(marker.id) ?? true) && (
               <button
                 type="button"
                 className={styles.trimMarker}
@@ -1572,23 +1581,24 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
                     {t("turnNotchForkBefore")}
                   </button>
                 )}
-              {onForkAfterAnchor && (
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={forkAfterDisabled}
-                  title={
-                    forkAfterDisabled ? t("forkTurnAfterDisabled") : undefined
-                  }
-                  onClick={() => {
-                    onForkAfterAnchor(notchMenu.id);
-                    closeNotchMenu();
-                  }}
-                >
-                  {t("turnNotchForkAfter")}
-                </button>
-              )}
-              {onCopyAnchor && (
+              {onForkAfterAnchor &&
+                (canForkAfterAnchor?.(notchMenu.id) ?? true) && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={forkAfterDisabled}
+                    title={
+                      forkAfterDisabled ? t("forkTurnAfterDisabled") : undefined
+                    }
+                    onClick={() => {
+                      onForkAfterAnchor(notchMenu.id);
+                      closeNotchMenu();
+                    }}
+                  >
+                    {t("turnNotchForkAfter")}
+                  </button>
+                )}
+              {onCopyAnchor && (canCopyAnchor?.(notchMenu.id) ?? true) && (
                 <button
                   type="button"
                   role="menuitem"
@@ -1600,7 +1610,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
                   {t("turnNotchCopy")}
                 </button>
               )}
-              {onTrimAnchor && (
+              {onTrimAnchor && (canTrimAnchor?.(notchMenu.id) ?? true) && (
                 <button
                   type="button"
                   role="menuitem"

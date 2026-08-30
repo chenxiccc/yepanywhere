@@ -652,6 +652,7 @@ function SessionPageContent({
     loadingOlder,
     olderLoadContinuationRequired,
     loadOlderMessages,
+    readOlderSearchPage,
     initialScrollSnapshot,
     updateRouteScrollSnapshot,
     updateActiveWindowFollowingBottom,
@@ -5534,6 +5535,7 @@ function SessionPageContent({
                       olderLoadContinuationRequired
                     }
                     onLoadOlderMessages={loadOlderMessages}
+                    onReadOlderSearchPage={readOlderSearchPage}
                     clientTailActive={clientTailActive}
                     progressiveRenderEnabled={sessionLoadingProgressEnabled}
                     progressiveRenderStatusVisible={

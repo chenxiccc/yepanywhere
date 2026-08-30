@@ -29,6 +29,13 @@ import {
   hasSearchableUserTurn,
   type RenderTurnGroup,
 } from "../lib/sessionDetail/renderSelectors";
+import {
+  searchSessionHistoryPage,
+  type SessionHistorySearchPageInput,
+  type SessionHistorySearchPageResult,
+  type SessionHistorySearchWorkerResponse,
+} from "../lib/sessionHistorySearch";
+import type { GetSessionResult } from "../lib/sourceRuntime";
 import type { RenderItem } from "../types/renderItems";
 import type {
   UserTurnNavAnchor,
@@ -38,6 +45,7 @@ import styles from "./useMessageListIsearch.module.css";
 
 const SEARCH_ARROW_REPEAT_DELAY_MS = 150;
 const SEARCH_ARROW_REPEAT_INTERVAL_MS = 42;
+const HISTORY_SEARCH_RESULT_LIMIT = 512;
 
 interface UserTurnSearchSession {
   active: boolean;
@@ -50,8 +58,19 @@ interface UserTurnSearchSession {
 
 interface UseMessageListIsearchOptions {
   containerRef: RefObject<HTMLDivElement | null>;
+  conversationViewEnabled: boolean;
   displayRenderItems: readonly RenderItem[];
+  hasOlderMessages?: boolean;
+  historySearchCursor?: string | null;
+  historySearchContextKey?: string;
+  hydratedHistoryCursor?: string | null;
   inert: boolean;
+  onHydrateHistorySearchPage?: (cursor: string, page: GetSessionResult) => void;
+  onReadOlderSearchPage?: (
+    beforeMessageId: string,
+  ) => Promise<GetSessionResult>;
+  provider?: string;
+  thinkingItemsVisible: boolean;
   turnGroups: readonly RenderTurnGroup[];
 }
 
@@ -63,6 +82,7 @@ interface UseMessageListIsearchResult {
   searchState: UserTurnNavSearchState | null;
   searchPanel: ReactNode;
   closeSearch: (restoreScroll: boolean) => void;
+  getSelectedSearchAnchorId: () => string | null;
   getSelectedSearchTargetId: () => string | null;
   handleSearchArrowKey: (
     direction: "previous" | "next",
@@ -70,14 +90,61 @@ interface UseMessageListIsearchResult {
   ) => void;
   moveSearchSelection: (direction: "previous" | "next") => void;
   openSearch: (scope: SessionIsearchScope) => void;
+  prepareSearchTarget: (id: string) => string | null | Promise<string | null>;
   selectSearchMatch: (id: string, targetId?: string) => void;
   stopSearchArrowRepeat: () => void;
 }
 
+interface OlderSearchMatch extends UserTurnNavAnchor {
+  pageCursor: string;
+}
+
+interface OlderSearchState {
+  cursor: string | null;
+  error: boolean;
+  hasOlder: boolean;
+  key: string;
+  limitReached: boolean;
+  loading: boolean;
+  matches: OlderSearchMatch[];
+  pagesScanned: number;
+}
+
+interface PendingWorkerRequest {
+  reject: (error: Error) => void;
+  resolve: (result: SessionHistorySearchPageResult) => void;
+}
+
+function createOlderSearchState(
+  key: string,
+  cursor: string | null,
+  hasOlder: boolean,
+): OlderSearchState {
+  return {
+    cursor,
+    error: false,
+    hasOlder: hasOlder && cursor !== null,
+    key,
+    limitReached: false,
+    loading: false,
+    matches: [],
+    pagesScanned: 0,
+  };
+}
+
 export function useMessageListIsearch({
   containerRef,
+  conversationViewEnabled,
   displayRenderItems,
+  hasOlderMessages = false,
+  historySearchCursor = null,
+  historySearchContextKey = "",
+  hydratedHistoryCursor = null,
   inert,
+  onHydrateHistorySearchPage,
+  onReadOlderSearchPage,
+  provider,
+  thinkingItemsVisible,
   turnGroups,
 }: UseMessageListIsearchOptions): UseMessageListIsearchResult {
   const { t } = useI18n();
@@ -86,6 +153,14 @@ export function useMessageListIsearch({
   const searchOriginalScrollTopRef = useRef<number | null>(null);
   const committedSearchTargetIdRef = useRef<string | null>(null);
   const selectedSearchTargetIdRef = useRef<string | null>(null);
+  const selectedSearchAnchorIdRef = useRef<string | null>(null);
+  const historySearchKeyRef = useRef("");
+  const appliedHistorySearchKeyRef = useRef("");
+  const historySearchWorkerRef = useRef<Worker | null>(null);
+  const historySearchWorkerRequestIdRef = useRef(0);
+  const pendingHistorySearchWorkerRequestsRef = useRef(
+    new Map<number, PendingWorkerRequest>(),
+  );
   const searchArrowRepeatTimeoutRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
@@ -103,6 +178,12 @@ export function useMessageListIsearch({
     selectedId: null,
     originalScrollTop: null,
   });
+  const [olderSearchState, setOlderSearchState] = useState<OlderSearchState>(
+    () => createOlderSearchState("", null, false),
+  );
+  const [hydratingSearchId, setHydratingSearchId] = useState<string | null>(
+    null,
+  );
 
   const hasUserSearchableTurn = useMemo(
     () => hasSearchableUserTurn(displayRenderItems),
@@ -116,6 +197,142 @@ export function useMessageListIsearch({
     active: userTurnSearch.active,
     query: userTurnSearch.query,
   });
+  const historySearchKey = searchReady
+    ? JSON.stringify([
+        userTurnSearch.scope,
+        userTurnSearch.query,
+        userTurnSearch.caseSensitive,
+        thinkingItemsVisible,
+        conversationViewEnabled,
+        historySearchContextKey,
+        provider,
+      ])
+    : "";
+  historySearchKeyRef.current = historySearchKey;
+  const effectiveOlderSearchState =
+    olderSearchState.key === historySearchKey
+      ? olderSearchState
+      : createOlderSearchState(
+          historySearchKey,
+          historySearchCursor,
+          hasOlderMessages,
+        );
+
+  const disposeHistorySearchWorker = useCallback(() => {
+    historySearchWorkerRef.current?.terminate();
+    historySearchWorkerRef.current = null;
+    const cancelled = new Error("History search cancelled");
+    for (const pending of pendingHistorySearchWorkerRequestsRef.current.values()) {
+      pending.reject(cancelled);
+    }
+    pendingHistorySearchWorkerRequestsRef.current.clear();
+  }, []);
+
+  const runHistorySearchPage = useCallback(
+    (input: SessionHistorySearchPageInput) => {
+      if (typeof Worker === "undefined") {
+        return new Promise<SessionHistorySearchPageResult>((resolve) => {
+          setTimeout(() => resolve(searchSessionHistoryPage(input)), 0);
+        });
+      }
+
+      let worker = historySearchWorkerRef.current;
+      if (!worker) {
+        worker = new Worker(
+          new URL("../workers/sessionHistorySearch.worker.ts", import.meta.url),
+          { type: "module" },
+        );
+        worker.addEventListener(
+          "message",
+          (event: MessageEvent<SessionHistorySearchWorkerResponse>) => {
+            const pending = pendingHistorySearchWorkerRequestsRef.current.get(
+              event.data.requestId,
+            );
+            if (!pending) return;
+            pendingHistorySearchWorkerRequestsRef.current.delete(
+              event.data.requestId,
+            );
+            pending.resolve(event.data);
+          },
+        );
+        worker.addEventListener("error", () => {
+          const error = new Error("History search worker failed");
+          for (const pending of pendingHistorySearchWorkerRequestsRef.current.values()) {
+            pending.reject(error);
+          }
+          pendingHistorySearchWorkerRequestsRef.current.clear();
+          historySearchWorkerRef.current?.terminate();
+          historySearchWorkerRef.current = null;
+        });
+        historySearchWorkerRef.current = worker;
+      }
+
+      const requestId = historySearchWorkerRequestIdRef.current + 1;
+      historySearchWorkerRequestIdRef.current = requestId;
+      return new Promise<SessionHistorySearchPageResult>((resolve, reject) => {
+        pendingHistorySearchWorkerRequestsRef.current.set(requestId, {
+          reject,
+          resolve,
+        });
+        worker.postMessage({ requestId, ...input });
+      });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!searchReady) return;
+    if (appliedHistorySearchKeyRef.current !== historySearchKey) {
+      appliedHistorySearchKeyRef.current = historySearchKey;
+      disposeHistorySearchWorker();
+    }
+    setOlderSearchState((previous) => {
+      if (previous.key !== historySearchKey) {
+        return createOlderSearchState(
+          historySearchKey,
+          historySearchCursor,
+          hasOlderMessages,
+        );
+      }
+      if (
+        previous.pagesScanned === 0 &&
+        !previous.loading &&
+        previous.matches.length === 0
+      ) {
+        const hasOlder = hasOlderMessages && historySearchCursor !== null;
+        if (
+          previous.cursor !== historySearchCursor ||
+          previous.hasOlder !== hasOlder
+        ) {
+          return {
+            ...previous,
+            cursor: historySearchCursor,
+            hasOlder,
+          };
+        }
+      }
+      return previous;
+    });
+  }, [
+    disposeHistorySearchWorker,
+    hasOlderMessages,
+    historySearchCursor,
+    historySearchKey,
+    searchReady,
+  ]);
+
+  useEffect(() => {
+    if (userTurnSearch.active && !inert) return;
+    appliedHistorySearchKeyRef.current = "";
+    disposeHistorySearchWorker();
+  }, [disposeHistorySearchWorker, inert, userTurnSearch.active]);
+
+  useEffect(
+    () => () => {
+      disposeHistorySearchWorker();
+    },
+    [disposeHistorySearchWorker],
+  );
   const includeUserTurnSearchAnchors =
     searchReady && userTurnSearch.scope === "user";
   const userTurnSearchAnchors = useMemo<UserTurnNavAnchor[]>(() => {
@@ -140,12 +357,132 @@ export function useMessageListIsearch({
     }
     return getFullSessionSearchAnchors(turnGroups);
   }, [includeFullSessionSearchAnchors, turnGroups]);
-  const activeSearchAnchors = getActiveSearchAnchors({
+  const loadedSearchAnchors = getActiveSearchAnchors({
     allAnchors: sessionTurnNavAnchors,
     fullAnchors: fullSessionSearchAnchors,
     scope: userTurnSearch.scope,
     userAnchors: userTurnSearchAnchors,
   });
+  let olderSearchMatches: OlderSearchMatch[] = [];
+  if (effectiveOlderSearchState.matches.length > 0) {
+    const loadedSearchAnchorIds = new Set(
+      loadedSearchAnchors.map((anchor) => anchor.id),
+    );
+    olderSearchMatches = effectiveOlderSearchState.matches.filter(
+      (anchor) => !loadedSearchAnchorIds.has(anchor.id),
+    );
+  }
+  const activeSearchAnchors =
+    olderSearchMatches.length > 0
+      ? [...olderSearchMatches, ...loadedSearchAnchors]
+      : loadedSearchAnchors;
+
+  const searchOlder = useCallback(async () => {
+    const state = effectiveOlderSearchState;
+    const cursor = state.cursor;
+    const requestKey = historySearchKey;
+    if (
+      !searchReady ||
+      !cursor ||
+      !state.hasOlder ||
+      state.loading ||
+      state.limitReached ||
+      !onReadOlderSearchPage
+    ) {
+      return;
+    }
+
+    // A fast click can precede the effect that records the newly typed query.
+    // Claim the key before starting the worker so that effect cannot dispose
+    // this first explicit page scan as stale.
+    appliedHistorySearchKeyRef.current = requestKey;
+    setOlderSearchState((previous) => ({
+      ...(previous.key === requestKey ? previous : state),
+      error: false,
+      key: requestKey,
+      loading: true,
+    }));
+
+    try {
+      const page = await onReadOlderSearchPage(cursor);
+      if (historySearchKeyRef.current !== requestKey) return;
+      const pageMessageIds = new Set(
+        page.messages.flatMap((message) =>
+          [message.uuid, message.id].filter(
+            (id): id is string => typeof id === "string" && id.length > 0,
+          ),
+        ),
+      );
+      const transcriptDisplayObjects =
+        page.session.transcriptDisplayObjects?.filter((object) =>
+          object.placementAfterMessageId === ""
+            ? page.pagination?.hasOlderMessages === false
+            : pageMessageIds.has(object.placementAfterMessageId),
+        ) ?? [];
+      const result = await runHistorySearchPage({
+        caseSensitive: userTurnSearch.caseSensitive,
+        conversationViewEnabled,
+        messages: page.messages,
+        provider,
+        query: userTurnSearch.query,
+        scope: userTurnSearch.scope,
+        thinkingItemsVisible,
+        transcriptDisplayObjects,
+      });
+      if (historySearchKeyRef.current !== requestKey) return;
+
+      const nextCursor = page.pagination?.hasOlderMessages
+        ? (page.pagination.truncatedBeforeMessageId ?? null)
+        : null;
+      const pageMatches: OlderSearchMatch[] = result.matches.map((match) => ({
+        ...match,
+        pageCursor: cursor,
+      }));
+      setOlderSearchState((previous) => {
+        if (previous.key !== requestKey) return previous;
+        const byId = new Map<string, OlderSearchMatch>();
+        for (const match of [...pageMatches, ...previous.matches]) {
+          if (!byId.has(match.id)) byId.set(match.id, match);
+        }
+        const combined = [...byId.values()];
+        const limitReached =
+          result.matchesTruncated ||
+          combined.length >= HISTORY_SEARCH_RESULT_LIMIT;
+        return {
+          ...previous,
+          cursor: nextCursor,
+          error: false,
+          hasOlder: nextCursor !== null,
+          limitReached,
+          loading: false,
+          matches:
+            combined.length > HISTORY_SEARCH_RESULT_LIMIT
+              ? combined.slice(0, HISTORY_SEARCH_RESULT_LIMIT)
+              : combined,
+          pagesScanned: previous.pagesScanned + 1,
+        };
+      });
+    } catch {
+      if (historySearchKeyRef.current !== requestKey) return;
+      setOlderSearchState((previous) =>
+        previous.key === requestKey
+          ? { ...previous, error: true, loading: false }
+          : previous,
+      );
+    }
+  }, [
+    effectiveOlderSearchState,
+    conversationViewEnabled,
+    historySearchKey,
+    onReadOlderSearchPage,
+    provider,
+    runHistorySearchPage,
+    searchReady,
+    thinkingItemsVisible,
+    userTurnSearch.caseSensitive,
+    userTurnSearch.query,
+    userTurnSearch.scope,
+  ]);
   const userTurnSearchProjection = useMemo(
     () =>
       getSearchMatchProjection({
@@ -181,11 +518,23 @@ export function useMessageListIsearch({
     ],
   );
   const selectedSearchAnchor = userTurnSearchSelectionProjection.selectedAnchor;
+  selectedSearchAnchorIdRef.current = selectedSearchAnchor?.id ?? null;
   const selectedSearchTargetId =
     userTurnSearchSelectionProjection.selectedTargetId;
   selectedSearchTargetIdRef.current = selectedSearchTargetId;
   const userTurnSearchPreview =
     userTurnSearchSelectionProjection.selectedPreview;
+  const selectedAnchorIsLoaded = selectedSearchAnchor
+    ? loadedSearchAnchors.some(
+        (anchor) => anchor.id === selectedSearchAnchor.id,
+      )
+    : false;
+  const selectedOlderSearchMatch =
+    selectedSearchAnchor && !selectedAnchorIsLoaded
+      ? (effectiveOlderSearchState.matches.find(
+          (match) => match.id === selectedSearchAnchor.id,
+        ) ?? null)
+      : null;
   const searchPanelProjection = useMemo(
     () =>
       getSearchPanelProjection({
@@ -348,6 +697,64 @@ export function useMessageListIsearch({
       searchInputRef.current?.focus({ preventScroll: true });
     });
   }, []);
+  const prepareSearchTarget = useCallback(
+    (id: string): string | null | Promise<string | null> => {
+      const anchor = activeSearchAnchors.find(
+        (candidate) => candidate.id === id,
+      );
+      if (!anchor) return null;
+      const targetId = anchor.targetId ?? anchor.id;
+      const olderMatch = effectiveOlderSearchState.matches.find(
+        (candidate) => candidate.id === id,
+      );
+      const anchorIsLoaded = loadedSearchAnchors.some(
+        (candidate) => candidate.id === id,
+      );
+      if (
+        !olderMatch ||
+        anchorIsLoaded ||
+        olderMatch.pageCursor === hydratedHistoryCursor
+      ) {
+        return targetId;
+      }
+      if (!onReadOlderSearchPage || !onHydrateHistorySearchPage) {
+        return null;
+      }
+
+      const requestKey = historySearchKey;
+      setHydratingSearchId(id);
+      return onReadOlderSearchPage(olderMatch.pageCursor)
+        .then((page) => {
+          if (historySearchKeyRef.current !== requestKey) return null;
+          onHydrateHistorySearchPage(olderMatch.pageCursor, page);
+          return targetId;
+        })
+        .catch(() => {
+          if (historySearchKeyRef.current === requestKey) {
+            setOlderSearchState((previous) =>
+              previous.key === requestKey
+                ? { ...previous, error: true }
+                : previous,
+            );
+          }
+          return null;
+        })
+        .finally(() => {
+          if (historySearchKeyRef.current === requestKey) {
+            setHydratingSearchId(null);
+          }
+        });
+    },
+    [
+      activeSearchAnchors,
+      effectiveOlderSearchState.matches,
+      historySearchKey,
+      hydratedHistoryCursor,
+      loadedSearchAnchors,
+      onHydrateHistorySearchPage,
+      onReadOlderSearchPage,
+    ],
+  );
   const closeSearch = useCallback(
     (restoreScroll: boolean) => {
       const committedTargetId = committedSearchTargetIdRef.current;
@@ -361,6 +768,9 @@ export function useMessageListIsearch({
         : null;
       searchOriginalScrollTopRef.current = null;
       searchRestoreFocusRef.current = null;
+      setHydratingSearchId(null);
+      disposeHistorySearchWorker();
+      setOlderSearchState(createOlderSearchState("", null, false));
 
       if (restoreOriginalPosition || focusTarget) {
         requestAnimationFrame(() => {
@@ -385,14 +795,14 @@ export function useMessageListIsearch({
         };
       });
     },
-    [containerRef],
+    [containerRef, disposeHistorySearchWorker],
   );
   const openSearch = useCallback(
     (scope: SessionIsearchScope) => {
       const canSearch =
         scope === "user"
-          ? hasUserSearchableTurn
-          : displayRenderItems.length > 0;
+          ? hasUserSearchableTurn || hasOlderMessages
+          : displayRenderItems.length > 0 || hasOlderMessages;
       if (!canSearch) {
         return;
       }
@@ -417,7 +827,12 @@ export function useMessageListIsearch({
         searchInputRef.current?.select();
       });
     },
-    [containerRef, hasUserSearchableTurn, displayRenderItems.length],
+    [
+      containerRef,
+      displayRenderItems.length,
+      hasOlderMessages,
+      hasUserSearchableTurn,
+    ],
   );
   const handleQueryChange = useCallback((query: string) => {
     committedSearchTargetIdRef.current = null;
@@ -441,6 +856,10 @@ export function useMessageListIsearch({
   }, []);
   const getSelectedSearchTargetId = useCallback(
     () => selectedSearchTargetIdRef.current,
+    [],
+  );
+  const getSelectedSearchAnchorId = useCallback(
+    () => selectedSearchAnchorIdRef.current,
     [],
   );
 
@@ -530,6 +949,52 @@ export function useMessageListIsearch({
         </button>
         <span className={styles.count}>{searchPanelProjection.countLabel}</span>
       </div>
+      {selectedOlderSearchMatch && (
+        <div className={styles.olderPreview} role="status">
+          <span className={styles.olderPreviewLabel}>
+            {hydratingSearchId === selectedOlderSearchMatch.id
+              ? t("sessionSearchLoadingResult")
+              : t("sessionSearchOlderResult")}
+          </span>
+          <span className={styles.olderPreviewText}>
+            {selectedOlderSearchMatch.preview}
+          </span>
+        </div>
+      )}
+      {searchReady && onReadOlderSearchPage && (
+        <div className={styles.olderControls}>
+          {effectiveOlderSearchState.hasOlder &&
+            !effectiveOlderSearchState.limitReached && (
+              <button
+                type="button"
+                className={styles.olderButton}
+                disabled={effectiveOlderSearchState.loading}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => void searchOlder()}
+              >
+                {effectiveOlderSearchState.loading
+                  ? t("sessionSearchSearchingOlder")
+                  : effectiveOlderSearchState.pagesScanned > 0
+                    ? t("sessionSearchMoreOlder")
+                    : t("sessionSearchOlder")}
+              </button>
+            )}
+          {(effectiveOlderSearchState.error ||
+            effectiveOlderSearchState.pagesScanned > 0) && (
+            <span className={styles.olderStatus}>
+              {effectiveOlderSearchState.error
+                ? t("sessionSearchOlderError")
+                : effectiveOlderSearchState.limitReached
+                  ? t("sessionSearchOlderLimit")
+                  : !effectiveOlderSearchState.hasOlder
+                    ? t("sessionSearchStartReached")
+                    : t("sessionSearchOlderPages", {
+                        count: effectiveOlderSearchState.pagesScanned,
+                      })}
+            </span>
+          )}
+        </div>
+      )}
       <div className={styles.help}>
         <span>
           {t("sessionSearchHelpNavigate", {
@@ -553,10 +1018,12 @@ export function useMessageListIsearch({
     searchState,
     searchPanel: portaledSearchPanel,
     closeSearch,
+    getSelectedSearchAnchorId,
     getSelectedSearchTargetId,
     handleSearchArrowKey,
     moveSearchSelection,
     openSearch,
+    prepareSearchTarget,
     selectSearchMatch,
     stopSearchArrowRepeat,
   };

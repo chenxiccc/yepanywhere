@@ -500,7 +500,7 @@ export function getToolSearchPreview(item: ToolCallItem): string {
 }
 
 export function getSystemSearchText(item: RenderItem): string {
-  if (item.type !== "system") {
+  if (item.type !== "system" || item.subtype === "history_search_gap") {
     return "";
   }
   return joinSearchParts([

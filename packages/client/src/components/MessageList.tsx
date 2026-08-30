@@ -49,6 +49,7 @@ import {
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import { selectionIntersectsElement } from "../lib/domSelection";
 import { getMessageId } from "../lib/mergeMessages";
+import type { GetSessionResult } from "../lib/sourceRuntime";
 import {
   formatCompactRelativeAge,
   getEarliestMessageTimestampMs,
@@ -438,6 +439,7 @@ const SEND_CATCH_UP_DELAYS_MS = [80, 240, 640];
 const TOUCH_SCROLL_CANCEL_THRESHOLD_PX = 6;
 const USER_TURN_NAV_SCROLL_OFFSET_PX = 12;
 const USER_TURN_NAV_VISIBILITY_TOLERANCE_PX = 1;
+const EMPTY_RENDER_ID_SET: ReadonlySet<string> = new Set();
 const INTERACTIVE_SCROLL_TARGET_SELECTOR =
   "button, input, textarea, select, a[href], [contenteditable='true']";
 const EDITABLE_KEYBOARD_TARGET_SELECTOR =
@@ -845,6 +847,10 @@ interface Props {
   olderLoadContinuationRequired?: boolean;
   /** Callback to load through older chunks to a user-turn boundary */
   onLoadOlderMessages?: () => void | Promise<void>;
+  /** Read one bounded older page without retaining it in the active store. */
+  onReadOlderSearchPage?: (
+    beforeMessageId: string,
+  ) => Promise<GetSessionResult>;
   /** Whether the client transcript is intentionally loaded from a recent tail */
   clientTailActive?: boolean;
   /** Render the recent transcript tail first, then hydrate older rows in batches. */
@@ -1175,6 +1181,7 @@ interface UserTimelineEntryProps {
   canForkBeforePrompt: (messageId: string) => boolean;
   forkAfterUserMessageDisabled: boolean;
   noopToggleThinkingExpanded: () => void;
+  promptActionsDisabled: boolean;
 }
 
 const UserTimelineEntry = memo(function UserTimelineEntry({
@@ -1192,6 +1199,7 @@ const UserTimelineEntry = memo(function UserTimelineEntry({
   canForkBeforePrompt,
   forkAfterUserMessageDisabled,
   noopToggleThinkingExpanded,
+  promptActionsDisabled,
 }: UserTimelineEntryProps) {
   const { item } = row;
   return (
@@ -1214,24 +1222,31 @@ const UserTimelineEntry = memo(function UserTimelineEntry({
       }
       onCancelUnconfirmedUserPrompt={onCancelUnconfirmedUserMessage}
       onTrimBeforeUserPrompt={
-        onTrimBeforeUserMessage && row.allowsPromptActions
+        onTrimBeforeUserMessage &&
+        row.allowsPromptActions &&
+        !promptActionsDisabled
           ? () => onTrimBeforeUserMessage(item.id)
           : undefined
       }
       onForkBeforeUserPrompt={
         onForkBeforeUserMessage &&
         row.allowsPromptActions &&
+        !promptActionsDisabled &&
         canForkBeforePrompt(item.id)
           ? () => onForkBeforeUserMessage(item.id)
           : undefined
       }
       onForkAfterUserPrompt={
-        onForkAfterUserMessage && row.allowsPromptActions
+        onForkAfterUserMessage &&
+        row.allowsPromptActions &&
+        !promptActionsDisabled
           ? () => onForkAfterUserMessage(item.id)
           : undefined
       }
       onForkAfterSummaryUserPrompt={
-        onForkAfterSummaryUserMessage && row.allowsPromptActions
+        onForkAfterSummaryUserMessage &&
+        row.allowsPromptActions &&
+        !promptActionsDisabled
           ? () => onForkAfterSummaryUserMessage(item.id)
           : undefined
       }
@@ -1266,6 +1281,7 @@ interface AssistantTimelineEntryProps {
   onDismissConversationThinkingPreview: (
     slot: ConversationThinkingPreviewSlot,
   ) => void;
+  promptActionDisabledIds: ReadonlySet<string>;
 }
 
 const AssistantTimelineEntry = memo(function AssistantTimelineEntry({
@@ -1289,6 +1305,7 @@ const AssistantTimelineEntry = memo(function AssistantTimelineEntry({
   collapsedConversationThinkingPreviewSlots,
   onToggleConversationThinkingPreview,
   onDismissConversationThinkingPreview,
+  promptActionDisabledIds,
 }: AssistantTimelineEntryProps) {
   return (
     <AssistantTurnImageGallery items={row.group.items}>
@@ -1319,24 +1336,31 @@ const AssistantTimelineEntry = memo(function AssistantTimelineEntry({
             }
             sessionProvider={sessionProvider}
             onTrimBeforeUserPrompt={
-              onTrimBeforeUserMessage && assistantRow.allowsPromptActions
+              onTrimBeforeUserMessage &&
+              assistantRow.allowsPromptActions &&
+              !promptActionDisabledIds.has(item.id)
                 ? () => onTrimBeforeUserMessage(item.id)
                 : undefined
             }
             onForkBeforeUserPrompt={
               onForkBeforeUserMessage &&
               assistantRow.allowsPromptActions &&
+              !promptActionDisabledIds.has(item.id) &&
               canForkBeforePrompt(item.id)
                 ? () => onForkBeforeUserMessage(item.id)
                 : undefined
             }
             onForkAfterUserPrompt={
-              onForkAfterUserMessage && assistantRow.allowsPromptActions
+              onForkAfterUserMessage &&
+              assistantRow.allowsPromptActions &&
+              !promptActionDisabledIds.has(item.id)
                 ? () => onForkAfterUserMessage(item.id)
                 : undefined
             }
             onForkAfterSummaryUserPrompt={
-              onForkAfterSummaryUserMessage && assistantRow.allowsPromptActions
+              onForkAfterSummaryUserMessage &&
+              assistantRow.allowsPromptActions &&
+              !promptActionDisabledIds.has(item.id)
                 ? () => onForkAfterSummaryUserMessage(item.id)
                 : undefined
             }
@@ -1419,6 +1443,7 @@ export const MessageList = memo(function MessageList({
   loadingOlder = false,
   olderLoadContinuationRequired = false,
   onLoadOlderMessages,
+  onReadOlderSearchPage,
   clientTailActive = false,
   progressiveRenderEnabled = false,
   progressiveRenderStatusVisible = true,
@@ -1445,6 +1470,43 @@ export const MessageList = memo(function MessageList({
     ? highResolutionNowMs()
     : null;
   const firstMessageId = messages[0] ? getMessageId(messages[0]) : null;
+  const [storedHistorySearchWindow, setHistorySearchWindow] = useState<{
+    cursor: string;
+    messages: Message[];
+    stateKey: string | undefined;
+    transcriptDisplayObjects: readonly TranscriptDisplayObject[];
+  } | null>(null);
+  const historySearchWindow =
+    storedHistorySearchWindow?.stateKey === conversationViewStateKey
+      ? storedHistorySearchWindow
+      : null;
+  const clearHistorySearchWindow = useCallback(() => {
+    setHistorySearchWindow(null);
+  }, []);
+  const hydrateHistorySearchPage = useCallback(
+    (cursor: string, page: GetSessionResult) => {
+      const pageMessageIds = new Set(
+        page.messages.flatMap((message) =>
+          [message.uuid, message.id].filter(
+            (id): id is string => typeof id === "string" && id.length > 0,
+          ),
+        ),
+      );
+      const pageDisplayObjects =
+        page.session.transcriptDisplayObjects?.filter((object) =>
+          object.placementAfterMessageId === ""
+            ? page.pagination?.hasOlderMessages === false
+            : pageMessageIds.has(object.placementAfterMessageId),
+        ) ?? [];
+      setHistorySearchWindow({
+        cursor,
+        messages: page.messages,
+        stateKey: conversationViewStateKey,
+        transcriptDisplayObjects: pageDisplayObjects,
+      });
+    },
+    [conversationViewStateKey],
+  );
   const transcriptSnapshot = useMemo(
     () => ({
       activeWindowTrimRevision,
@@ -1467,6 +1529,9 @@ export const MessageList = memo(function MessageList({
   const automaticOlderLoadAttemptRef = useRef<string | null>(null);
   const automaticOlderLoadRequiresExitRef = useRef(false);
   const loadOlderOnDemandRef = useRef<() => void>(() => {});
+  const searchActiveRef = useRef(false);
+  const historySearchWindowRef = useRef(historySearchWindow);
+  historySearchWindowRef.current = historySearchWindow;
   const keyboardOlderLoadFrameRef = useRef<number | null>(null);
   const pendingOlderPageScrollRef = useRef<{
     wasAtBottom: boolean;
@@ -1794,11 +1859,13 @@ export const MessageList = memo(function MessageList({
   const renderItems = useMemo(() => {
     const startedAt = highResolutionNowMs();
     markReloadPerfPhase("message_list_preprocess_start", {
-      messages: renderedTranscriptMessages.length,
+      messages:
+        renderedTranscriptMessages.length +
+        (historySearchWindow?.messages.length ?? 0),
       markdownAugments: Object.keys(markdownAugments ?? {}).length,
       hasActiveToolApproval: !!activeToolApproval,
     });
-    const nextRenderItems = buildSessionDetailRenderItems({
+    const loadedRenderItems = buildSessionDetailRenderItems({
       messages: renderedTranscriptMessages,
       provider,
       markdownAugments,
@@ -1806,6 +1873,40 @@ export const MessageList = memo(function MessageList({
       transcriptDisplayObjects,
       previousRenderItems: previousRenderItemsRef.current,
     });
+    let nextRenderItems = loadedRenderItems;
+    if (historySearchWindow) {
+      const loadedMessageIds = new Set(
+        renderedTranscriptMessages.map((message) => getMessageId(message)),
+      );
+      const historyMessages = historySearchWindow.messages.filter(
+        (message) => !loadedMessageIds.has(getMessageId(message)),
+      );
+      const historicalRenderItems = buildSessionDetailRenderItems({
+        messages: historyMessages,
+        provider,
+        transcriptDisplayObjects: historySearchWindow.transcriptDisplayObjects,
+        previousRenderItems: previousRenderItemsRef.current,
+      });
+      if (historicalRenderItems.length > 0) {
+        const gapItems: RenderItem[] =
+          historySearchWindow.cursor === olderMessagesCursor
+            ? []
+            : [
+                {
+                  type: "system" as const,
+                  id: `history-search-gap:${historySearchWindow.cursor}`,
+                  subtype: "history_search_gap",
+                  content: t("sessionSearchHistoryGap"),
+                  sourceMessages: [],
+                },
+              ];
+        nextRenderItems = [
+          ...historicalRenderItems,
+          ...gapItems,
+          ...loadedRenderItems,
+        ];
+      }
+    }
     const durationMs = highResolutionNowMs() - startedAt;
     markReloadPerfPhase("message_list_preprocess_end", {
       messages: renderedTranscriptMessages.length,
@@ -1821,14 +1922,38 @@ export const MessageList = memo(function MessageList({
     return nextRenderItems;
   }, [
     renderedTranscriptMessages,
+    historySearchWindow,
+    olderMessagesCursor,
     provider,
     markdownAugments,
     activeToolApproval,
     transcriptDisplayObjects,
+    t,
   ]);
   useEffect(() => {
     previousRenderItemsRef.current = renderItems;
   }, [renderItems]);
+  const historySearchSourceMessageIds = useMemo(() => {
+    if (!historySearchWindow) return EMPTY_RENDER_ID_SET;
+    const ids = new Set<string>();
+    for (const message of historySearchWindow.messages) {
+      const id = getMessageId(message);
+      if (id) ids.add(id);
+    }
+    return ids;
+  }, [historySearchWindow]);
+  const historySearchRenderIds = useMemo(() => {
+    if (historySearchSourceMessageIds.size === 0) return EMPTY_RENDER_ID_SET;
+    return new Set(
+      renderItems.flatMap((item) =>
+        item.sourceMessages.some((message) =>
+          historySearchSourceMessageIds.has(getMessageId(message)),
+        )
+          ? [item.id]
+          : [],
+      ),
+    );
+  }, [historySearchSourceMessageIds, renderItems]);
   useEffect(() => {
     const previousOwnerCount = previousDisclosureOwnerCountRef.current;
     const trimRevisionChanged =
@@ -1895,7 +2020,9 @@ export const MessageList = memo(function MessageList({
   );
   const conversationWindow = useMemo(
     () =>
-      effectiveConversationViewEnabled && conversationWindowIsBounded
+      effectiveConversationViewEnabled &&
+      conversationWindowIsBounded &&
+      !historySearchWindow
         ? windowConversationViewItems(
             fullDisplayRenderItems,
             conversationViewTurnLimit + additionalConversationTurns,
@@ -1911,6 +2038,7 @@ export const MessageList = memo(function MessageList({
       effectiveConversationViewEnabled,
       conversationWindowIsBounded,
       fullDisplayRenderItems,
+      historySearchWindow,
     ],
   );
   const previousConversationRenderItemsRef = useRef<readonly RenderItem[]>([]);
@@ -2058,18 +2186,30 @@ export const MessageList = memo(function MessageList({
     searchState: userTurnNavSearchState,
     searchPanel,
     closeSearch,
+    getSelectedSearchAnchorId,
     getSelectedSearchTargetId,
     handleSearchArrowKey,
     moveSearchSelection,
     openSearch,
+    prepareSearchTarget,
     selectSearchMatch,
     stopSearchArrowRepeat,
   } = useMessageListIsearch({
     containerRef,
+    conversationViewEnabled: effectiveConversationViewEnabled,
     displayRenderItems,
+    hasOlderMessages,
+    historySearchCursor: olderMessagesCursor,
+    historySearchContextKey: conversationViewStateKey,
+    hydratedHistoryCursor: historySearchWindow?.cursor ?? null,
     inert,
+    onHydrateHistorySearchPage: hydrateHistorySearchPage,
+    onReadOlderSearchPage,
+    provider,
+    thinkingItemsVisible,
     turnGroups,
   });
+  searchActiveRef.current = searchActive;
   // Latest render data for settled scroll reads. Scrolling only schedules one
   // trailing measurement; it never scans the transcript DOM on the hot path.
   const displayRenderItemsRef = useRef(displayRenderItems);
@@ -2491,16 +2631,22 @@ export const MessageList = memo(function MessageList({
   }, [timelineEntryRows]);
   const canForkBeforePrompt = useCallback(
     (messageId: string) =>
-      messageId !== firstPromptActionId ||
-      hasOlderMessages ||
-      clientTailActive ||
-      conversationWindow.hiddenTurnCount > 0,
+      !historySearchRenderIds.has(messageId) &&
+      (messageId !== firstPromptActionId ||
+        hasOlderMessages ||
+        clientTailActive ||
+        conversationWindow.hiddenTurnCount > 0),
     [
       clientTailActive,
       conversationWindow.hiddenTurnCount,
       firstPromptActionId,
       hasOlderMessages,
+      historySearchRenderIds,
     ],
+  );
+  const canTrimHistoryAnchor = useCallback(
+    (messageId: string) => !historySearchRenderIds.has(messageId),
+    [historySearchRenderIds],
   );
   useEffect(() => {
     if (!progressiveRenderAllowed) {
@@ -2757,7 +2903,11 @@ export const MessageList = memo(function MessageList({
   const noopToggleThinkingExpanded = useCallback(() => {}, []);
 
   const preserveScrollAfterTranscriptHeightChange = useCallback(
-    (mutate: () => void, preferredAnchorId?: string) => {
+    (
+      mutate: () => void,
+      preferredAnchorId?: string,
+      forcePreferredAnchor = false,
+    ) => {
       const messageList = containerRef.current;
       const scrollContainer = messageList?.parentElement;
       if (!messageList || !scrollContainer) {
@@ -2765,7 +2915,8 @@ export const MessageList = memo(function MessageList({
         return;
       }
 
-      const wasAtBottom = isNearScrollBottom(scrollContainer);
+      const wasAtBottom =
+        !forcePreferredAnchor && isNearScrollBottom(scrollContainer);
       const scrollTopBefore = scrollContainer.scrollTop;
       const scrollHeightBefore = scrollContainer.scrollHeight;
       const preferredAnchorRow =
@@ -3163,12 +3314,16 @@ export const MessageList = memo(function MessageList({
     (targetId: string) => {
       completeProgressiveReveal();
       jumpToSearchTarget(targetId, false);
-      preserveScrollAfterTranscriptHeightChange(() => {
-        closeSearch(false);
-        requestAnimationFrame(() => {
-          scrollToRenderId(targetId, "auto", "center", false);
-        });
-      }, targetId);
+      preserveScrollAfterTranscriptHeightChange(
+        () => {
+          closeSearch(false);
+          requestAnimationFrame(() => {
+            scrollToRenderId(targetId, "auto", "center", false);
+          });
+        },
+        targetId,
+        true,
+      );
     },
     [
       closeSearch,
@@ -3190,17 +3345,26 @@ export const MessageList = memo(function MessageList({
   const handleSearchMatchSelect = useCallback(
     (id: string, targetId: string) => {
       selectSearchMatch(id, targetId);
-      jumpToSearchTarget(targetId);
+      const preparedTarget = prepareSearchTarget(id);
+      if (preparedTarget instanceof Promise) {
+        void preparedTarget.then((hydratedTargetId) => {
+          if (!hydratedTargetId) return;
+          requestAnimationFrame(() => jumpToSearchTarget(hydratedTargetId));
+        });
+      } else if (preparedTarget) {
+        jumpToSearchTarget(preparedTarget);
+      }
     },
-    [jumpToSearchTarget, selectSearchMatch],
+    [jumpToSearchTarget, prepareSearchTarget, selectSearchMatch],
   );
 
   const scrollToCurrent = useCallback(() => {
     setNewOutputBelowVisible(false);
+    clearHistorySearchWindow();
     forceScrollToCurrent(FOLLOW_CATCH_UP_DELAYS_MS, {
       allowThinkingDeltas: true,
     });
-  }, [forceScrollToCurrent]);
+  }, [clearHistorySearchWindow, forceScrollToCurrent]);
 
   const navigateToAdjacentHiddenUserTurn = useCallback(
     (direction: "previous" | "next", requestOlderWhenMissing = true) => {
@@ -3306,12 +3470,21 @@ export const MessageList = memo(function MessageList({
       if (event.key === "Enter") {
         event.preventDefault();
         event.stopPropagation();
-        const selectedId = getSelectedSearchTargetId();
+        const selectedAnchorId = getSelectedSearchAnchorId();
+        const selectedTargetId = getSelectedSearchTargetId();
         stopSearchArrowRepeat();
-        if (selectedId) {
+        if (selectedAnchorId && selectedTargetId) {
           // Same jump as clicking the highlighted match; then close while
           // pinning that row so unhiding non-matches cannot move it.
-          commitSearchJump(selectedId);
+          const preparedTarget = prepareSearchTarget(selectedAnchorId);
+          if (preparedTarget instanceof Promise) {
+            void preparedTarget.then((hydratedTargetId) => {
+              if (!hydratedTargetId) return;
+              requestAnimationFrame(() => commitSearchJump(hydratedTargetId));
+            });
+          } else if (preparedTarget) {
+            commitSearchJump(preparedTarget);
+          }
         } else {
           closeSearch(false);
         }
@@ -3332,10 +3505,12 @@ export const MessageList = memo(function MessageList({
   }, [
     closeSearch,
     commitSearchJump,
+    getSelectedSearchAnchorId,
     getSelectedSearchTargetId,
     handleSearchArrowKey,
     moveSearchSelection,
     navigateToAdjacentHiddenUserTurn,
+    prepareSearchTarget,
     scrollToCurrent,
     searchActive,
     searchScope,
@@ -3347,6 +3522,9 @@ export const MessageList = memo(function MessageList({
 
   // Load older messages with scroll position preservation
   const handleLoadOlder = useCallback(() => {
+    if (searchActiveRef.current || historySearchWindowRef.current) {
+      return;
+    }
     const revealsLoadedTurns =
       effectiveConversationViewEnabled &&
       conversationWindow.hiddenTurnCount > 0;
@@ -3505,7 +3683,15 @@ export const MessageList = memo(function MessageList({
   ]);
 
   useEffect(() => {
-    if (inert || loadingOlder || !automaticOlderLoadKey) return;
+    if (
+      inert ||
+      loadingOlder ||
+      searchActive ||
+      historySearchWindow ||
+      !automaticOlderLoadKey
+    ) {
+      return;
+    }
     const boundary = loadOlderBoundaryRef.current;
     const scrollContainer = containerRef.current?.parentElement;
     const Observer = window.IntersectionObserver;
@@ -3537,7 +3723,14 @@ export const MessageList = memo(function MessageList({
     );
     observer.observe(boundary);
     return () => observer.disconnect();
-  }, [automaticOlderLoadKey, handleLoadOlder, inert, loadingOlder]);
+  }, [
+    automaticOlderLoadKey,
+    handleLoadOlder,
+    historySearchWindow,
+    inert,
+    loadingOlder,
+    searchActive,
+  ]);
 
   // Track scroll position to determine if user is near bottom.
   // Ignore programmatic scrolls - only user-initiated scrolls should affect auto-scroll state.
@@ -4048,11 +4241,14 @@ export const MessageList = memo(function MessageList({
         onNavigateStart={beginTurnNavigation}
         onSearchMatchSelect={handleSearchMatchSelect}
         onTrimAnchor={onTrimBeforeUserMessage}
+        canTrimAnchor={canTrimHistoryAnchor}
         onForkBeforeAnchor={onForkBeforeUserMessage}
         onForkAfterAnchor={onForkAfterUserMessage}
+        canForkAfterAnchor={canTrimHistoryAnchor}
         canForkBeforeAnchor={canForkBeforePrompt}
         forkAfterDisabled={forkAfterUserMessageDisabled}
         onCopyAnchor={onCopyUserMessage}
+        canCopyAnchor={canTrimHistoryAnchor}
         onPreviewTimestampChange={setHoveredMarkerTimestampMs}
         getRenderIdTop={transcriptRenderWindow.getRenderIdTop}
         revealRenderId={transcriptRenderWindow.revealRenderId}
@@ -4105,55 +4301,57 @@ export const MessageList = memo(function MessageList({
             )}
           </div>
         )}
-        {(hasOlderMessages ||
-          clientTailActive ||
-          conversationWindow.hiddenTurnCount > 0) && (
-          <div className="load-older-messages" ref={loadOlderBoundaryRef}>
-            {effectiveConversationViewEnabled &&
-            conversationWindow.hiddenTurnCount > 0 ? (
-              <span className="load-older-status">
-                {t("sessionConversationLatestTurns", {
-                  count: conversationWindow.visibleTurnCount,
-                })}
-              </span>
-            ) : clientTailActive ? (
-              <span className="load-older-status">
-                {t("sessionRecentTranscriptLoaded")}
-              </span>
-            ) : null}
-            {olderLoadContinuationRequired && !loadingOlder ? (
-              <span className="load-older-status" role="status">
-                {t("sessionOlderLoadContinuationRequired")}
-              </span>
-            ) : null}
-            {(hasOlderMessages || conversationWindow.hiddenTurnCount > 0) && (
-              <button
-                type="button"
-                className="load-older-button"
-                onClick={handleLoadOlder}
-                disabled={
-                  loadingOlder && conversationWindow.hiddenTurnCount === 0
-                }
-              >
-                {loadingOlder && conversationWindow.hiddenTurnCount === 0 ? (
-                  <>
-                    <span className="spinning">&#x21BB;</span>{" "}
-                    {t("sessionLoadingOlderMessages")}
-                  </>
-                ) : conversationWindow.hiddenTurnCount > 0 ? (
-                  t("sessionConversationLoadEarlierTurns", {
-                    count: Math.min(
-                      conversationViewTurnLimit,
-                      conversationWindow.hiddenTurnCount,
-                    ),
-                  })
-                ) : (
-                  t("sessionLoadOlderMessages")
-                )}
-              </button>
-            )}
-          </div>
-        )}
+        {!searchActive &&
+          !historySearchWindow &&
+          (hasOlderMessages ||
+            clientTailActive ||
+            conversationWindow.hiddenTurnCount > 0) && (
+            <div className="load-older-messages" ref={loadOlderBoundaryRef}>
+              {effectiveConversationViewEnabled &&
+              conversationWindow.hiddenTurnCount > 0 ? (
+                <span className="load-older-status">
+                  {t("sessionConversationLatestTurns", {
+                    count: conversationWindow.visibleTurnCount,
+                  })}
+                </span>
+              ) : clientTailActive ? (
+                <span className="load-older-status">
+                  {t("sessionRecentTranscriptLoaded")}
+                </span>
+              ) : null}
+              {olderLoadContinuationRequired && !loadingOlder ? (
+                <span className="load-older-status" role="status">
+                  {t("sessionOlderLoadContinuationRequired")}
+                </span>
+              ) : null}
+              {(hasOlderMessages || conversationWindow.hiddenTurnCount > 0) && (
+                <button
+                  type="button"
+                  className="load-older-button"
+                  onClick={handleLoadOlder}
+                  disabled={
+                    loadingOlder && conversationWindow.hiddenTurnCount === 0
+                  }
+                >
+                  {loadingOlder && conversationWindow.hiddenTurnCount === 0 ? (
+                    <>
+                      <span className="spinning">&#x21BB;</span>{" "}
+                      {t("sessionLoadingOlderMessages")}
+                    </>
+                  ) : conversationWindow.hiddenTurnCount > 0 ? (
+                    t("sessionConversationLoadEarlierTurns", {
+                      count: Math.min(
+                        conversationViewTurnLimit,
+                        conversationWindow.hiddenTurnCount,
+                      ),
+                    })
+                  ) : (
+                    t("sessionLoadOlderMessages")
+                  )}
+                </button>
+              )}
+            </div>
+          )}
         {transcriptRenderWindow.active && (
           <span
             ref={transcriptRenderWindow.registerListStart}
@@ -4230,6 +4428,9 @@ export const MessageList = memo(function MessageList({
                   canForkBeforePrompt={canForkBeforePrompt}
                   forkAfterUserMessageDisabled={forkAfterUserMessageDisabled}
                   noopToggleThinkingExpanded={noopToggleThinkingExpanded}
+                  promptActionsDisabled={historySearchRenderIds.has(
+                    timelineRow.item.id,
+                  )}
                 />
               );
             }
@@ -4265,6 +4466,7 @@ export const MessageList = memo(function MessageList({
                 onDismissConversationThinkingPreview={
                   dismissConversationThinkingPreview
                 }
+                promptActionDisabledIds={historySearchRenderIds}
               />
             );
           })();

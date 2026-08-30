@@ -49,6 +49,17 @@ vi.mock("../../i18n", async (importOriginal) => ({
         sessionSearchHelpNavigate:
           "{shortcutKeys} prev · ↑↓ matches · click jumps",
         sessionSearchHelpClose: "Enter jump+close · Esc cancel · Aa case",
+        sessionSearchOlder: "Search older",
+        sessionSearchMoreOlder: "More",
+        sessionSearchSearchingOlder: "Searching…",
+        sessionSearchOlderPages: "{count} older page(s) searched",
+        sessionSearchOlderResult: "Older result",
+        sessionSearchLoadingResult: "Loading result…",
+        sessionSearchOlderError: "Older history unavailable; retry",
+        sessionSearchOlderLimit: "Result limit reached; refine the query",
+        sessionSearchStartReached: "Start of session reached",
+        sessionSearchHistoryGap:
+          "Unloaded history omitted · recent transcript continues below",
         sessionQuoteSelection: "Quote reply",
         sessionQuoteSelectionShort: "Quote",
         sessionCopySelectionText: "Copy text",

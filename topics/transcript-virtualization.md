@@ -27,6 +27,9 @@ settled at roughly 19,000 elements. Its accepted three-repetition browser trace
 ended at eight mounted rows and 435 elements, with the exact latency and
 trade-off record in the
 [`2026-08-29 system-observed follow-up`](performance-regression-suite.runs/20260829-system-observed-followups.md).
+Bounded whole-session isearch is also shipped: explicit continuation scans old
+compact pages off the main thread, and committing an old result mounts only its
+page as a disjoint semantic window.
 
 2026-07-09 (follow-up, measured): **Stage 1 items 2–3 are moot, not
 "re-prioritized."** Direct render-count instrumentation on the full-transcript
@@ -261,31 +264,49 @@ This data bound and the render window below compose. The data window limits
 what the client retains; the render window limits live DOM for the loaded rows
 without hiding or dropping them from search and navigation.
 
-### Open architecture: whole-session search across a bounded window
+### Whole-session search across a bounded window
 
-The current in-session Ctrl+R, Ctrl+S, and Ctrl+Alt+S search operates only on
-loaded render items. The bounded defect is tracked in
-[`gaps/isearch-stops-at-loaded-transcript.md`](../gaps/isearch-stops-at-loaded-transcript.md):
-an exhausted reverse search can request older user-turn-bounded pages and rerun
-the existing projection while preserving query, direction, selection, and
-scroll restoration.
+Ctrl+R, Ctrl+S, and Ctrl+Alt+S initially search only the loaded semantic
+window. When older durable history exists and the query has at least two
+characters, the search panel offers **Search older**, then **More**. Each
+activation reads exactly one existing compact session page. A lazily loaded Web
+Worker compiles that page through the canonical transcript and Conversation
+View projections and applies the active scope, query, case, and Thinking
+visibility. The main thread retains only stable match ids, target ids, short
+previews, timestamps, and source-page cursors; it does not merge scanned page
+bodies into the active session store.
 
-A later whole-session search design should avoid making repeated search load
-and retain every full message. One option is a server-owned session digest in
-which each durable searchable row contributes a stable source id/cursor,
-searchable excerpt, and approximate rendered or cumulative height. Selecting a
-digest match would hydrate a bounded real-transcript window around its cursor,
-preserve search state, and replace estimated geometry with measured row heights
-as content mounts. The loaded rows remain authoritative; height metadata is an
-approximation and cannot become a layout contract.
+One page returns at most 200 matches and one search retains at most 512. A
+truncated page or aggregate limit stops continuation and asks the reader to
+refine the query. Changing query, case, scope, projection, or session
+invalidates the old excerpts. If ordinary pagination was already in flight,
+newly loaded ids supersede duplicate excerpts while continuation keeps moving
+toward older history. Closing search terminates its worker and releases the
+excerpt set. Before explicit continuation, ordinary transcript use and
+loaded-window search perform no history request, worker construction, or
+historical-page compilation.
 
-Before choosing an endpoint, compare a compact digest transferred once for
-client-side search with server-side query results plus a coarse full-session
-height index. A digest makes repeated search responsive but may remain large
-for extreme sessions. Server-side queries bound transfer but add round trips
-and require explicit ordering and version consistency while the transcript
-grows. This is a single-session windowing concern. The independent
-cross-session corpus and indexing proposal remains in
+An unhydrated historical result is deliberately preview-only. It has no turn
+rail marker and no estimated transcript coordinate: a page-local height would
+misrepresent its position across omitted history. Committing the selected
+result refetches that result's page and mounts that one page before the recent
+loaded tail. An explicit unloaded-history marker separates them when an
+intervening region remains; an adjacent page joins without claiming an
+omission. The result's stable render id then enters the measured-height render
+window; after the React commit, the normal reveal and settled real-row geometry
+own centering. Closing isearch preserves that row while nonmatching rows expand
+around it, so the selected anchor does not move under the reader.
+
+Only one historical page is mounted. It is outside the canonical active
+session store, and trim, fork, and store-backed copy actions are unavailable on
+its turns. Ordinary older-page controls and automatic pagination stay suspended
+while this disjoint page is mounted, so a visible historical target cannot
+trigger background prepends that move it. **Follow**, Ctrl+End, a session
+change, or a Conversation View state change removes it and returns to the
+recent tail. The compact-page semantic bound still permits one unusually large
+turn; whole-session indexing remains a possible later optimization if that real
+case justifies a separate index and consistency contract. Cross-session
+indexing remains independently scoped in
 [`all-session-content-search.md`](all-session-content-search.md).
 
 ### Measured-height semantic render window

@@ -1151,6 +1151,7 @@ export function useSession(
     loadingOlder,
     olderLoadContinuationRequired,
     loadOlderMessages,
+    readOlderSearchPage,
     initialScrollSnapshot,
     updateRouteScrollSnapshot,
     updateActiveWindowFollowingBottom,
@@ -2614,6 +2615,7 @@ export function useSession(
     loadingOlder, // Whether older messages are being loaded
     olderLoadContinuationRequired, // Safety pause before the preceding user turn
     loadOlderMessages, // Load through older chunks to a user-turn boundary
+    readOlderSearchPage, // Search-only bounded history read; does not grow the active window
     initialScrollSnapshot, // Retained same-tab route scroll anchor
     updateRouteScrollSnapshot, // Update retained same-tab route scroll anchor
     updateActiveWindowFollowingBottom, // Immediate active-window follow intent

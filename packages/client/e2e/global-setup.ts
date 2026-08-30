@@ -365,6 +365,75 @@ export default async function globalSetup() {
   );
   console.log(`[E2E] Created transcript specimen at ${transcriptSpecimenFile}`);
 
+  const historySearchSessionFile = join(
+    mockSessionDir,
+    "history-search-001.jsonl",
+  );
+  const historySearchMessages = [
+    {
+      type: "user",
+      cwd: mockProjectPath,
+      message: {
+        role: "user",
+        content: "The archived horizon needle is in the oldest page.",
+      },
+      timestamp: "2026-01-02T00:00:00.000Z",
+      uuid: "history-user-0",
+    },
+    {
+      type: "assistant",
+      message: { role: "assistant", content: "Archived answer 0." },
+      timestamp: "2026-01-02T00:00:01.000Z",
+      uuid: "history-assistant-0",
+      parentUuid: "history-user-0",
+    },
+    ...Array.from({ length: 9 }, (_, index) => {
+      const number = index + 1;
+      return [
+        {
+          type: "system",
+          subtype: "compact_boundary",
+          content: `History search compaction ${number}`,
+          compactMetadata: { trigger: "auto", preTokens: number * 1000 },
+          timestamp: `2026-01-02T00:00:${String(number * 3 - 1).padStart(2, "0")}.000Z`,
+          uuid: `history-compact-${number}`,
+          parentUuid: null,
+          logicalParentUuid: `history-assistant-${index}`,
+        },
+        {
+          type: "user",
+          message: {
+            role: "user",
+            content:
+              number === 9
+                ? "The recent horizon needle remains in the loaded tail."
+                : `History search filler turn ${number}.`,
+          },
+          timestamp: `2026-01-02T00:00:${String(number * 3).padStart(2, "0")}.000Z`,
+          uuid: `history-user-${number}`,
+          parentUuid: `history-compact-${number}`,
+        },
+        {
+          type: "assistant",
+          message: {
+            role: "assistant",
+            content: `History search answer ${number}.`,
+          },
+          timestamp: `2026-01-02T00:00:${String(number * 3 + 1).padStart(2, "0")}.000Z`,
+          uuid: `history-assistant-${number}`,
+          parentUuid: `history-user-${number}`,
+        },
+      ];
+    }).flat(),
+  ];
+  writeFileSync(
+    historySearchSessionFile,
+    historySearchMessages.map((message) => JSON.stringify(message)).join("\n"),
+  );
+  console.log(
+    `[E2E] Created history-search session at ${historySearchSessionFile}`,
+  );
+
   const userTurnPresentationFile = join(
     mockSessionDir,
     "user-turn-presentation-001.jsonl",

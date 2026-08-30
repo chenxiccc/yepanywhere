@@ -1,9 +1,5 @@
-import {
-  getExplorationKind,
-  toolRegistry,
-} from "../../components/renderers/tools";
-import { getToolSummary } from "../../components/tools/summaries";
 import { getPathBasename, makeDisplayPath } from "../text";
+import { canonicalizeToolName, getExplorationKind } from "../toolNames";
 import type { RenderItem, ToolCallItem } from "../../types/renderItems";
 import {
   buildExplorationProjectionSegments,
@@ -43,7 +39,7 @@ export function buildAssistantRenderSegments(
 export function getExploredEntryDisplayLabel(toolName: string): string {
   const kind = getExplorationKind(toolName);
   if (kind === "search") {
-    if (toolRegistry.get(toolName).tool === "Grep") {
+    if (canonicalizeToolName(toolName) === "Grep") {
       return "Grep";
     }
     return "Search";
@@ -141,17 +137,14 @@ export function getExploredEntrySearchText(
   const parts = [
     getExploredEntryDisplayLabel(item.toolName),
     getExploredEntryFallbackSummary(item, projectPath),
-    getToolSummary(
-      item.toolName,
-      item.toolInput,
-      item.toolResult,
-      item.status,
-      {
-        projectPath,
-      },
-    ),
+    item.toolResult?.content,
   ];
   return Array.from(
-    new Set(parts.map((part) => part.trim()).filter(Boolean)),
+    new Set(
+      parts
+        .filter((part): part is string => typeof part === "string")
+        .map((part) => part.trim())
+        .filter(Boolean),
+    ),
   ).join("\n");
 }

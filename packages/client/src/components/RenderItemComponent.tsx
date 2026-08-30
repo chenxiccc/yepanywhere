@@ -1185,6 +1185,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
         const isToolOutput = item.subtype === "tool_output";
         const isSubagentActivity = item.subtype === "subagent_activity";
         const isNoModelTurn = item.subtype === "no_model_turn";
+        const isHistorySearchGap = item.subtype === "history_search_gap";
         const isHighlightedConfigAck =
           isConfigAck && item.configChanged !== false;
         const icon =
@@ -1200,7 +1201,9 @@ export const RenderItemComponent = memo(function RenderItemComponent({
                     ? "↳"
                     : isNoModelTurn
                       ? "∅"
-                      : "⟳";
+                      : isHistorySearchGap
+                        ? "⋯"
+                        : "⟳";
         if (
           item.subtype === "compact_boundary" ||
           isLocalCommand ||

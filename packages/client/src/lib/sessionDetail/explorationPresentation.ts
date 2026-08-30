@@ -1,7 +1,4 @@
-import {
-  getExplorationKind,
-  toolRegistry,
-} from "../../components/renderers/tools";
+import { canonicalizeToolName, getExplorationKind } from "../toolNames";
 import type {
   ExplorationEntry,
   ExplorationParent,
@@ -30,7 +27,7 @@ export function getExplorationEntryDisplayLabel(
   if (isCanonicalExplorationEntry(parent, entry)) {
     if (
       entry.kind === "search" &&
-      toolRegistry.get(parent.item.toolName).tool === "Grep"
+      canonicalizeToolName(parent.item.toolName) === "Grep"
     ) {
       return "Grep";
     }

@@ -176,6 +176,8 @@ export interface UseSessionMessagesResult {
   olderLoadContinuationRequired: boolean;
   /** Load through older chunks until reaching a real user turn or safety boundary */
   loadOlderMessages: () => Promise<void>;
+  /** Read one bounded older page without adding it to the active transcript. */
+  readOlderSearchPage: (beforeMessageId: string) => Promise<GetSessionResult>;
   /** Retained scroll anchor from the last same-tab route visit */
   initialScrollSnapshot: SessionRouteScrollSnapshot | null;
   /** Update the retained scroll anchor without re-rendering this hook */
@@ -1390,6 +1392,17 @@ export function useSessionMessages(
     tailFrom,
   ]);
 
+  const readOlderSearchPage = useCallback(
+    (beforeMessageId: string) =>
+      sourceApi.getSession({
+        projectId,
+        sessionId,
+        tailCompactions: 2,
+        beforeMessageId,
+      }),
+    [projectId, sessionId, sourceApi],
+  );
+
   const updateRouteScrollSnapshot = useCallback(
     (snapshot: SessionRouteScrollSnapshot) => {
       coordinator.setActiveWindowFollowingBottom(snapshot.atBottom);
@@ -1548,6 +1561,7 @@ export function useSessionMessages(
     loadingOlder,
     olderLoadContinuationRequired,
     loadOlderMessages,
+    readOlderSearchPage,
     initialScrollSnapshot: selectedInitialScrollSnapshot,
     updateRouteScrollSnapshot,
     updateActiveWindowFollowingBottom,

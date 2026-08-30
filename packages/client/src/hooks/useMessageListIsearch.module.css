@@ -4,6 +4,7 @@
   bottom: 0;
   z-index: 35;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
   width: max-content;
@@ -102,10 +103,72 @@
   white-space: nowrap;
 }
 
+.olderControls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+
+.olderButton {
+  appearance: none;
+  min-height: 24px;
+  padding: 2px 7px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-xs);
+}
+
+.olderButton:hover,
+.olderButton:focus-visible {
+  border-color: var(--focus-border);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.olderButton:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.olderStatus,
+.olderPreviewLabel {
+  color: var(--text-dimmed);
+  font-size: var(--font-size-xs);
+}
+
+.olderPreview {
+  display: flex;
+  flex: 1 1 240px;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: min(480px, 45vw);
+}
+
+.olderPreviewLabel {
+  flex: 0 0 auto;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.olderPreviewText {
+  overflow: hidden;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .help {
   display: flex;
+  flex: 0 0 auto;
   flex-direction: column;
   gap: 1px;
+  margin-left: auto;
   line-height: 1.15;
   white-space: nowrap;
 }
@@ -130,5 +193,12 @@
 
   .help {
     flex-basis: 100%;
+    margin-left: 0;
+  }
+
+  .olderPreview,
+  .olderControls {
+    flex: 1 1 100%;
+    max-width: none;
   }
 }

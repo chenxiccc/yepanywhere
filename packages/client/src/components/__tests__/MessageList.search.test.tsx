@@ -7,7 +7,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   installMessageListTestEnvironment,
   assistantMessage,
@@ -18,6 +18,10 @@ import {
 import { MessageList } from "../MessageList";
 
 installMessageListTestEnvironment();
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 function rect({
   top,
@@ -88,19 +92,24 @@ function installSearchGeometry(rowOffsets: Record<string, number>) {
     value: scrollTo,
   });
 
-  for (const row of messageList.querySelectorAll<HTMLElement>(
-    "[data-render-id]",
-  )) {
-    const renderId = row.dataset.renderId;
-    const topOffset = renderId ? rowOffsets[renderId] : undefined;
-    if (topOffset === undefined) {
-      continue;
+  const installRowGeometry = () => {
+    for (const row of messageList.querySelectorAll<HTMLElement>(
+      "[data-render-id]",
+    )) {
+      const renderId = row.dataset.renderId;
+      const topOffset = renderId ? rowOffsets[renderId] : undefined;
+      if (topOffset === undefined) {
+        continue;
+      }
+      row.getBoundingClientRect = () =>
+        rect({ top: 100 + topOffset - scrollTop, height: 24 });
     }
-    row.getBoundingClientRect = () =>
-      rect({ top: 100 + topOffset - scrollTop, height: 24 });
-  }
+  };
+  installRowGeometry();
+  const observer = new MutationObserver(installRowGeometry);
+  observer.observe(messageList, { childList: true, subtree: true });
 
-  return { scrollTo };
+  return { scrollTo, stop: () => observer.disconnect() };
 }
 
 describe("MessageList reverse search", () => {
@@ -295,6 +304,170 @@ describe("MessageList reverse search", () => {
       ).toBeNull();
     });
     composer.remove();
+  });
+
+  it("scans older pages as excerpts and hydrates only the chosen page", async () => {
+    const firstOlderPage = {
+      session: {},
+      messages: [
+        userMessage("user-middle", "an intermediate page without the term"),
+      ],
+      ownership: "unowned",
+      pagination: {
+        hasOlderMessages: true,
+        totalMessageCount: 6,
+        returnedMessageCount: 1,
+        truncatedBeforeMessageId: "older-boundary",
+        totalCompactions: 3,
+      },
+    } as never;
+    const matchingOlderPage = {
+      session: {},
+      messages: [
+        userMessage("user-old", "the buried history needle lives here"),
+        assistantMessage("assistant-old", "old answer"),
+      ],
+      ownership: "unowned",
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 6,
+        returnedMessageCount: 2,
+        totalCompactions: 3,
+      },
+    } as never;
+    const readOlderPage = vi.fn(async (cursor: string) =>
+      cursor === "loaded-boundary" ? firstOlderPage : matchingOlderPage,
+    );
+    const { container } = render(
+      <MessageList
+        messages={[
+          userMessage("user-recent", "recent request"),
+          assistantMessage("assistant-recent", "recent answer"),
+        ]}
+        hasOlderMessages={true}
+        olderMessagesCursor="loaded-boundary"
+        onReadOlderSearchPage={readOlderPage}
+      />,
+    );
+
+    fireEvent.keyDown(window, { key: "r", ctrlKey: true });
+    const input = await screen.findByRole("textbox", {
+      name: "Reverse search user turns",
+    });
+    fireEvent.change(input, { target: { value: "history needle" } });
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Search older" }),
+    );
+    expect(await screen.findByRole("button", { name: "More" })).toBeTruthy();
+    expect(readOlderPage).toHaveBeenLastCalledWith("loaded-boundary");
+    expect(
+      container.querySelector('[data-render-id="user-middle"]'),
+    ).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    expect(await screen.findByText("Older result")).toBeTruthy();
+    expect(screen.getByText(/buried history needle lives here/)).toBeTruthy();
+    expect(readOlderPage).toHaveBeenLastCalledWith("older-boundary");
+    expect(container.querySelector('[data-render-id="user-old"]')).toBeNull();
+
+    const { scrollTo, stop } = installSearchGeometry({ "user-old": 900 });
+    fireEvent.keyDown(window, { key: "Enter" });
+    await waitFor(() => {
+      expect(
+        container.querySelector('[data-render-id="user-old"]'),
+      ).not.toBeNull();
+    });
+    expect(readOlderPage).toHaveBeenCalledTimes(3);
+    await waitFor(() => {
+      expect(scrollTo).toHaveBeenCalledWith({ top: 812, behavior: "auto" });
+    });
+    expect(screen.queryByText("Older result")).toBeNull();
+    expect(
+      screen.getByText(
+        "Unloaded history omitted · recent transcript continues below",
+      ),
+    ).toBeTruthy();
+    await waitFor(() => {
+      expect(
+        container.querySelector('[data-render-id="user-recent"]'),
+      ).not.toBeNull();
+    });
+
+    fireEvent.keyDown(window, { key: "End", ctrlKey: true });
+    await waitFor(() => {
+      expect(container.querySelector('[data-render-id="user-old"]')).toBeNull();
+    });
+    stop();
+  });
+
+  it("does not create the history worker before an explicit older search", async () => {
+    let workerConstructions = 0;
+    class TestWorker {
+      private messageListeners: Array<
+        (event: MessageEvent<Record<string, unknown>>) => void
+      > = [];
+
+      constructor() {
+        workerConstructions += 1;
+      }
+
+      addEventListener(
+        type: string,
+        listener: (event: MessageEvent<Record<string, unknown>>) => void,
+      ) {
+        if (type === "message") this.messageListeners.push(listener);
+      }
+
+      postMessage(request: Record<string, unknown>) {
+        const { requestId } = request;
+        queueMicrotask(() => {
+          for (const listener of this.messageListeners) {
+            listener(
+              new MessageEvent("message", {
+                data: { requestId, matches: [], matchesTruncated: false },
+              }),
+            );
+          }
+        });
+      }
+
+      terminate() {}
+    }
+    vi.stubGlobal("Worker", TestWorker);
+    const readOlderPage = vi.fn(async () => ({
+      session: {},
+      messages: [],
+      ownership: "unowned",
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 1,
+        returnedMessageCount: 0,
+        totalCompactions: 0,
+      },
+    })) as never;
+
+    render(
+      <MessageList
+        messages={[assistantMessage("assistant-recent", "recent answer")]}
+        hasOlderMessages={true}
+        olderMessagesCursor="loaded-boundary"
+        onReadOlderSearchPage={readOlderPage}
+      />,
+    );
+
+    fireEvent.keyDown(window, { key: "r", ctrlKey: true });
+    const input = await screen.findByRole("textbox", {
+      name: "Reverse search user turns",
+    });
+    fireEvent.change(input, { target: { value: "needle" } });
+
+    expect(workerConstructions).toBe(0);
+    expect(readOlderPage).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Search older" }));
+    await waitFor(() => expect(workerConstructions).toBe(1));
+    expect(readOlderPage).toHaveBeenCalledOnce();
   });
 
   it("opens all-turn reverse search with Ctrl+S", async () => {
