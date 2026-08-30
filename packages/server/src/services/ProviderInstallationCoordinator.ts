@@ -466,6 +466,9 @@ export class ProviderInstallationCoordinator {
       const familyDir = join(this.rootDir, family);
       await mkdir(familyDir, { recursive: true, mode: 0o700 });
       await enforceOwnerOnlyPathPermissionsStrict(familyDir, "directory");
+      await this.withGate(familyDir, async () => {
+        await this.collectActiveLeases(familyDir);
+      });
       return familyDir;
     })();
     this.preparedDirectories.set(family, preparation);
@@ -576,10 +579,12 @@ export class ProviderInstallationCoordinator {
       }
       await unlink(ownerPath);
     } catch (error) {
-      log.warn(
-        { error, gatePath, gateId },
-        "Failed to release provider installation gate owner record",
-      );
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        log.warn(
+          { error, gatePath, gateId },
+          "Failed to release provider installation gate owner record",
+        );
+      }
     }
     // Drop the directory even when its owner record had already vanished:
     // leaving it behind is what blocks every later admission attempt.

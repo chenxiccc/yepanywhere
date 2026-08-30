@@ -120,6 +120,13 @@ actually ended. The provider host must report the same lease even when Hono is
 replaced. The coordinator must not infer safety merely from the absence of an
 in-Hono `Process`.
 
+The first preparation of an installation-family directory in each coordinator
+process sweeps abandoned reader and runtime lease records while holding that
+family's admission gate. This bounds crash residue without putting a directory
+scan and owner-liveness probes on every catalog read or session launch. A live
+record remains authoritative through the same PID and process-start-generation
+checks used before an update.
+
 Automatic updates do not interrupt active, waiting-input, queued, or retained
 provider runtimes. They remain `waiting-for-safe` and acquire writer intent
 only when affected runtime leases have drained. The first slice also does not

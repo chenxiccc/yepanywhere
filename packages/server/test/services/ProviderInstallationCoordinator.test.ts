@@ -83,6 +83,25 @@ describe("ProviderInstallationCoordinator", () => {
     };
   }
 
+  it("sweeps abandoned leases when a family is first prepared", async () => {
+    const staleLeasePath = await writeStaleRecord("runtime-dead.json", {
+      id: "dead",
+      family: FAMILY,
+      kind: "runtime",
+      pid: 12345,
+      ownerStartId: "boot-100",
+      createdAt: Date.now() - 60_000,
+    });
+    const coordinator = createCoordinator(probe("missing", null));
+
+    const lease = await coordinator.acquireRuntimeLease(FAMILY);
+
+    await expect(stat(staleLeasePath)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await lease.release();
+  });
+
   it("refuses an update while a runtime lease is active", async () => {
     const coordinator = createCoordinator();
     const lease = await coordinator.acquireRuntimeLease(FAMILY);
