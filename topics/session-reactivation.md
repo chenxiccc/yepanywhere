@@ -93,7 +93,10 @@ resume:
   browser-only **Show thinking** preference remains outside process launch
   state. The route returns the process identity and mode; the established
   process-info request/stream supplies authoritative live configuration without
-  adding a new wire dependency.
+  adding a new wire dependency. Provider selection follows explicit request,
+  durable session metadata, then exact native reader evidence. If none identifies
+  the existing session, activation returns `404` without starting the project's
+  default provider.
 - **Client:** `api.reactivateSession`; `ModelSwitchModal`'s "No active process"
   note becomes an Activate button (`onActivate`); `SessionPage` calls reactivate
   and flips `status` to `{ owner: "self", processId }`, after which the existing

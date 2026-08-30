@@ -5862,6 +5862,9 @@ describe("Session reactivation route", () => {
       } as unknown as SessionsDeps["scanner"],
       readerFactory,
       projectQueueScheduler: { reserveUserSessionStart },
+      sessionMetadataService: {
+        getMetadata: vi.fn(() => ({ provider: "claude" as ProviderName })),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
     });
 
     const responsePromise = routes.request(reactivatePath, { method: "POST" });
@@ -5891,12 +5894,86 @@ describe("Session reactivation route", () => {
       projectQueueScheduler: {
         reserveUserSessionStart: vi.fn(() => release),
       },
+      sessionMetadataService: {
+        getMetadata: vi.fn(() => ({ provider: "claude" as ProviderName })),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
     });
 
     const response = await routes.request(reactivatePath, { method: "POST" });
 
     expect(response.status).toBe(503);
     expect(release).toHaveBeenCalledOnce();
+  });
+
+  it("resolves an external session from exact native provider evidence", async () => {
+    const primaryReader = {
+      getSessionSummary: vi.fn(async () => null),
+    } as unknown as ISessionReader;
+    const grokReader = {
+      getSessionSummary: vi.fn(async () => ({
+        ...createSummary(),
+        provider: "grok" as ProviderName,
+      })),
+    } as unknown as GrokSessionReader;
+    const process = {
+      id: "process-grok",
+      permissionMode: "default",
+      appliedPermissionMode: "default",
+      modeVersion: 0,
+    };
+    const reactivateSession = vi.fn(async () => process);
+    const routes = createSessionsRoutes({
+      supervisor: {
+        reactivateSession,
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(() => primaryReader),
+      grokReaderFactory: vi.fn(() => grokReader),
+      sessionMetadataService: {
+        getMetadata: vi.fn(() => undefined),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(reactivatePath, { method: "POST" });
+
+    expect(response.status).toBe(200);
+    expect(reactivateSession).toHaveBeenCalledWith(
+      project.path,
+      "sess-1",
+      undefined,
+      expect.objectContaining({ providerName: "grok" }),
+      { requestedOverrides: {} },
+    );
+  });
+
+  it("does not fall back to the project provider for an unknown session", async () => {
+    const emptyReader = {
+      getSessionSummary: vi.fn(async () => null),
+    } as unknown as ISessionReader;
+    const reactivateSession = vi.fn();
+    const routes = createSessionsRoutes({
+      supervisor: {
+        reactivateSession,
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(() => emptyReader),
+      grokReaderFactory: vi.fn(
+        () => emptyReader as unknown as GrokSessionReader,
+      ),
+      piReaderFactory: vi.fn(() => emptyReader),
+    });
+
+    const response = await routes.request(reactivatePath, { method: "POST" });
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      error: "Session not found",
+    });
+    expect(reactivateSession).not.toHaveBeenCalled();
   });
 
   it.each([

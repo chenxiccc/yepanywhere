@@ -4590,10 +4590,21 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       );
       const hasHelperSideModel = Object.hasOwn(body, "helperSideModel");
 
-      const providerName = hasProvider
+      let providerName = hasProvider
         ? body.provider
-        : ((metadata?.provider as ProviderName | undefined) ??
-          project.provider);
+        : (metadata?.provider as ProviderName | undefined);
+      if (!providerName) {
+        const resolved = await findSessionListSummaryAcrossProviders(
+          project,
+          sessionId,
+          projectId,
+          providerResolutionDeps(deps),
+        );
+        if (!resolved) {
+          return c.json({ error: "Session not found" }, 404);
+        }
+        providerName = resolved.source.provider;
+      }
       const executor = hasExecutor
         ? parsedBodyExecutor.executor
         : metadata?.executor;

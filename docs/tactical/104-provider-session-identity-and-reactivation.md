@@ -4,8 +4,9 @@
 > directory from durable or provider-native evidence, then report resume
 > success only after the provider has actually attached to that session.
 
-Status: planned. The three source defects remain open; this document
-consolidates their remediation and acceptance boundary before implementation.
+Status: in progress. Native provider resolution for unqualified reactivation
+is implemented; resume attachment readiness and transcript/working-project
+resolution remain open.
 
 Related contracts and plans:
 
@@ -19,7 +20,7 @@ Related contracts and plans:
 Source defects:
 
 - [`gaps/provider-resume-readiness.md`](../../gaps/provider-resume-readiness.md)
-- [`gaps/reactivate-provider-resolution.md`](../../gaps/reactivate-provider-resolution.md)
+- `gaps/reactivate-provider-resolution.md` — fixed and retired 2026-08-30.
 - [`gaps/session-transcript-project-from-launch-cwd.md`](../../gaps/session-transcript-project-from-launch-cwd.md)
 
 ## Current fault
