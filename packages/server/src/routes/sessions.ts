@@ -156,6 +156,7 @@ import {
 } from "./session-recovered-queue.js";
 import { buildThinkingOptions } from "./session-thinking-options.js";
 import type { EventBus } from "../watcher/index.js";
+import { resolveExistingSessionIdentity } from "./session-existing-identity.js";
 
 const SESSION_DETAIL_SLOW_LOG_MS = 250;
 const DEFAULT_SESSION_DETAIL_TAIL_COMPACTIONS = 2;
@@ -2782,40 +2783,18 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     }
 
     const metadata = deps.sessionMetadataService.getMetadata(sessionId);
-    const process = deps.supervisor.getProcessForSession(sessionId);
-    const previousWorkingProjectId =
-      metadata?.workingProjectId ??
-      process?.projectId ??
-      (projectId as UrlProjectId);
-    const transcriptProjectId =
-      metadata?.transcriptProjectId ??
-      process?.projectId ??
-      (projectId as UrlProjectId);
-    const transcriptProject =
-      transcriptProjectId === targetProjectId
-        ? targetProject
-        : await deps.scanner.getOrCreateProject(transcriptProjectId);
-    if (!transcriptProject) {
-      return c.json({ error: "Transcript project not found" }, 404);
+    const identity = await resolveExistingSessionIdentity({
+      sessionId,
+      requestProjectId: projectId,
+      metadata,
+      scanner: deps.scanner,
+      providerDeps: providerResolutionDeps(deps),
+    });
+    if (!identity) {
+      return c.json({ error: "Session not found" }, 404);
     }
-
-    if (!process) {
-      const metadataProvider =
-        (metadata?.provider as ProviderName | undefined) ??
-        (deps.sessionMetadataService.getProvider(sessionId) as
-          | ProviderName
-          | undefined);
-      const summary = await findSessionListSummaryAcrossProviders(
-        transcriptProject,
-        sessionId,
-        transcriptProjectId,
-        providerResolutionDeps(deps),
-        metadataProvider,
-      );
-      if (!summary) {
-        return c.json({ error: "Session not found" }, 404);
-      }
-    }
+    const previousWorkingProjectId = identity.workingProjectId;
+    const transcriptProjectId = identity.transcriptProjectId;
 
     const storedWorkingProjectId =
       targetProjectId === transcriptProjectId ? undefined : targetProjectId;
@@ -4157,9 +4136,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: "Invalid project ID format" }, 400);
     }
 
-    // Use getOrCreateProject to allow resuming in directories that may have been moved
-    const project = await deps.scanner.getOrCreateProject(projectId);
-    if (!project) {
+    const requestProject = await deps.scanner.getOrCreateProject(projectId);
+    if (!requestProject) {
       return c.json({ error: "Project not found or path does not exist" }, 404);
     }
 
@@ -4193,14 +4171,30 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const resumeMode = parsedResumeMode.resumeMode ?? "full";
     const persistedMetadata =
       deps.sessionMetadataService?.getMetadata?.(sessionId);
+    const metadataProvider = deps.sessionMetadataService?.getProvider(
+      sessionId,
+    ) as ProviderName | undefined;
+    const identity = await resolveExistingSessionIdentity({
+      sessionId,
+      requestProjectId: projectId,
+      preferredProvider: metadataProvider ?? body.provider,
+      requestFallbackProvider: requestProject.provider,
+      metadata: persistedMetadata,
+      scanner: deps.scanner,
+      providerDeps: providerResolutionDeps(deps),
+    });
+    if (!identity) {
+      return c.json({ error: "Session not found" }, 404);
+    }
     const settledSandboxLevel = persistedMetadata?.sandboxLevel ?? "none";
     const settledSandboxNetworkFirewall =
       settledSandboxLevel === "project-write" &&
       persistedMetadata?.sandboxNetworkFirewall !== false;
     const resumeProjectPath =
       settledSandboxLevel === "project-write"
-        ? (persistedMetadata?.sandboxProjectPath ?? project.path)
-        : project.path;
+        ? (persistedMetadata?.sandboxProjectPath ??
+          identity.workingProject.path)
+        : identity.workingProject.path;
     if (
       body.sandboxLevel !== undefined ||
       body.sandboxNetworkFirewall !== undefined
@@ -4297,28 +4291,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     const globalInstructions = getGlobalInstructions();
 
-    // Look up the session's original provider so we resume with the correct one
-    // (e.g., claude-ollama sessions need the Ollama provider, not default Claude).
-    // Check metadata first (explicitly saved on creation), then fall back to reader.
-    const metadataProvider = deps.sessionMetadataService?.getProvider(
-      sessionId,
-    ) as ProviderName | undefined;
-
-    let providerName = metadataProvider ?? body.provider;
-    if (!providerName) {
-      const sessionSummaryResult = await findSessionListSummaryAcrossProviders(
-        project,
-        sessionId,
-        projectId as UrlProjectId,
-        providerResolutionDeps(deps),
-        metadataProvider ?? body.provider,
-      );
-      providerName =
-        sessionSummaryResult?.source.provider ??
-        metadataProvider ??
-        body.provider ??
-        project.provider;
-    }
+    const providerName = metadataProvider ?? body.provider ?? identity.provider;
     const previousProcess = deps.supervisor.getProcessForSession?.(sessionId);
     const resumeDiagnostics = {
       requestedMode: resumeMode,
@@ -4338,9 +4311,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       let blocker: ClaudeResumeApiErrorBlocker | null = null;
       try {
         blocker = await getClaudeResumeBlockerFromReader(
-          deps.readerFactory(project),
+          deps.readerFactory(identity.transcriptProject),
           sessionId,
-          projectId,
+          identity.transcriptProjectId,
         );
       } catch (error) {
         getLogger().warn(
@@ -4555,8 +4528,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       if (helperSettings.error) {
         return c.json({ error: helperSettings.error }, 400);
       }
-      const project = await deps.scanner.getOrCreateProject(projectId);
-      if (!project) {
+      const requestProject = await deps.scanner.getOrCreateProject(projectId);
+      if (!requestProject) {
         return c.json(
           { error: "Project not found or path does not exist" },
           404,
@@ -4590,20 +4563,30 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       );
       const hasHelperSideModel = Object.hasOwn(body, "helperSideModel");
 
+      const existingProcess = deps.supervisor.getProcessForSession?.(sessionId);
+      const identity = existingProcess
+        ? null
+        : await resolveExistingSessionIdentity({
+            sessionId,
+            requestProjectId: projectId,
+            preferredProvider: hasProvider
+              ? body.provider
+              : (metadata?.provider as ProviderName | undefined),
+            metadata,
+            scanner: deps.scanner,
+            providerDeps: providerResolutionDeps(deps),
+          });
+      if (!existingProcess && !identity) {
+        return c.json({ error: "Session not found" }, 404);
+      }
       let providerName = hasProvider
         ? body.provider
         : (metadata?.provider as ProviderName | undefined);
       if (!providerName) {
-        const resolved = await findSessionListSummaryAcrossProviders(
-          project,
-          sessionId,
-          projectId,
-          providerResolutionDeps(deps),
-        );
-        if (!resolved) {
-          return c.json({ error: "Session not found" }, 404);
-        }
-        providerName = resolved.source.provider;
+        providerName = existingProcess?.provider ?? identity?.provider;
+      }
+      if (!providerName) {
+        return c.json({ error: "Session provider not found" }, 404);
       }
       const executor = hasExecutor
         ? parsedBodyExecutor.executor
@@ -4708,8 +4691,22 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       };
       const reactivationProjectPath =
         sandboxLevel === "project-write"
-          ? (metadata?.sandboxProjectPath ?? project.path)
-          : project.path;
+          ? (metadata?.sandboxProjectPath ??
+            existingProcess?.projectPath ??
+            identity?.workingProject.path ??
+            requestProject.path)
+          : (existingProcess?.projectPath ??
+            identity?.workingProject.path ??
+            requestProject.path);
+      const reservationProjectId =
+        existingProcess?.projectId ?? identity?.workingProjectId ?? projectId;
+      const release =
+        reservationProjectId === projectId
+          ? undefined
+          : deps.projectQueueScheduler?.reserveUserSessionStart(
+              reservationProjectId,
+              sessionId,
+            );
 
       let process: Process;
       try {
@@ -4730,6 +4727,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           },
           error instanceof SessionConfigurationConflictError ? 409 : 503,
         );
+      } finally {
+        release?.();
       }
 
       return c.json({

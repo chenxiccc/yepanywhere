@@ -1380,6 +1380,11 @@ export class CodexSessionReader implements ISessionReader {
     return sessionFile?.filePath ?? null;
   }
 
+  async getSessionProjectPath(sessionId: string): Promise<string | null> {
+    const sessionFile = await this.findSessionFile(sessionId);
+    return sessionFile ? canonicalizeProjectPath(sessionFile.cwd) : null;
+  }
+
   getIndexScopeKey(sessionDir: string): string {
     return `codex::${sessionDir}::${this.projectIdentityKey ?? "*"}`;
   }

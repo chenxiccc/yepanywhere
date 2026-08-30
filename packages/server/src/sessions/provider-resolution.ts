@@ -7,6 +7,7 @@ import type {
   ISessionIndexService,
   SessionIndexListOptions,
 } from "../indexes/types.js";
+import type { CodexSessionScanner } from "../projects/codex-scanner.js";
 import {
   GROK_SESSIONS_DIR,
   PI_SESSIONS_DIR,
@@ -39,6 +40,7 @@ export interface ProviderProjectCatalog {
 export interface ProviderResolutionDeps {
   readerFactory: (project: Project) => ISessionReader;
   sessionIndexService?: ISessionIndexService;
+  codexScanner?: Pick<CodexSessionScanner, "getSessionProjectPath">;
   codexSessionsDir?: string;
   codexReaderFactory?: (projectPath: string) => CodexSessionReader;
   geminiSessionsDir?: string;
@@ -69,6 +71,11 @@ export interface ResolvedSessionListSummary {
   summary: SessionListSummary;
 }
 
+export interface NativeSessionProject {
+  provider: ProviderName;
+  projectPath: string;
+}
+
 function normalizeProviderGroup(
   provider: ProviderName | string | undefined,
 ): ProviderGroup | null {
@@ -80,6 +87,55 @@ function normalizeProviderGroup(
   if (provider === "grok" || provider === "grok-acp") return "grok";
   if (provider === "pi") return "pi";
   return null;
+}
+
+export async function findNativeSessionProjectAcrossProviders(
+  sessionId: string,
+  deps: ProviderResolutionDeps,
+  preferredProvider?: ProviderName | string,
+): Promise<NativeSessionProject | null> {
+  const preferredGroup = normalizeProviderGroup(preferredProvider);
+  const groups: ProviderGroup[] = preferredGroup
+    ? preferredGroup === "codex" ||
+      preferredGroup === "grok" ||
+      preferredGroup === "pi"
+      ? [preferredGroup]
+      : []
+    : ["codex", "grok", "pi"];
+  const matches: NativeSessionProject[] = [];
+
+  for (const group of groups) {
+    let projectPath: string | null = null;
+    if (group === "codex") {
+      projectPath = deps.codexScanner
+        ? await deps.codexScanner.getSessionProjectPath(sessionId)
+        : deps.codexSessionsDir
+          ? await new CodexSessionReader({
+              sessionsDir: deps.codexSessionsDir,
+            }).getSessionProjectPath(sessionId)
+          : null;
+    } else if (group === "grok") {
+      projectPath = deps.grokSessionsDir
+        ? await new GrokSessionReader({
+            sessionsDir: deps.grokSessionsDir,
+          }).getSessionProjectPath(sessionId)
+        : null;
+    } else if (group === "pi") {
+      projectPath = deps.piSessionsDir
+        ? await new PiSessionReader({
+            sessionsDir: deps.piSessionsDir,
+          }).getSessionProjectPath(sessionId)
+        : null;
+    }
+    if (projectPath) {
+      matches.push({
+        provider: group,
+        projectPath: canonicalizeProjectPath(projectPath),
+      });
+    }
+  }
+
+  return matches.length === 1 ? (matches[0] ?? null) : null;
 }
 
 function mayHaveCodexSessions(

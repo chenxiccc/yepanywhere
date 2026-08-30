@@ -240,6 +240,13 @@ export class CodexSessionScanner {
       .sort((a, b) => b.mtime - a.mtime);
   }
 
+  async getSessionProjectPath(sessionId: string): Promise<string | null> {
+    const session = (await this.scanAllSessions()).find(
+      (candidate) => !candidate.isSubagent && candidate.id === sessionId,
+    );
+    return session ? canonicalizeProjectPath(session.cwd) : null;
+  }
+
   /**
    * Scan all session files and extract metadata from the first line.
    * Results are cached for SCAN_CACHE_TTL to avoid redundant filesystem work.

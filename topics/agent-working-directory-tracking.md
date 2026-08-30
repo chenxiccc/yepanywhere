@@ -24,6 +24,14 @@ therefore track both:
 - transcript project: the provider-native location used to read the session
   log
 
+Existing-session moves and launches resolve these facts from durable metadata
+and exact provider-native evidence. For Codex, `session_meta.cwd` is the
+transcript project even when the request URL or a live process names another
+project. A durable working-project selection supplies the resumed cwd;
+otherwise YA resumes and reactivates from the native transcript project. The
+request URL and a process launch project are never transcript-location
+evidence for a provider whose session records that location intrinsically.
+
 ## Project Switches
 
 Changing the project from the session header records that the agent has moved

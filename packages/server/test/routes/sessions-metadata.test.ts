@@ -1821,6 +1821,77 @@ describe("Sessions metadata route", () => {
     }
   });
 
+  it("reclassifies from Codex native cwd instead of live launch cwd", async () => {
+    const launchProjectPath = "/tmp/launch-project";
+    const transcriptProjectPath = "/tmp/transcript-project";
+    const targetProjectPath = "/tmp/target-project";
+    const launchProject = {
+      ...createProject(),
+      id: encodeProjectId(launchProjectPath),
+      path: launchProjectPath,
+    };
+    const transcriptProject = {
+      ...createProject(),
+      id: encodeProjectId(transcriptProjectPath),
+      path: transcriptProjectPath,
+      provider: "codex" as ProviderName,
+    };
+    const targetProject = {
+      ...createProject(),
+      id: encodeProjectId(targetProjectPath),
+      path: targetProjectPath,
+    };
+    const setWorkingProject = vi.fn(async () => undefined);
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          projectId: launchProject.id,
+          projectPath: launchProject.path,
+          provider: "codex",
+        })),
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(
+          async (projectId: UrlProjectId) =>
+            [launchProject, transcriptProject, targetProject].find(
+              (project) => project.id === projectId,
+            ) ?? null,
+        ),
+      } as unknown as SessionsDeps["scanner"],
+      codexScanner: {
+        getSessionProjectPath: vi.fn(async () => transcriptProjectPath),
+      },
+      readerFactory: vi.fn(
+        () =>
+          ({ getSessionSummary: vi.fn(async () => null) }) as ISessionReader,
+      ),
+      sessionMetadataService: {
+        getMetadata: vi.fn(() => ({ provider: "codex" as ProviderName })),
+        setWorkingProject,
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(
+      `/projects/${launchProject.id}/sessions/sess-1/project`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: targetProject.id }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(setWorkingProject).toHaveBeenCalledWith(
+      "sess-1",
+      targetProject.id,
+      transcriptProject.id,
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      projectId: targetProject.id,
+      transcriptProjectId: transcriptProject.id,
+    });
+  });
+
   it("isolates public and private Markdown projections in either order", async () => {
     const tempDir = await mkdtemp(join(tmpdir(), "ya-detached-augment-"));
     const project: Project = {
@@ -2383,6 +2454,71 @@ describe("Sessions metadata route", () => {
     expect(resumeSession).toHaveBeenCalledWith(
       "sess-1",
       project.path,
+      expect.objectContaining({ text: "continue" }),
+      undefined,
+      expect.objectContaining({ providerName: "codex" }),
+    );
+  });
+
+  it("resumes from the Codex transcript cwd instead of the request project", async () => {
+    const requestProjectPath = "/tmp/stale-project";
+    const transcriptProjectPath = "/tmp/native-project";
+    const requestProject = {
+      ...createProject(),
+      id: encodeProjectId(requestProjectPath),
+      path: requestProjectPath,
+    };
+    const transcriptProject = {
+      ...createProject(),
+      id: encodeProjectId(transcriptProjectPath),
+      path: transcriptProjectPath,
+      provider: "codex" as ProviderName,
+    };
+    const resumeSession = vi.fn(async () => ({
+      id: "proc-1",
+      sessionId: "sess-1",
+      permissionMode: "default",
+      modeVersion: 0,
+    }));
+    const routes = createSessionsRoutes({
+      supervisor: { resumeSession } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async (projectId: UrlProjectId) =>
+          projectId === requestProject.id
+            ? requestProject
+            : projectId === transcriptProject.id
+              ? transcriptProject
+              : null,
+        ),
+      } as unknown as SessionsDeps["scanner"],
+      codexScanner: {
+        getSessionProjectPath: vi.fn(async () => transcriptProjectPath),
+      },
+      readerFactory: vi.fn(
+        () =>
+          ({ getSessionSummary: vi.fn(async () => null) }) as ISessionReader,
+      ),
+      sessionMetadataService: {
+        getMetadata: vi.fn(() => ({ provider: "codex" as ProviderName })),
+        getProvider: vi.fn(() => "codex"),
+        getRequestedModel: vi.fn(() => undefined),
+        getExecutor: vi.fn(() => undefined),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(
+      `/projects/${requestProject.id}/sessions/sess-1/resume`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "continue" }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(resumeSession).toHaveBeenCalledWith(
+      "sess-1",
+      transcriptProjectPath,
       expect.objectContaining({ text: "continue" }),
       undefined,
       expect.objectContaining({ providerName: "codex" }),
@@ -5945,6 +6081,62 @@ describe("Session reactivation route", () => {
       undefined,
       expect.objectContaining({ providerName: "grok" }),
       { requestedOverrides: {} },
+    );
+  });
+
+  it("reactivates from the Codex transcript cwd instead of the request project", async () => {
+    const transcriptProjectPath = "/tmp/native-codex-project";
+    const transcriptProject = {
+      ...project,
+      id: encodeProjectId(transcriptProjectPath),
+      path: transcriptProjectPath,
+      provider: "codex" as ProviderName,
+    };
+    const process = {
+      id: "process-codex",
+      permissionMode: "default",
+      appliedPermissionMode: "default",
+      modeVersion: 0,
+    };
+    const reactivateSession = vi.fn(async () => process);
+    const reserveUserSessionStart = vi.fn(() => vi.fn());
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => undefined),
+        reactivateSession,
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async (requestedId: UrlProjectId) =>
+          requestedId === project.id
+            ? project
+            : requestedId === transcriptProject.id
+              ? transcriptProject
+              : null,
+        ),
+      } as unknown as SessionsDeps["scanner"],
+      codexScanner: {
+        getSessionProjectPath: vi.fn(async () => transcriptProjectPath),
+      },
+      readerFactory,
+      projectQueueScheduler: { reserveUserSessionStart },
+      sessionMetadataService: {
+        getMetadata: vi.fn(() => ({ provider: "codex" as ProviderName })),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(reactivatePath, { method: "POST" });
+
+    expect(response.status).toBe(200);
+    expect(reactivateSession).toHaveBeenCalledWith(
+      transcriptProjectPath,
+      "sess-1",
+      undefined,
+      expect.objectContaining({ providerName: "codex" }),
+      { requestedOverrides: {} },
+    );
+    expect(reserveUserSessionStart).toHaveBeenCalledWith(
+      transcriptProject.id,
+      "sess-1",
     );
   });
 

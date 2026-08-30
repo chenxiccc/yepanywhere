@@ -250,6 +250,9 @@ export interface ISessionReader {
    */
   getSessionFilePath?(sessionId: string): Promise<string | null>;
 
+  /** Resolve the provider-native project path recorded by this session. */
+  getSessionProjectPath?(sessionId: string): Promise<string | null>;
+
   /**
    * Enumerate session files in a directory with their IDs.
    * Used by SessionIndexService for providers where the session ID

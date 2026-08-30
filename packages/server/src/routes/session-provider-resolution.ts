@@ -5,6 +5,7 @@ import {
 } from "@yep-anywhere/shared";
 import type { ISessionIndexService } from "../indexes/types.js";
 import type { CodexSessionReader } from "../sessions/codex-reader.js";
+import type { CodexSessionScanner } from "../projects/codex-scanner.js";
 import type { GeminiSessionReader } from "../sessions/gemini-reader.js";
 import type { GrokSessionReader } from "../sessions/grok-reader.js";
 import type { PiSessionReader } from "../sessions/pi-reader.js";
@@ -15,6 +16,7 @@ import type { Project } from "../supervisor/types.js";
 export interface SessionProviderResolutionDeps {
   readerFactory: (project: Project) => ISessionReader;
   sessionIndexService?: ISessionIndexService;
+  codexScanner?: Pick<CodexSessionScanner, "getSessionProjectPath">;
   codexSessionsDir?: string;
   codexReaderFactory?: (projectPath: string) => CodexSessionReader;
   geminiScanner?: {
@@ -46,6 +48,7 @@ export function providerResolutionDeps(
   return {
     readerFactory: deps.readerFactory,
     sessionIndexService: deps.sessionIndexService,
+    codexScanner: deps.codexScanner,
     codexSessionsDir: deps.codexSessionsDir,
     codexReaderFactory: deps.codexReaderFactory,
     geminiSessionsDir: deps.geminiSessionsDir,

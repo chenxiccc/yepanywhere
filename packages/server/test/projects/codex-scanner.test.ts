@@ -88,6 +88,27 @@ describe("CodexSessionScanner", () => {
     expect(projects[0].sessionCountsByProvider).toEqual({ codex: 1 });
   });
 
+  it("resolves a session's project from its native cwd", async () => {
+    const sessionsDir = join(tmpdir(), `codex-scan-${randomUUID()}`);
+    tempDirs.push(sessionsDir);
+
+    const dateDir = join(sessionsDir, "2026", "02", "03");
+    await mkdir(dateDir, { recursive: true });
+
+    const id = randomUUID();
+    await writeFile(
+      join(dateDir, `rollout-${id}.jsonl`),
+      `${makeSessionMeta(id, "/home/user/native-project")}\n`,
+    );
+
+    const scanner = new CodexSessionScanner({ sessionsDir });
+
+    await expect(scanner.getSessionProjectPath(id)).resolves.toBe(
+      "/home/user/native-project",
+    );
+    await expect(scanner.getSessionProjectPath("missing")).resolves.toBeNull();
+  });
+
   it("groups sessions by cwd into projects", async () => {
     const sessionsDir = join(tmpdir(), `codex-scan-${randomUUID()}`);
     tempDirs.push(sessionsDir);

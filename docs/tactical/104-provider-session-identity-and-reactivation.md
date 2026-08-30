@@ -4,9 +4,9 @@
 > directory from durable or provider-native evidence, then report resume
 > success only after the provider has actually attached to that session.
 
-Status: in progress. Native provider resolution for unqualified reactivation
-is implemented; resume attachment readiness and transcript/working-project
-resolution remain open.
+Status: in progress. Existing-session identity resolution now supplies native
+provider, transcript project, and working project to move, resume, and
+reactivate. Provider attachment readiness remains open.
 
 Related contracts and plans:
 
@@ -21,24 +21,16 @@ Source defects:
 
 - [`gaps/provider-resume-readiness.md`](../../gaps/provider-resume-readiness.md)
 - `gaps/reactivate-provider-resolution.md` — fixed and retired 2026-08-30.
-- [`gaps/session-transcript-project-from-launch-cwd.md`](../../gaps/session-transcript-project-from-launch-cwd.md)
+- `gaps/session-transcript-project-from-launch-cwd.md` — fixed and retired
+  2026-08-30.
 
 ## Current fault
 
-Existing-session actions currently reconstruct one identity from three
-different kinds of evidence:
-
-- The resume route can recover a provider from native readers, but derives its
-  launch directory from the project in the request URL unless durable sandbox
-  metadata overrides it.
-- The reactivate route uses persisted YA provider metadata and otherwise falls
-  through to the selected project's default provider. An externally created
-  native session has no YA launch record, so this fallback can start the wrong
-  backend.
-- Project reclassification records the live process's project as the transcript
-  project when no earlier pointer exists. A process project is its launch or
-  effective working directory; it is not evidence of where a provider stores
-  the transcript.
+Move, resume, and reactivate now use one route-independent identity resolver.
+Codex, Grok, and pi expose their exact native project path; Codex reads it from
+`session_meta.cwd`. A durable working-project override selects launch cwd,
+otherwise the native transcript project does. Neither the request URL nor a
+live process launch project supplies transcript location for those providers.
 
 Resume has a second, independent timing fault. The route returns
 `resume.outcome: "started"` after the Supervisor creates a `Process`. Providers
