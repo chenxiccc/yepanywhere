@@ -1681,6 +1681,8 @@
   "sourceNoChangesToHead": "This revision and HEAD have no content differences.",
   "sourceProjectionUpgradeNotice": "Update or restart the yepanywhere server to use Ignore whitespace and To HEAD. Ordinary Source Control still works.",
   "sourceDismissProjectionNotice": "Dismiss server update notice",
+  "sourceProjectionRequestError": "Couldn't load the requested Source Control view: {error}. Try again.",
+  "sourceDismissProjectionError": "Dismiss Source Control error",
   "sourceHunkPosition": "{current} of {total}",
   "sourcePreviousHunkShortcut": "Previous hunk (P)",
   "sourceNextHunkShortcut": "Next hunk (N)",

@@ -278,7 +278,7 @@ export function WorkingTreeBrowser({
   supportsLastEditor?: boolean;
   ignoreWhitespace?: boolean;
   onToggleIgnoreWhitespace?: () => void;
-  onProjectionRequestFailure?: () => void;
+  onProjectionRequestFailure?: (error: unknown) => void;
   t: TranslationFn;
 }) {
   const [expandedUntrackedFolders, setExpandedUntrackedFolders] = useState<

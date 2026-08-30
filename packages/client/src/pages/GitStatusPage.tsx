@@ -1107,6 +1107,9 @@ function GitStatusContent({
         sourceControlCleanLanding === "latest-commit"));
   const [ignoreWhitespace, setIgnoreWhitespace] = useState(false);
   const [showProjectionNotice, setShowProjectionNotice] = useState(false);
+  const [projectionRequestError, setProjectionRequestError] = useState<
+    string | null
+  >(null);
   const projectionNoticeNeedsPortal = useMediaQuery("(max-width: 600px)");
   const activeIgnoreWhitespace = supportsProjections && ignoreWhitespace;
   useEffect(() => {
@@ -1114,10 +1117,26 @@ function GitStatusContent({
   }, [supportsProjections]);
   const handleProjectionUnavailable = useCallback(() => {
     setIgnoreWhitespace(false);
+    setProjectionRequestError(null);
     setShowProjectionNotice(true);
   }, []);
+  const handleProjectionRequestFailure = useCallback(
+    (error: unknown) => {
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : t("gitStatusLoadDiffFailed");
+      setIgnoreWhitespace(false);
+      setShowProjectionNotice(false);
+      setProjectionRequestError(
+        t("sourceProjectionRequestError", { error: message }),
+      );
+    },
+    [t],
+  );
   const handleToggleIgnoreWhitespace = useCallback(() => {
     if (!ignoreWhitespace && !supportsProjections) {
+      setProjectionRequestError(null);
       setShowProjectionNotice(true);
       return;
     }
@@ -1131,6 +1150,18 @@ function GitStatusContent({
         className="source-projection-notice-dismiss"
         aria-label={t("sourceDismissProjectionNotice")}
         onClick={() => setShowProjectionNotice(false)}
+      >
+        ×
+      </button>
+    </div>
+  ) : projectionRequestError ? (
+    <div className="source-projection-notice" role="alert">
+      <span>{projectionRequestError}</span>
+      <button
+        type="button"
+        className="source-projection-notice-dismiss"
+        aria-label={t("sourceDismissProjectionError")}
+        onClick={() => setProjectionRequestError(null)}
       >
         ×
       </button>
@@ -1232,7 +1263,7 @@ function GitStatusContent({
           supportsLastEditor={supportsLastEditor}
           ignoreWhitespace={activeIgnoreWhitespace}
           onToggleIgnoreWhitespace={handleToggleIgnoreWhitespace}
-          onProjectionRequestFailure={handleProjectionUnavailable}
+          onProjectionRequestFailure={handleProjectionRequestFailure}
           t={t}
         />
       ) : tab === "changes" ? (
@@ -1264,6 +1295,7 @@ function GitStatusContent({
           ignoreWhitespace={activeIgnoreWhitespace}
           onToggleIgnoreWhitespace={handleToggleIgnoreWhitespace}
           onProjectionUnavailable={handleProjectionUnavailable}
+          onProjectionRequestFailure={handleProjectionRequestFailure}
           t={t}
         />
       ) : tab === "comments" ? (

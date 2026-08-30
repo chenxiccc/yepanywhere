@@ -69,6 +69,7 @@ export function CommitBrowser({
   ignoreWhitespace = false,
   onToggleIgnoreWhitespace = NOOP,
   onProjectionUnavailable = NOOP,
+  onProjectionRequestFailure = NOOP,
   t,
 }: {
   projectId: string;
@@ -105,6 +106,7 @@ export function CommitBrowser({
   ignoreWhitespace?: boolean;
   onToggleIgnoreWhitespace?: () => void;
   onProjectionUnavailable?: () => void;
+  onProjectionRequestFailure?: (error: unknown) => void;
   t: TranslationFn;
 }) {
   const diffPreviewRef = useRef<GitDiffPreviewHandle>(null);
@@ -170,6 +172,7 @@ export function CommitBrowser({
     initialPath,
     supportsInclusiveToHead,
     onProjectionUnavailable,
+    onProjectionRequestFailure,
     t,
   });
 

@@ -638,6 +638,13 @@ Direct selected-tree-to-HEAD remains a different, clearly labelled per-file
 context-menu action. It retains the established direct-comparison route and
 capability semantics rather than overloading **To HEAD**.
 
+Projection availability and projection execution are distinct failure classes.
+When the server lacks the advertised projection capability, the client sends no
+unsupported request and may show update/restart guidance. When an advertised
+projection request fails, the client returns to ordinary Source Control and
+shows the request's retryable error; it never recasts that failure as an
+outdated-server notice.
+
 A comparison comment cites the endpoint that contains the clicked projection:
 an old-side line anchors to the fixed base SHA (or has no old lines for the
 empty tree) and a new-side line anchors to the pinned tip SHA. An ordinary

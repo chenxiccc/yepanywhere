@@ -114,7 +114,7 @@ interface GitDiffPreviewProps
   captureReviewProjections?: boolean;
   ignoreWhitespace?: boolean;
   onToggleIgnoreWhitespace?: () => void;
-  onProjectionRequestFailure?: () => void;
+  onProjectionRequestFailure?: (error: unknown) => void;
   t: TranslationFn;
 }
 
@@ -403,7 +403,7 @@ export function GitDiffModal({
   captureReviewProjections?: boolean;
   ignoreWhitespace?: boolean;
   onToggleIgnoreWhitespace?: () => void;
-  onProjectionRequestFailure?: () => void;
+  onProjectionRequestFailure?: (error: unknown) => void;
   t: TranslationFn;
   onClose: () => void;
 }) {
@@ -483,7 +483,7 @@ export function GitDiffBody({
   captureReviewProjections?: boolean;
   ignoreWhitespace?: boolean;
   onToggleIgnoreWhitespace?: () => void;
-  onProjectionRequestFailure?: () => void;
+  onProjectionRequestFailure?: (error: unknown) => void;
   retainedScrollRatio?: number;
   scrollContainerRef?: RefObject<HTMLElement | null>;
   t: TranslationFn;
@@ -634,7 +634,7 @@ export function GitDiffBody({
             sourceKind === "comparison" ||
             sourceKind === "inclusive-comparison"
           ) {
-            onProjectionRequestFailure?.();
+            onProjectionRequestFailure?.(err);
           }
           const message = err.message || t("gitStatusLoadDiffFailed");
           setLoadState((current) =>
@@ -739,7 +739,7 @@ function GitDiffContent({
   captureReviewProjections?: boolean;
   ignoreWhitespace?: boolean;
   onToggleIgnoreWhitespace?: () => void;
-  onProjectionRequestFailure?: () => void;
+  onProjectionRequestFailure?: (error: unknown) => void;
   t: TranslationFn;
 } & GitDiffPreviewRetentionProps) {
   const [showFullContext, setShowFullContext] = useState(
@@ -946,7 +946,7 @@ function GitDiffContent({
           sourceKind === "comparison" ||
           sourceKind === "inclusive-comparison"
         ) {
-          onProjectionRequestFailure?.();
+          onProjectionRequestFailure?.(err);
         }
         const message =
           err instanceof Error ? err.message : t("gitStatusLoadContextFailed");

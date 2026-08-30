@@ -518,6 +518,7 @@ describe("CommitBrowser", () => {
       new Error("server is stale"),
     );
     const onProjectionUnavailable = vi.fn();
+    const onProjectionRequestFailure = vi.fn();
     render(
       <MemoryRouter>
         <CommitBrowser
@@ -526,6 +527,7 @@ describe("CommitBrowser", () => {
           supportsProjections
           supportsInclusiveToHead
           onProjectionUnavailable={onProjectionUnavailable}
+          onProjectionRequestFailure={onProjectionRequestFailure}
           t={t}
         />
       </MemoryRouter>,
@@ -536,7 +538,12 @@ describe("CommitBrowser", () => {
       screen.getByRole("button", { name: "sourceCompareToHead" }),
     );
 
-    await waitFor(() => expect(onProjectionUnavailable).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(onProjectionRequestFailure).toHaveBeenCalledWith(
+        expect.objectContaining({ message: "server is stale" }),
+      ),
+    );
+    expect(onProjectionUnavailable).not.toHaveBeenCalled();
     expect(sourcePath("src/x.ts")).toBeDefined();
     expect(
       screen
@@ -549,6 +556,7 @@ describe("CommitBrowser", () => {
     primeApis();
     getGitComparisonDiff.mockRejectedValueOnce(new Error("server is stale"));
     const onProjectionUnavailable = vi.fn();
+    const onProjectionRequestFailure = vi.fn();
     render(
       <MemoryRouter>
         <CommitBrowser
@@ -557,6 +565,7 @@ describe("CommitBrowser", () => {
           supportsProjections
           supportsInclusiveToHead
           onProjectionUnavailable={onProjectionUnavailable}
+          onProjectionRequestFailure={onProjectionRequestFailure}
           t={t}
         />
       </MemoryRouter>,
@@ -578,7 +587,12 @@ describe("CommitBrowser", () => {
       }),
     );
 
-    await waitFor(() => expect(onProjectionUnavailable).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(onProjectionRequestFailure).toHaveBeenCalledWith(
+        expect.objectContaining({ message: "server is stale" }),
+      ),
+    );
+    expect(onProjectionUnavailable).not.toHaveBeenCalled();
     await waitFor(() => expect(getGitCommitDiff).toHaveBeenCalled());
     expect(getGitInclusiveComparison).not.toHaveBeenCalled();
   });

@@ -129,6 +129,7 @@ vi.mock("../WorkingTreeBrowser", async () => {
       inventoryError?: Error | null;
       supportsLastEditor?: boolean;
       onToggleIgnoreWhitespace?: () => void;
+      onProjectionRequestFailure?: (error: unknown) => void;
       onBrowseHistory?: () => void;
     }) => {
       mocks.renderWorkingTreeBrowser({
@@ -140,6 +141,14 @@ vi.mock("../WorkingTreeBrowser", async () => {
           {props.status.isClean ? "clean-changes" : "dirty-changes"}
           <button type="button" onClick={props.onToggleIgnoreWhitespace}>
             gitStatusIgnoreWhitespace
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              props.onProjectionRequestFailure?.(new Error("projection failed"))
+            }
+          >
+            projection-request-failure
           </button>
           <button type="button" onClick={props.onBrowseHistory}>
             sourceCommitHistory
@@ -674,6 +683,28 @@ describe("GitStatusPage source header", () => {
     expect(
       await screen.findByText("sourceProjectionUpgradeNotice"),
     ).toBeDefined();
+    expect(mocks.renderWorkingTreeBrowser).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ignoreWhitespace: false }),
+    );
+    expect(screen.getByTestId("working-tree-browser")).toBeDefined();
+  });
+
+  it("reports capable projection request failures without an upgrade notice", async () => {
+    renderPage();
+    await screen.findByTestId("working-tree-browser");
+    fireEvent.click(
+      screen.getByRole("button", { name: "gitStatusIgnoreWhitespace" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "projection-request-failure" }),
+    );
+
+    expect(
+      await screen.findByText(
+        'sourceProjectionRequestError {"error":"projection failed"}',
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText("sourceProjectionUpgradeNotice")).toBeNull();
     expect(mocks.renderWorkingTreeBrowser).toHaveBeenLastCalledWith(
       expect.objectContaining({ ignoreWhitespace: false }),
     );
