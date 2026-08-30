@@ -19,6 +19,71 @@ Related:
 [session wake](session-wake.md), and
 [vanilla defaults](vanilla-defaults.md).
 
+## Maintainer review — 2026-08-30
+
+Review disposition: positive on the core product idea — durable one-shot and
+cron-like agent prompts are useful — but revision is requested before
+implementation. The current proposal over-centers the CLI and under-designs
+the primary YA UI.
+
+### Make the service API primary
+
+The versioned service control API should be the authoritative activation
+interface. A successful mutating API call creates or revises the durable
+schedule; returning its id is the durability acknowledgment. Persistence,
+caller identity, authorization, capability checks, target validation, and
+dispatch semantics all belong behind that boundary.
+
+YA's UI, an eventual agent tool, and any other integration should be clients of
+the same API. The `yacron` CLI is a possible later ergonomic optimization for
+agents, not the defining interface and not a prerequisite for the first useful
+implementation. If a thin CLI is eventually worth shipping, it must translate
+arguments into the public API without owning separate scheduling or policy
+logic. The current “CLI is the activation interface” section is therefore not
+approved as written and should be replaced in the next proposal revision.
+
+### Compare and design the first-party-shaped UI
+
+The UI needs a concrete design before implementation, including desktop and
+phone flows. The current thin-client inventory and optional sidebar alarm do
+not establish the information architecture, creation flow, schedule editor,
+or relationship between an occurrence and its resulting session.
+
+As of this review, the closest first-party surfaces establish a stronger
+baseline:
+
+| Surface | Creation | Management and results | Relevant YA lesson |
+| --- | --- | --- | --- |
+| [ChatGPT Scheduled tasks](https://help.openai.com/en/articles/10291617-tasks-in-chatgpt) | A dedicated **Scheduled** page creates one-time or recurring tasks; a user may also describe the task conversationally. | The page reviews results and schedules and supports edit, pause/resume, and delete. A task also has an associated conversation and notification settings. | Scheduling is a normal visible product surface, while task output remains ordinary conversation output. |
+| [Claude Code Desktop scheduled tasks](https://code.claude.com/docs/en/desktop-scheduled-tasks) | **Routines → New routine → Local** exposes name, description, instructions, permission mode, model, folder, optional worktree isolation, and friendly schedule presets. A user can ask Claude for schedules outside the presets. | The detail page provides Run now, active/paused state, edit, run history including skipped reasons, saved permissions, and delete. Each due run starts a fresh ordinary session and appears under **Scheduled**. | This is the closest local coding-agent precedent: make project and permission context explicit, use ordinary sessions for output, and explain local liveness and missed-run behavior. |
+| [Claude Cowork scheduled tasks](https://support.claude.com/en/articles/13854387-schedule-recurring-tasks-in-claude-cowork) | **Scheduled → New task** offers either conversational creation or a manual form for name, prompt, approval mode, cadence, model, and optional folder. | The Scheduled page shows upcoming and past runs and supports edit, pause/resume, Run now, and delete. Each run is its own Cowork session. | Offer both a direct form and an agent-assisted path over one underlying API; do not invent a separate result-log product. |
+
+The next revision should turn that comparison into an explicit YA surface:
+
+- choose the navigation home and ordinary user-facing name (for example,
+  **Scheduled** or **Routines** rather than requiring users to learn the
+  implementation name `yacron`);
+- specify both manual and agent-assisted creation over the service API;
+- lead with friendly one-time, hourly, daily, weekday, and weekly controls,
+  while keeping raw cron plus timezone as an advanced form;
+- show the resolved timezone and human-readable next-fire preview before save;
+- design project, target-session, provider/model, permission, and isolation
+  choices without simply projecting the backend entry schema into a form;
+- define list and detail states for next run, active/paused, waiting,
+  dispatched, skipped, failed, and missed/catch-up behavior;
+- provide Run now, edit, pause/resume, delete, and bounded run history with
+  direct links to the ordinary YA session/turn produced by each occurrence;
+- keep scheduler receipts to dispatch metadata and failure diagnostics rather
+  than copying rollout logs or transcripts into a second output store;
+- specify notifications and actionable stalled-permission/failure states; and
+- show how the surface works at 1000-pixel desktop and 375-pixel phone widths.
+
+The first-party comparison does not require copying cloud-only triggers,
+sharing, connectors, or every advanced permission control into the first
+version. It does require deciding the visible workflow before backend details
+accidentally become the UI. The optional countdown/alarm is an enhancement to
+that workflow, not a substitute for it.
+
 ## Shared core and deployment variants
 
 Yacron is a fresh design, not an adapter around the existing `~/agents` `at/`
