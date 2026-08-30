@@ -40,6 +40,8 @@ export interface TextItem extends RenderItemBase {
   isStreaming?: boolean;
   /** Pre-rendered HTML from server (for completed messages) */
   augmentHtml?: string;
+  /** Prefix-causal basename targets noticed by the browser replay. */
+  projectPathLinks?: ProjectPathLinkTarget[];
 }
 
 export interface ThinkingItem extends RenderItemBase {

@@ -4,6 +4,7 @@ import { getCachedTranscriptProjection } from "./transcriptProjection/cache";
 import { compileTranscriptProjection } from "./transcriptProjection/compiler";
 import type { MessageProjectionDiagnostics } from "./transcriptProjection/messageProjection";
 import type { TranscriptProjectionAugments } from "./transcriptProjection/types";
+import { applyRecentProjectPathLinks } from "./recentProjectPathLinks";
 
 const webProjectionDiagnostics: MessageProjectionDiagnostics = {
   onAssistantMessage(details) {
@@ -20,7 +21,9 @@ export function compileWebTranscriptProjection(
     typeof window !== "undefined" && window.__STREAMING_DEBUG__
       ? webProjectionDiagnostics
       : undefined;
-  return compileTranscriptProjection(messages, augments, diagnostics);
+  return applyRecentProjectPathLinks(
+    compileTranscriptProjection(messages, augments, diagnostics),
+  );
 }
 
 export function getCachedWebTranscriptProjection(

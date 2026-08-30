@@ -10,7 +10,7 @@ Status: **implemented (2026-08-02); demand-driven cache and turn-text
 annotation landed 2026-08-05; authenticated absolute-path probes landed
 2026-08-10; command, tool-result, and user-turn annotations landed
 2026-08-16; viewed-file-relative and external-file-relative links landed
-2026-08-25.**
+2026-08-25; prefix-causal basename aliases landed 2026-08-30.**
 Highlighted file content, assistant turn text, completed command text, and
 completed tool-result bodies link exact project files through a demand-driven,
 watcher-backed directory cache — the same cache that now also decides the
@@ -289,6 +289,11 @@ degrades to plain content rather than failing the view.
 - **Expand bounded target aliases into the existing index batch** (vs. client
   path corpora or a second filesystem oracle): the watcher-backed index keeps
   membership, invalidation, and I/O batching authoritative in one place.
+- **Replay basename aliases from earlier confirmed links** (vs. server-side
+  transcript state): the browser already sees the ordered, authorized links and
+  can derive the small contextual table without a protocol change or path
+  corpus. Replay is strictly prefix-causal; a later link never changes an
+  earlier basename.
 
 ## Turn text
 
@@ -374,6 +379,36 @@ are annotated only in the remaining plain-text segments. Neither glossary
 matching nor URL matching enters or splits a file anchor. Missing annotations,
 older servers, and public shares retain plain text and make no follow-up file
 request.
+
+## Recent basename aliases
+
+The authenticated web client remembers the target of each linked full path in
+the loaded transcript under its basename. A later bare occurrence of that
+basename links to the most recently preceding target. A later full-path link
+with the same basename changes only subsequent occurrences; recompiling after
+new transcript rows arrive must not retarget an earlier occurrence.
+
+Only confirmed project-file links seed the table. A basename-expanded link does
+not feed itself back into the table, and a bare project-root link likewise does
+not replace the remembered full-path target. The browser derives this during
+ordered replay, so stable servers need no new field or capability. Public
+shares remain excluded from authenticated project-file links.
+
+The table covers only the currently loaded semantic transcript window. An
+unloaded full-path link immediately above the older-page seam cannot seed a
+basename below it; `gaps/project-path-basename-alias-pagination-seam.md` records
+that low-priority edge. Only the basename is retained today. Matching longer
+path suffixes is separately deferred in `gaps/project-path-suffix-aliases.md`
+until its replay and memory cost is measured. The initial browser
+implementation uses a simple basename map plus an additional token scan over
+loaded bodies; `gaps/project-path-basename-replay-scan.md` keeps the possible
+versioned-index/trie replacement contingent on measured cost.
+
+Extensionless basenames deliberately remain eligible. This can link an
+ordinary word when it happens to equal a recently established filename even
+though the assistant did not mean the file. That accepted provisional cost is
+tracked in `gaps/project-path-basename-common-word-false-positives.md`; a common
+filename denylist needs user-frustration evidence before it narrows linking.
 
 ## Version-control affordances
 

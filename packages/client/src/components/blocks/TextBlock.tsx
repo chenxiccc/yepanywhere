@@ -8,13 +8,17 @@ import {
   useRef,
   useState,
 } from "react";
+import type { ProjectPathLinkTarget } from "@yep-anywhere/shared";
 import { createPortal } from "react-dom";
+import { usePublicShareContext } from "../../contexts/PublicShareContext";
 import { useRenderModeToggle } from "../../contexts/RenderModeContext";
+import { useOptionalSessionMetadata } from "../../contexts/SessionMetadataContext";
 import type { CommentAnchor } from "../../lib/commentAnchors";
 import { useStreamingMarkdownContext } from "../../contexts/StreamingMarkdownContext";
 import { useStreamingMarkdown } from "../../hooks/useStreamingMarkdown";
 import { useI18n } from "../../i18n";
 import { registerMarkdownCopySource } from "../../lib/markdownSelectionCopy";
+import { annotateProjectPathLinksHtml } from "../../lib/projectPathLinks";
 import { FileViewerModal } from "../FilePathLink";
 import {
   LocalFileModal,
@@ -48,14 +52,23 @@ const RenderedHtmlIsland = memo(function RenderedHtmlIsland({
   artifact,
   className,
   html,
+  projectId,
+  projectPathLinks,
 }: {
   artifact?: import("@yep-anywhere/shared").GlossaryArtifact;
   className?: string;
   html: string;
+  projectId?: string;
+  projectPathLinks?: readonly ProjectPathLinkTarget[];
 }) {
   const renderedHtml = useMemo(() => {
-    return annotateGlossaryHtml(html, artifact).html;
-  }, [artifact, html]);
+    const withProjectPaths = annotateProjectPathLinksHtml(
+      html,
+      projectPathLinks,
+      projectId,
+    ).html;
+    return annotateGlossaryHtml(withProjectPaths, artifact).html;
+  }, [artifact, html, projectId, projectPathLinks]);
   return (
     <div
       className={className}
@@ -70,6 +83,7 @@ interface Props {
   isStreaming?: boolean;
   /** Pre-rendered HTML from server (for completed messages) */
   augmentHtml?: string;
+  projectPathLinks?: readonly ProjectPathLinkTarget[];
   onQuoteBlock?: (anchor: CommentAnchor) => void;
   alwaysShowQuoteCircle?: boolean;
   paragraphQuoteCirclesEnabled?: boolean;
@@ -80,6 +94,7 @@ export const TextBlock = memo(function TextBlock({
   text,
   isStreaming = false,
   augmentHtml,
+  projectPathLinks,
   onQuoteBlock,
   alwaysShowQuoteCircle = false,
   paragraphQuoteCirclesEnabled = true,
@@ -100,9 +115,19 @@ export const TextBlock = memo(function TextBlock({
     glossary.state === "ready" && glossary.result?.status === "ready"
       ? glossary.result.artifact
       : undefined;
-  const transformGlossaryHtml = useCallback(
-    (html: string) => annotateGlossaryHtml(html, glossaryArtifact).html,
-    [glossaryArtifact],
+  const publicShare = usePublicShareContext();
+  const sessionMetadata = useOptionalSessionMetadata();
+  const projectId = publicShare ? undefined : sessionMetadata?.projectId;
+  const transformRenderedHtml = useCallback(
+    (html: string) => {
+      const withProjectPaths = annotateProjectPathLinksHtml(
+        html,
+        projectPathLinks,
+        projectId,
+      ).html;
+      return annotateGlossaryHtml(withProjectPaths, glossaryArtifact).html;
+    },
+    [glossaryArtifact, projectId, projectPathLinks],
   );
   const serverMarkdownChanged = useMemo(() => {
     if (!augmentHtml) return false;
@@ -111,7 +136,7 @@ export const TextBlock = memo(function TextBlock({
 
   // Streaming markdown hook for server-rendered content
   const streamingMarkdown = useStreamingMarkdown({
-    transformHtml: transformGlossaryHtml,
+    transformHtml: transformRenderedHtml,
   });
   const streamingContext = useStreamingMarkdownContext();
 
@@ -384,12 +409,16 @@ export const TextBlock = memo(function TextBlock({
             <RenderedHtmlIsland
               artifact={glossaryArtifact}
               html={augmentHtml}
+              projectId={projectId}
+              projectPathLinks={projectPathLinks}
             />
           ) : showRendered && localMathPreview.changed ? (
             <RenderedHtmlIsland
               artifact={glossaryArtifact}
               className="text-block-local-rendered"
               html={localMathPreview.html}
+              projectId={projectId}
+              projectPathLinks={projectPathLinks}
             />
           ) : (
             <pre className="text-block-source">

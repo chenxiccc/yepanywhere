@@ -3,6 +3,7 @@ import type {
   ConversationThinkingPreview,
   RenderItem,
 } from "../types/renderItems";
+import { readProjectPathLinkTargets } from "./projectPathLinks";
 
 function getRenderItemKey(item: RenderItem): string {
   return `${item.type}:${item.id}`;
@@ -65,6 +66,28 @@ function sameRecentActivity(
   );
 }
 
+function sameProjectPathLinks(
+  previous: ReturnType<typeof readProjectPathLinkTargets>,
+  next: ReturnType<typeof readProjectPathLinkTargets>,
+): boolean {
+  return sameOptionalArrayItems(
+    previous,
+    next,
+    (previousLink, nextLink) =>
+      previousLink.text === nextLink.text &&
+      previousLink.filePath === nextLink.filePath,
+  );
+}
+
+function toolInputProjectPathLinks(input: unknown) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return undefined;
+  }
+  return readProjectPathLinkTargets(
+    (input as Record<string, unknown>)._projectPathLinks,
+  );
+}
+
 export function canReuseRenderItem(
   previous: RenderItem,
   next: RenderItem,
@@ -84,7 +107,8 @@ export function canReuseRenderItem(
         next.type === "text" &&
         previous.text === next.text &&
         previous.isStreaming === next.isStreaming &&
-        previous.augmentHtml === next.augmentHtml
+        previous.augmentHtml === next.augmentHtml &&
+        sameProjectPathLinks(previous.projectPathLinks, next.projectPathLinks)
       );
 
     case "thinking":
@@ -104,11 +128,23 @@ export function canReuseRenderItem(
       return (
         next.type === "tool_call" &&
         previous.toolName === next.toolName &&
-        previous.status === next.status
+        previous.status === next.status &&
+        sameProjectPathLinks(
+          toolInputProjectPathLinks(previous.toolInput),
+          toolInputProjectPathLinks(next.toolInput),
+        ) &&
+        sameProjectPathLinks(
+          previous.toolResult?.projectPathLinks,
+          next.toolResult?.projectPathLinks,
+        )
       );
 
     case "user_prompt":
-      return next.type === "user_prompt" && previous.content === next.content;
+      return (
+        next.type === "user_prompt" &&
+        previous.content === next.content &&
+        sameProjectPathLinks(previous.projectPathLinks, next.projectPathLinks)
+      );
 
     case "session_setup":
       return (
