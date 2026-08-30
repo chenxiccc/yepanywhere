@@ -5,7 +5,7 @@ import {
   type GitFileProjectionManifest,
   serverHasCapability,
 } from "@yep-anywhere/shared";
-import { useMemo, useSyncExternalStore } from "react";
+import { useMemo, useRef, useSyncExternalStore } from "react";
 import { api } from "../api/client";
 import {
   type ClientSummarySourceKey,
@@ -65,6 +65,9 @@ function useFileProjectionManifest(
     () => null,
   );
   const current = retained?.statusKey === statusKey ? retained.value : null;
+  const visible = current ?? (statusKey ? (retained?.value ?? null) : null);
+  const statusKeyRef = useRef(statusKey);
+  statusKeyRef.current = statusKey;
 
   const query = useRetainedClientQuery({
     sourceKey,
@@ -91,7 +94,13 @@ function useFileProjectionManifest(
         projectId?: string;
         statusKey?: string | null;
       };
-      if (!meta.projectId || !meta.statusKey) return;
+      if (
+        !meta.projectId ||
+        !meta.statusKey ||
+        meta.statusKey !== statusKeyRef.current
+      ) {
+        return;
+      }
       writeRouteRetention(
         manifestRetentionKey(context.sourceKey, meta.projectId),
         { statusKey: meta.statusKey, value: result },
@@ -101,7 +110,7 @@ function useFileProjectionManifest(
   });
 
   return {
-    manifest: current,
+    manifest: visible,
     loading: Boolean(statusKey && !current && !query.error),
   };
 }

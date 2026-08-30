@@ -181,6 +181,60 @@ describe("FileViewer", () => {
     );
   });
 
+  it("returns from a diff to the retained raw source without loading", async () => {
+    mocks.useFileVersionControl.mockReturnValue({
+      cumulativeFile: null,
+      loading: false,
+      relativePath: "notes.md",
+      supported: true,
+      worktreeFile: {
+        path: "notes.md",
+        status: "M",
+        staged: false,
+        linesAdded: 1,
+        linesDeleted: 0,
+      },
+    });
+    const source: FileViewerSource = {
+      loadFile: vi
+        .fn()
+        .mockResolvedValueOnce({
+          metadata: {
+            path: "notes.md",
+            size: 8,
+            mimeType: "text/markdown",
+            isText: true,
+          },
+          rawUrl: "",
+          content: "# Notes\n",
+          highlightedHtml:
+            '<pre class="shiki"><code><span class="line"># Notes</span></code></pre>',
+          renderedMarkdownHtml: "<h1>Notes</h1>",
+        })
+        .mockReturnValueOnce(new Promise(() => {})),
+    };
+
+    const { container } = render(
+      <I18nProvider>
+        <FileViewer
+          projectId="project-id"
+          filePath="notes.md"
+          source={source}
+        />
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByRole("heading", { name: "Notes" })).toBeTruthy();
+    fireEvent.click(screen.getByText("vs HEAD"));
+    expect(await screen.findByTestId("file-diff-body")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("link", { name: "Source" }));
+
+    expect(container.querySelector(".shiki-container")).toBeTruthy();
+    expect(screen.queryByText("Loading notes.md...")).toBeNull();
+    expect(source.loadFile).toHaveBeenCalledTimes(1);
+  });
+
   it("offers a Back control that closes a modal viewer", async () => {
     const onClose = vi.fn();
     const source: FileViewerSource = {

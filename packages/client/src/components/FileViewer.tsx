@@ -571,6 +571,8 @@ export const FileViewer = memo(function FileViewer({
   const transport = sourceRuntime.transport;
   const publicShareContext = usePublicShareContext();
   const viewIdentity = `${projectId}\0${filePath}\0${diffMode ?? "source"}`;
+  const [showPreview, setShowPreview] = useState(false);
+  const explicitSourceIdentityRef = useRef<string | null>(null);
   const [storedView, setStoredView] = useState<{
     identity: string;
     view: FileViewSelection;
@@ -581,6 +583,10 @@ export const FileViewer = memo(function FileViewer({
       : (diffMode ?? "source");
   const selectView = useCallback(
     (view: FileViewSelection) => {
+      if (view === "source") {
+        explicitSourceIdentityRef.current = viewIdentity;
+        setShowPreview(false);
+      }
       setStoredView({ identity: viewIdentity, view });
     },
     [viewIdentity],
@@ -607,7 +613,10 @@ export const FileViewer = memo(function FileViewer({
   const [copied, setCopied] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [fileShareAnchor, setFileShareAnchor] = useState<DOMRect | null>(null);
-  const [showPreview, setShowPreview] = useState(false);
+  const loadedSourceRef = useRef<{
+    identity: string;
+    source: FileViewerSource;
+  } | null>(null);
   const [commentMode, setCommentMode] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -1004,6 +1013,8 @@ export const FileViewer = memo(function FileViewer({
         ? null
         : highlightedHtml;
 
+  const sourceIdentity = `${projectId}\0${filePath}\0${lineNumber ?? ""}\0${lineEnd ?? ""}\0${viewMode}`;
+
   useEffect(() => {
     if (activeView === "source" || fileVersionControl.loading) return;
     if (
@@ -1017,10 +1028,18 @@ export const FileViewer = memo(function FileViewer({
   useEffect(() => {
     let cancelled = false;
     if (diffActive) {
-      setFileData(null);
       setLoading(false);
       setError(null);
       setHighlightedLineRef(null);
+      return;
+    }
+    if (
+      fileData &&
+      loadedSourceRef.current?.identity === sourceIdentity &&
+      loadedSourceRef.current.source === source
+    ) {
+      setLoading(false);
+      setError(null);
       return;
     }
     setLoading(true);
@@ -1039,6 +1058,7 @@ export const FileViewer = memo(function FileViewer({
       )
       .then((data) => {
         if (!cancelled) {
+          loadedSourceRef.current = { identity: sourceIdentity, source };
           setFileData(data);
           const markdownPreviewAvailable =
             isMarkdownLikeFile(filePath) && Boolean(data.renderedMarkdownHtml);
@@ -1046,10 +1066,12 @@ export const FileViewer = memo(function FileViewer({
             data.content !== undefined &&
             isHtmlLikeFile(filePath, data.metadata.mimeType);
           setShowPreview(
-            initialPresentation
-              ? initialPresentation === "preview" &&
+            explicitSourceIdentityRef.current === viewIdentity
+              ? false
+              : initialPresentation
+                ? initialPresentation === "preview" &&
                   (markdownPreviewAvailable || htmlPreviewAvailable)
-              : markdownPreviewAvailable,
+                : markdownPreviewAvailable,
           );
           setLoading(false);
         }
@@ -1073,7 +1095,10 @@ export const FileViewer = memo(function FileViewer({
     filePath,
     initialPresentation,
     source,
+    sourceIdentity,
     t,
+    viewIdentity,
+    fileData,
   ]);
 
   useEffect(() => {

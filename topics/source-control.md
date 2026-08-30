@@ -795,9 +795,17 @@ Selecting a projection replaces the source body in the existing file viewer.
 While a diff is active, source line and line-range requests are inapplicable:
 the diff URL omits `line`, `lineEnd`, and `view=range`, and the viewer neither
 loads nor highlights that source window. Returning to **Source** restores the
-original source range. Diff rendering retains full-context, unified/split,
-Markdown-preview, hunk-navigation, and review-projection behavior from the
-shared Source Control renderer.
+original source range as fixed-font source, even when Markdown would ordinarily
+open rendered. An already loaded source stays resident while a projection is
+shown, so returning to it does not fetch or enter Loading again. Diff rendering
+retains full-context, unified/split, Markdown-preview, hunk-navigation, and
+review-projection behavior from the shared Source Control renderer.
+
+A working-tree refresh keeps the last completed file projection mounted until
+the projection for the new status snapshot is ready, then replaces it in one
+render. A late response for an older snapshot cannot displace the current one.
+If the new projection no longer contains the path, the viewer returns to its
+resident source without first blanking the document.
 
 The permanent `git-file-diff-projections` capability owns
 `GET /api/projects/:projectId/git/file-projections` and

@@ -20,9 +20,13 @@ import { I18nProvider } from "../../i18n";
 import { resetClientQueryControllerForTests } from "../../lib/clientQueryController";
 import {
   asClientSummarySourceKey,
+  LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
   resetClientSummaryStoreForTests,
 } from "../../lib/clientSummaryStore";
-import { resetRouteRetentionForTests } from "../../lib/routeRetention";
+import {
+  resetRouteRetentionForTests,
+  writeRouteRetention,
+} from "../../lib/routeRetention";
 import type { YaSourceRuntime } from "../../lib/sourceRuntime";
 import { SourceRuntimeProvider } from "../../lib/sourceRuntimeReact";
 import { FakeSourceTransport } from "../../lib/transport";
@@ -266,6 +270,113 @@ describe("useFileVersionControl", () => {
       cumulativeFile: { path: "src/committed.ts" },
     });
     expect(mocks.getGitFileProjections).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the prior projection visible until a refreshed one is ready", async () => {
+    const sourceKey = LOCAL_CLIENT_SUMMARY_SOURCE_KEY;
+    const hook = renderHook(() => useSubject("src/worktree.ts"));
+    await settle();
+
+    let resolveRefresh!: (value: GitFileProjectionManifest) => void;
+    mocks.getGitFileProjections.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveRefresh = resolve;
+      }),
+    );
+    const refreshedStatus = {
+      ...STATUS,
+      files: [{ ...STATUS.files[0]!, linesAdded: 2 }],
+    };
+    act(() => {
+      writeRouteRetention(
+        {
+          sourceKey,
+          routeId: "git-status:data",
+          projectId: "project-a",
+        },
+        refreshedStatus,
+        { ttlMs: 60_000 },
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(hook.result.current).toMatchObject({
+      loading: true,
+      worktreeFile: { path: "src/worktree.ts", linesAdded: 1 },
+    });
+
+    resolveRefresh({
+      ...MANIFEST,
+      worktreeFiles: [refreshedStatus.files[0]!],
+    });
+    await settle();
+
+    expect(hook.result.current).toMatchObject({
+      loading: false,
+      worktreeFile: { path: "src/worktree.ts", linesAdded: 2 },
+    });
+  });
+
+  it("does not replace a current projection with a late refresh", async () => {
+    const sourceKey = LOCAL_CLIENT_SUMMARY_SOURCE_KEY;
+    const hook = renderHook(() => useSubject("src/worktree.ts"));
+    await settle();
+
+    let resolveOlder!: (value: GitFileProjectionManifest) => void;
+    let resolveNewer!: (value: GitFileProjectionManifest) => void;
+    mocks.getGitFileProjections
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveOlder = resolve;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveNewer = resolve;
+        }),
+      );
+    const publishStatus = (linesAdded: number) => {
+      writeRouteRetention(
+        {
+          sourceKey,
+          routeId: "git-status:data",
+          projectId: "project-a",
+        },
+        {
+          ...STATUS,
+          files: [{ ...STATUS.files[0]!, linesAdded }],
+        },
+        { ttlMs: 60_000 },
+      );
+    };
+
+    act(() => publishStatus(2));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => publishStatus(3));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    resolveNewer({
+      ...MANIFEST,
+      worktreeFiles: [{ ...STATUS.files[0]!, linesAdded: 3 }],
+    });
+    await settle();
+    expect(hook.result.current.worktreeFile?.linesAdded).toBe(3);
+
+    resolveOlder({
+      ...MANIFEST,
+      worktreeFiles: [{ ...STATUS.files[0]!, linesAdded: 2 }],
+    });
+    await settle();
+    expect(hook.result.current).toMatchObject({
+      loading: false,
+      worktreeFile: { path: "src/worktree.ts", linesAdded: 3 },
+    });
   });
 
   it("settles without selectors when the optional manifest fails", async () => {
