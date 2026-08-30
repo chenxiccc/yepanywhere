@@ -71,7 +71,7 @@ function selectConversationSearchThinkingPreviews(
     }
   }
   const latest = items[latestIndex];
-  if (!latest || latest.type !== "thinking") return [];
+  if (latest?.type !== "thinking") return [];
 
   const previews: ConversationThinkingPreview[] = [
     {
