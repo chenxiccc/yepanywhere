@@ -1,7 +1,7 @@
 #!/usr/bin/env npx tsx
 
 /**
- * Read-only audit of Codex response-item/user-message provenance.
+ * Read-only audit of Codex response-item/user-turn provenance.
  *
  * Usage:
  *   pnpm codex:user-turns:audit
@@ -20,6 +20,7 @@ import type { Message } from "../packages/server/src/supervisor/types.js";
 import {
   buildCodexUserTurnProvenance,
   countCodexUserTurns,
+  codexUserMessageEventText,
   findFirstCodexUserTurn,
   isCodexUserMessageEventEntry,
   isCodexUserResponseEntry,
@@ -325,7 +326,9 @@ function main(): void {
       );
     }
 
-    const firstEventText = userEvents[0]?.payload.message.trim();
+    const firstEventText = userEvents[0]
+      ? codexUserMessageEventText(userEvents[0])
+      : undefined;
     const firstTurn = findFirstCodexUserTurn(entries, provenance);
     if (firstEventText && firstTurn?.text !== firstEventText) {
       exceptions.push(

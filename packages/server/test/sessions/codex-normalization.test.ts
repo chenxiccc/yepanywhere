@@ -123,6 +123,47 @@ describe("Codex Normalization", () => {
     });
   });
 
+  it("aligns Codex 0.151 completed user items with optimistic ids", () => {
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "response_item",
+        timestamp: "2026-08-30T08:46:03.691Z",
+        payload: {
+          id: "msg-provider-user-1",
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: "peer is clear" }],
+        },
+      },
+      {
+        type: "event_msg",
+        timestamp: "2026-08-30T08:46:03.729Z",
+        payload: {
+          type: "item_completed",
+          thread_id: "thread-1",
+          turn_id: "turn-1",
+          item: {
+            type: "UserMessage",
+            id: "item-user-1",
+            client_id: "optimistic-user-1",
+            content: [
+              { type: "text", text: "peer is clear", text_elements: [] },
+            ],
+          },
+        },
+      },
+    ];
+
+    const result = normalizeSession(buildLoadedSession(entries));
+
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]).toMatchObject({
+      uuid: "optimistic-user-1",
+      type: "user",
+      codexUserTurnProvenance: "paired",
+    });
+  });
+
   it("preserves identical provider log rows with distinct ids", () => {
     const repeatedPrompt = "wait 10 minutes";
     const repeatedResponse = "Still waiting.";

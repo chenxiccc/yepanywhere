@@ -34,6 +34,28 @@ function userEvent(timestamp: string, message: string): CodexSessionEntry {
   };
 }
 
+function completedUserEvent(
+  timestamp: string,
+  message: string,
+  clientId = "client-message-1",
+): CodexSessionEntry {
+  return {
+    type: "event_msg",
+    timestamp,
+    payload: {
+      type: "item_completed",
+      thread_id: "thread-1",
+      turn_id: "turn-1",
+      item: {
+        type: "UserMessage",
+        id: "item-user-1",
+        client_id: clientId,
+        content: [{ type: "text", text: message, text_elements: [] }],
+      },
+    },
+  };
+}
+
 function responseKind(
   entries: CodexSessionEntry[],
   index: number,
@@ -81,6 +103,20 @@ describe("Codex user-turn provenance", () => {
 
     expect(responseKind(entries, 0)).toBe("hidden-provider-context");
     expect(findFirstCodexUserTurn(entries)?.text).toBe("actual first turn");
+  });
+
+  it("pairs Codex 0.151 completed user items", () => {
+    const entries = [
+      userResponse("2026-08-30T08:46:03.691Z", ["peer is clear"]),
+      completedUserEvent("2026-08-30T08:46:03.729Z", "peer is clear"),
+    ];
+
+    expect(responseKind(entries, 0)).toBe("user-authored");
+    expect(findFirstCodexUserTurn(entries)).toMatchObject({
+      text: "peer is clear",
+      source: "paired",
+    });
+    expect(countCodexUserTurns(entries)).toBe(1);
   });
 
   it("preserves a paired literal context tag as user-authored", () => {

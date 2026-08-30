@@ -8,7 +8,7 @@ import type {
 /**
  * Codex uses response-message role=user for both accepted human input and
  * provider-injected model context. Accepted input is persisted immediately
- * before its user_message event; context responses have no such witness.
+ * before its user-turn event; context responses have no such witness.
  * See topics/codex-user-turn-provenance.md.
  */
 export type CodexUserResponseKind =
@@ -21,9 +21,29 @@ export type CodexUserResponseEntry = CodexResponseItemEntry & {
   payload: CodexMessagePayload & { role: "user" };
 };
 
-export type CodexUserMessageEventEntry = CodexEventMsgEntry & {
+type CodexLegacyUserMessageEventEntry = CodexEventMsgEntry & {
   payload: Extract<CodexEventMsgEntry["payload"], { type: "user_message" }>;
 };
+
+interface CodexCompletedUserMessageItem {
+  type: "UserMessage";
+  id: string;
+  client_id?: string | null;
+  content: unknown[];
+}
+
+type CodexCompletedUserMessageEventEntry = CodexEventMsgEntry & {
+  payload: Extract<
+    CodexEventMsgEntry["payload"],
+    { type: "item_completed" }
+  > & {
+    item: CodexCompletedUserMessageItem;
+  };
+};
+
+export type CodexUserMessageEventEntry =
+  | CodexLegacyUserMessageEventEntry
+  | CodexCompletedUserMessageEventEntry;
 
 export interface CodexUserTurnProvenance {
   readonly hasUserMessageEvents: boolean;
@@ -74,7 +94,53 @@ export function isCodexUserResponseEntry(
 export function isCodexUserMessageEventEntry(
   entry: CodexSessionEntry | undefined,
 ): entry is CodexUserMessageEventEntry {
-  return entry?.type === "event_msg" && entry.payload.type === "user_message";
+  if (entry?.type !== "event_msg") return false;
+  if (entry.payload.type === "user_message") return true;
+  if (entry.payload.type !== "item_completed") return false;
+
+  const item = entry.payload.item;
+  return (
+    !!item &&
+    typeof item === "object" &&
+    (item as { type?: unknown }).type === "UserMessage" &&
+    typeof (item as { id?: unknown }).id === "string" &&
+    Array.isArray((item as { content?: unknown }).content)
+  );
+}
+
+export function codexUserMessageEventText(
+  entry: CodexUserMessageEventEntry,
+): string {
+  if (entry.payload.type === "user_message") {
+    return entry.payload.message.trim();
+  }
+
+  return entry.payload.item.content
+    .map((block) => {
+      if (!block || typeof block !== "object") return "";
+      const text = (block as { text?: unknown }).text;
+      return typeof text === "string" ? text : "";
+    })
+    .join("\n")
+    .trim();
+}
+
+export function codexUserMessageEventClientId(
+  entry: CodexUserMessageEventEntry,
+): string | undefined {
+  const clientId =
+    entry.payload.type === "user_message"
+      ? entry.payload.client_id
+      : entry.payload.item.client_id;
+  return typeof clientId === "string" && clientId ? clientId : undefined;
+}
+
+export function codexUserMessageEventItemId(
+  entry: CodexUserMessageEventEntry,
+): string | undefined {
+  return entry.payload.type === "item_completed"
+    ? entry.payload.item.id
+    : undefined;
 }
 
 export function codexUserResponseText(
@@ -263,7 +329,8 @@ export function findFirstCodexUserTurn(
         const event = provenance.pairedEventByResponse.get(entry);
         if (!event) continue;
         const text =
-          event.payload.message.trim() || codexUserResponseText(entry.payload);
+          codexUserMessageEventText(event) ||
+          codexUserResponseText(entry.payload);
         if (text) {
           return { text, response: entry, event, source: "paired" };
         }
@@ -280,7 +347,7 @@ export function findFirstCodexUserTurn(
       isCodexUserMessageEventEntry(entry) &&
       !provenance.pairedUserEvents.has(entry)
     ) {
-      const text = entry.payload.message.trim();
+      const text = codexUserMessageEventText(entry);
       if (text) {
         return { text, event: entry, source: "event-only" };
       }

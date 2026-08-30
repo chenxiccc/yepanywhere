@@ -248,8 +248,8 @@ Build one server-owned Codex user-turn provenance pass over rollout entries.
 It should classify a user-role response item as one of:
 
 - **user-authored** — paired with the immediately following persisted
-  `event_msg/user_message` (and, if a future audited Codex version changes
-  persistence, the equivalent typed user turn-item event);
+  `event_msg/user_message` through Codex 0.150 or the equivalent typed
+  `event_msg/item_completed(UserMessage)` event from Codex 0.151;
 - **visible provider context** — a provider item with a specific first-party
   display contract, such as a hook prompt;
 - **hidden/setup provider context** — an unpaired response item that Codex
@@ -418,10 +418,16 @@ user turn on every current surface.
 ### Slice 3 — Durable user ids (landed 2026-08-24)
 
 YA sends the queue message uuid as `clientUserMessageId` on `turn/start` and
-`turn/steer`; Codex persists it as `user_message.client_id`. The event schema
-retains that value, and the paired rich response-item message uses it as its
-durable uuid. Historical rows fall back to the response-item id and then their
-JSONL position.
+`turn/steer`. Codex persists it as `user_message.client_id` through 0.150 and
+as the nested `item_completed.item.client_id` on a typed `UserMessage` from
+0.151. The provenance classifier recognizes both witnesses, and the paired
+rich response-item message uses that client id as its durable uuid. Historical
+rows fall back to the response-item id and then their JSONL position.
+
+The typed witness can arrive in a later file append than its response item.
+The incremental normalizer reprocesses that trailing response when the witness
+appears, so an active-turn steer converges on the optimistic queue uuid without
+content- or timestamp-based matching.
 
 This makes optimistic, live, replayed, and durable user turns converge by
 identity without treating equal content or nearby timestamps as evidence of a

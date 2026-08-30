@@ -1559,6 +1559,108 @@ describe("CodexSessionReader - OSS Support", () => {
     });
   });
 
+  it("resolves a Codex 0.151 user item in the next append", async () => {
+    const sessionId = "split-completed-user-turn-append";
+    const now = new Date().toISOString();
+    const sessionPath = join(testDir, `${sessionId}.jsonl`);
+    await writeFile(
+      sessionPath,
+      `${[
+        JSON.stringify({
+          type: "session_meta",
+          timestamp: now,
+          payload: {
+            id: sessionId,
+            cwd: "/test/project",
+            timestamp: now,
+            model_provider: "openai",
+          },
+        }),
+        JSON.stringify({
+          type: "response_item",
+          timestamp: now,
+          payload: {
+            id: "first-user-response",
+            type: "message",
+            role: "user",
+            content: [{ type: "input_text", text: "first" }],
+          },
+        }),
+        JSON.stringify({
+          type: "event_msg",
+          timestamp: now,
+          payload: {
+            type: "item_completed",
+            thread_id: sessionId,
+            turn_id: "turn-1",
+            item: {
+              type: "UserMessage",
+              id: "first-user-item",
+              client_id: "first-optimistic-user",
+              content: [{ type: "text", text: "first", text_elements: [] }],
+            },
+          },
+        }),
+        JSON.stringify({
+          type: "response_item",
+          timestamp: now,
+          payload: {
+            id: "second-user-response",
+            type: "message",
+            role: "user",
+            content: [{ type: "input_text", text: "peer is clear" }],
+          },
+        }),
+      ].join("\n")}\n`,
+    );
+
+    const first = await reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    expect(first).not.toBeNull();
+    if (!first) throw new Error("Expected the provisional Codex detail read");
+    const firstNormalized = normalizeSession(first);
+    expect(firstNormalized.messages).toHaveLength(1);
+    expect(firstNormalized.messages[0]?.uuid).toBe("first-optimistic-user");
+
+    await appendFile(
+      sessionPath,
+      `${JSON.stringify({
+        type: "event_msg",
+        timestamp: now,
+        payload: {
+          type: "item_completed",
+          thread_id: sessionId,
+          turn_id: "turn-2",
+          item: {
+            type: "UserMessage",
+            id: "item-user-1",
+            client_id: "optimistic-user-1",
+            content: [
+              { type: "text", text: "peer is clear", text_elements: [] },
+            ],
+          },
+        },
+      })}\n`,
+    );
+
+    const second = await reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    expect(second).not.toBeNull();
+    if (!second) throw new Error("Expected the completed Codex detail read");
+    const secondNormalized = normalizeSession(second);
+
+    expect(secondNormalized.messages).toHaveLength(2);
+    expect(secondNormalized.messages[0]).toBe(firstNormalized.messages[0]);
+    expect(secondNormalized.messages[1]).toMatchObject({
+      uuid: "optimistic-user-1",
+      codexUserTurnProvenance: "paired",
+    });
+  });
+
   it("carries tool normalization state across an append without mutating the prior projection", async () => {
     const sessionId = "tool-state-append";
     const now = new Date().toISOString();

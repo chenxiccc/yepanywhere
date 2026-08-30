@@ -60,6 +60,7 @@ import {
 import {
   type CodexUserResponseEntry,
   buildCodexUserTurnProvenance,
+  codexUserMessageEventText,
   codexUserResponseText,
   countCodexUserTurns,
   findFirstCodexUserTurn,
@@ -1953,7 +1954,7 @@ export class CodexSessionReader implements ISessionReader {
         state.eventUserMessageCount += 1;
         if (!state.firstEventUserTitle) {
           const fullTitle =
-            entry.payload.message.trim() ||
+            codexUserMessageEventText(entry) ||
             (precedingResponseUser
               ? codexUserResponseText(precedingResponseUser.payload)
               : "");

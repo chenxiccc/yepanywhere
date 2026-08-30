@@ -173,10 +173,10 @@ the backstop, which already covers the case — revisit only if the
 YA drives Codex over the app-server **thread-item** stream
 (`thread/start` with `experimentalRawEvents: false`), so the live render
 path is `item/started`/`item/completed` → `convertItemToSDKMessages`
-(not the opt-in `rawResponseItem/*` path). Codex 0.149 carries provider ids on
-the live thread item and persists those ids in rollout response items. The one
+(not the opt-in `rawResponseItem/*` path). Codex carries provider ids on the
+live thread item and persists those ids in rollout response items. The one
 YA-supplied identity is `clientUserMessageId`, which Codex persists on the
-paired `user_message` event.
+paired user-turn event.
 
 The permanent server capability `codex-stream-durable-id-alignment` (ID 48,
 version-implied from YA 0.7.2) gates whether the client may rely on these ids.
@@ -195,7 +195,7 @@ compatibility-floor review approves its removal.
 | Code-mode nested command | inner `commandExecution` id (`exec-*`) | outer `custom_tool_call.call_id` (`call_*`) | **No direct id** — scoped reconciliation below |
 | Code-mode image view | inner `imageView` item id | outer `custom_tool_call.call_id` (`call_*`) | **No direct id** — scoped reconciliation below |
 | Checklist update | transient YA id for `turn/plan/updated` (notification has no item id) | `function_call.call_id` or outer `custom_tool_call.call_id` (`call_*`) | **No direct id** — scoped reconciliation below |
-| User turns | YA queue `message.uuid` | paired event_msg `client_id` | **Yes** — YA sends it on start and steer |
+| User turns | YA queue `message.uuid` | paired `user_message.client_id` through 0.150; paired `item_completed.item.client_id` from 0.151 | **Yes** — YA sends it on start and steer |
 | Assistant / reasoning | response item id (`msg_*` / `rs_*`) | `response_item.payload.id` | **Yes** — both preserve the provider id |
 
 The provider id is the identity. A repeated row with the same role, content,
@@ -266,11 +266,19 @@ turn — `call_id` is globally unique, so no turn scoping is needed:
 ### Done: user-turn id alignment
 
 YA sends the queue `message.uuid` as `clientUserMessageId` on both
-`turn/start` and `turn/steer`. Codex persists it as the adjacent event_msg
-`user_message.client_id`; `codex-user-turn-provenance.ts` pairs that witness
-with the rich response-item user payload. Normalization uses the persisted
-`client_id` as the rendered uuid, then falls back to the response-item id and
-finally the JSONL position for historical transcripts.
+`turn/start` and `turn/steer`. Through Codex 0.150, the adjacent provenance
+witness is `event_msg/user_message` and carries `client_id` on its payload.
+Codex 0.151 persists the canonical witness as
+`event_msg/item_completed(UserMessage)` and carries `client_id` on the nested
+item. `codex-user-turn-provenance.ts` recognizes both representations and
+pairs either one with the rich response-item user payload. Normalization uses
+the persisted `client_id` as the rendered uuid, then falls back to the
+response-item id and finally the JSONL position for historical transcripts.
+
+The response item and its witness can straddle two incremental file reads.
+When that happens, Codex normalization reprocesses the trailing response after
+the witness arrives, replacing its provisional or hidden classification with
+the paired client identity.
 
 The optimistic opening turn and a later durable row therefore meet by exact id
 even when provider startup takes longer than any plausible time window.

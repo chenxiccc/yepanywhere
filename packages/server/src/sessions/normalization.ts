@@ -52,6 +52,9 @@ import { collectVisibleClaudeEntries } from "./claude-messages.js";
 import {
   type CodexUserResponseKind,
   classifyCodexUserResponse,
+  codexUserMessageEventClientId,
+  codexUserMessageEventItemId,
+  codexUserMessageEventText,
   isCodexUserMessageEventEntry,
   isCodexUserResponseEntry,
 } from "./codex-user-turn-provenance.js";
@@ -411,7 +414,7 @@ function convertCodexEntries(
     if (entry.type === "response_item") {
       const clientUserMessageId = isCodexUserResponseEntry(entry)
         ? isCodexUserMessageEventEntry(nextEntry)
-          ? (nextEntry.payload.client_id ?? undefined)
+          ? codexUserMessageEventClientId(nextEntry)
           : undefined
         : undefined;
       const msg = convertCodexResponseItem(
@@ -1639,19 +1642,23 @@ function convertCodexEventMsg(
 
   const payload = entry.payload;
 
-  switch (payload.type) {
-    case "user_message":
-      return {
+  if (isCodexUserMessageEventEntry(entry)) {
+    return {
+      uuid:
+        codexUserMessageEventClientId(entry) ??
+        codexUserMessageEventItemId(entry) ??
         uuid,
-        type: "user",
-        codexUserTurnProvenance: "event-only",
-        message: {
-          role: "user",
-          content: payload.message,
-        },
-        timestamp: entry.timestamp,
-      };
+      type: "user",
+      codexUserTurnProvenance: "event-only",
+      message: {
+        role: "user",
+        content: codexUserMessageEventText(entry),
+      },
+      timestamp: entry.timestamp,
+    };
+  }
 
+  switch (payload.type) {
     case "agent_message":
       return {
         uuid,
