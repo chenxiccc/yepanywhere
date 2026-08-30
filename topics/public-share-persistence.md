@@ -396,8 +396,11 @@ new user action.
 
 While public sharing is ready, an open session polls its compact owner status
 every five seconds. A structurally unchanged response preserves the existing
-client-state identity and does not rerender the session page; changed share or
-viewer counts replace the status immediately.
+client-state identity. The header's public-share control owns this polling and
+the modal's status updates below the session-page render boundary, so changed
+share or viewer data refreshes the indicator immediately without reconciling
+the transcript-owning session page. Reconnect refresh and the global sharing
+status remain independently owned by their client-query contracts.
 
 Legacy migration is record-at-a-time and streaming. It must not `readFile`,
 `JSON.parse`, or `JSON.stringify` the complete aggregate or one huge embedded

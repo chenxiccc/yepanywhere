@@ -67,12 +67,11 @@ import { RecentSessionsDropdown } from "../components/RecentSessionsDropdown";
 import { RestartSessionModal } from "../components/RestartSessionModal";
 import { SessionHeartbeatModal } from "../components/SessionHeartbeatModal";
 import { SessionMenu } from "../components/SessionMenu";
+import { SessionPublicShareControls } from "../components/SessionPublicShareControls";
 import { SessionRecapModal } from "../components/SessionRecapModal";
-import { SessionShareModal } from "../components/SessionShareModal";
 import { ThinkingIndicator } from "../components/ThinkingIndicator";
 import { ToolApprovalPanel } from "../components/ToolApprovalPanel";
 import type { ModalAnchorRect } from "../components/ui/Modal";
-import { ViewerCountIndicator } from "../components/ViewerCountIndicator";
 import { AgentContentProvider } from "../contexts/AgentContentContext";
 import { GlossaryProjectProvider } from "../contexts/GlossaryContext";
 import { RenderModeProvider } from "../contexts/RenderModeContext";
@@ -105,7 +104,6 @@ import { useProjectQueues } from "../hooks/useProjectQueues";
 import { useProject, useProjects } from "../hooks/useProjects";
 import { useProviders } from "../hooks/useProviders";
 import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
-import { usePublicSessionShareStatus } from "../hooks/usePublicSessionShareStatus";
 import { recordSessionVisit } from "../hooks/useRecentSessions";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useServerSettings } from "../hooks/useServerSettings";
@@ -2060,13 +2058,6 @@ function SessionPageContent({
   );
   const [shareModalAnchor, setShareModalAnchor] =
     useState<ModalAnchorRect | null>(null);
-  const { status: publicShareStatus, updateStatus: setPublicShareStatus } =
-    usePublicSessionShareStatus({
-      enabled: publicSharesEnabled,
-      projectId,
-      sessionId: actualSessionId,
-      storageState: publicShareGlobalStatus?.storageState,
-    });
   const canCreatePublicShares = publicShareGlobalStatus?.canCreate ?? false;
   const publicShareManagementAvailable = serverHasCapability(
     versionInfo,
@@ -2074,10 +2065,6 @@ function SessionPageContent({
   );
   const publicShareActionAvailable =
     publicShareManagementAvailable || canCreatePublicShares;
-  const showPublicShareIndicator =
-    canCreatePublicShares ||
-    (publicShareStatus?.activeCount ?? 0) > 0 ||
-    (publicShareManagementAvailable && publicSharesEnabled);
   const [pendingElsewhereDismissedToolId, setPendingElsewhereDismissedToolId] =
     useState<string | null>(null);
 
@@ -5203,32 +5190,30 @@ function SessionPageContent({
               processState={processState}
             />
             <ClientLogRecordingBadge inline />
-            {showPublicShareIndicator && (
-              <ViewerCountIndicator
-                className="session-header-viewer-count"
-                count={
-                  publicShareStatus && publicShareStatus.liveCount > 0
-                    ? publicShareStatus.activeViewerCount
-                    : null
-                }
-                label={
-                  publicShareStatus
-                    ? t("sessionShareViewerSummary", {
-                        active: publicShareStatus.activeViewerCount,
-                        total: publicShareStatus.viewers.length,
-                        live: publicShareStatus.liveCount,
-                        frozen: publicShareStatus.frozenCount,
-                      })
-                    : t("sessionShareOpenTitle")
-                }
-                onClick={handleShareIndicatorClick}
-                onContextMenu={
-                  publicShareManagementAvailable
-                    ? handleShareIndicatorContextMenu
-                    : undefined
-                }
-              />
-            )}
+            <SessionPublicShareControls
+              enabled={publicSharesEnabled}
+              projectId={projectId}
+              sessionId={actualSessionId}
+              storageState={publicShareGlobalStatus?.storageState}
+              canCreateShares={canCreatePublicShares}
+              managementAvailable={publicShareManagementAvailable}
+              modalOpen={showShareModal}
+              modalAnchorRect={shareModalAnchor}
+              modalInitialView={shareModalView}
+              initialPrompt={publicShareInitialPrompt}
+              title={displayTitle}
+              onIndicatorClick={handleShareIndicatorClick}
+              onIndicatorContextMenu={
+                publicShareManagementAvailable
+                  ? handleShareIndicatorContextMenu
+                  : undefined
+              }
+              onCloseModal={() => {
+                setShowShareModal(false);
+                setShareModalAnchor(null);
+              }}
+              t={t}
+            />
             {canStopOwnedProcess && (
               <ThinkingIndicator
                 variant="icon"
@@ -5322,24 +5307,6 @@ function SessionPageContent({
                 : prev,
             );
             showToast(t("sessionRecapSaved"), "success");
-          }}
-        />
-      )}
-
-      {showShareModal && (
-        <SessionShareModal
-          anchorRect={shareModalAnchor}
-          projectId={projectId}
-          sessionId={actualSessionId}
-          initialPrompt={publicShareInitialPrompt}
-          title={displayTitle}
-          canCreateShares={canCreatePublicShares}
-          initialView={shareModalView}
-          managementAvailable={publicShareManagementAvailable}
-          onStatusChange={setPublicShareStatus}
-          onClose={() => {
-            setShowShareModal(false);
-            setShareModalAnchor(null);
           }}
         />
       )}

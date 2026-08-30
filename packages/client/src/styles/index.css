@@ -15374,10 +15374,6 @@ body:has(.session-page)
   justify-content: flex-end;
 }
 
-.session-header-viewer-count {
-  flex-shrink: 0;
-}
-
 .session-header-thinking {
   flex-shrink: 0;
 }

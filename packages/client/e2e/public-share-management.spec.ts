@@ -108,7 +108,9 @@ test("left and right click open the same share manager", async ({
   ).toHaveCount(0);
   await page.keyboard.press("Escape");
 
-  const indicator = page.locator("button.session-header-viewer-count");
+  const indicator = page.getByRole("button", {
+    name: /active viewer|Open public share controls/,
+  });
   await expect(indicator).toBeVisible();
   const indicatorBox = await indicator.boundingBox();
   expect(indicatorBox).not.toBeNull();
