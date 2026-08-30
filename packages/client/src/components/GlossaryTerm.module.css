@@ -2,7 +2,7 @@
   margin: 0;
   padding: 0;
   border: 0;
-  color: color-mix(in srgb, var(--link-color) 72%, currentColor);
+  color: color-mix(in srgb, var(--link-color) 60%, currentColor);
   font: inherit;
   font-weight: inherit;
   line-height: inherit;
