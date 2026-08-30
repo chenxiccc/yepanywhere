@@ -1,4 +1,4 @@
-import { type ProviderName, type UrlProjectId } from "@yep-anywhere/shared";
+import type { ProviderName, UrlProjectId } from "@yep-anywhere/shared";
 import type { SessionMetadata } from "../metadata/SessionMetadataService.js";
 import { encodeProjectId } from "../projects/paths.js";
 import type { ProjectScanner } from "../projects/scanner.js";
