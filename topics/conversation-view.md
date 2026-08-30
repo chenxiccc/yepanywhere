@@ -90,7 +90,10 @@ provider-history rewrite and not deletion.
   control. While reading above the live edge, direct expansion or collapse
   keeps that clicked summary at the same viewport position even though the
   document height and scrollbar change. Manual expansion remains sticky while
-  that session view stays mounted.
+  that session view stays mounted. A coarse-pointer browser may enlarge or
+  adjust the target of a nearby tap, but disclosure changes only when the
+  initiating touch lies within the summary's rendered bounds; a transcript
+  gesture beginning in the neighboring blank area remains a scroll gesture.
 - Switching the whole mode preserves bottom-follow when already at the live
   edge; otherwise it restores the visible render-row anchor (with height-delta
   fallback) so the reader does not jump to an unrelated passage.

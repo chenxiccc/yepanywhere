@@ -589,6 +589,77 @@ describe("MessageList rendering", () => {
     ).toBe("true");
   });
 
+  it("ignores a touch-adjusted activity click that began outside the pill", () => {
+    window.localStorage.setItem(UI_KEYS.conversationView, "true");
+    const { container } = render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "inspect this", "2026-07-28T07:00:00.000Z"),
+          codexThinkingMessage(
+            "thinking-1",
+            "private planning",
+            "2026-07-28T07:00:01.000Z",
+          ),
+          assistantMessage(
+            "assistant-1",
+            "Visible answer",
+            "2026-07-28T07:00:02.000Z",
+          ),
+        ]}
+      />,
+    );
+    const summary = container.querySelector(
+      ".conversation-activity-summary",
+    ) as HTMLButtonElement;
+    vi.spyOn(summary, "getBoundingClientRect").mockReturnValue({
+      bottom: 134,
+      height: 34,
+      left: 20,
+      right: 270,
+      top: 100,
+      width: 250,
+      x: 20,
+      y: 100,
+      toJSON: () => ({}),
+    });
+    const fireTouchPointer = (
+      type: "pointerdown" | "pointerup",
+      clientY: number,
+    ) => {
+      const event = new MouseEvent(type, {
+        bubbles: true,
+        clientX: 100,
+        clientY,
+      });
+      Object.defineProperty(event, "pointerType", { value: "touch" });
+      fireEvent(summary, event);
+    };
+
+    // Chrome may retarget a coarse touch from the neighboring blank area onto
+    // the button and then clamp the synthesized click to its painted edge.
+    fireTouchPointer("pointerdown", 96);
+    fireTouchPointer("pointerup", 96);
+    fireEvent.click(summary, { clientX: 100, clientY: 100 });
+
+    expect(
+      container
+        .querySelector(".conversation-activity-summary")
+        ?.getAttribute("aria-expanded"),
+    ).toBe("false");
+    expect(screen.queryByText("private planning")).toBeNull();
+
+    fireTouchPointer("pointerdown", 110);
+    fireTouchPointer("pointerup", 110);
+    fireEvent.click(summary, { clientX: 100, clientY: 110 });
+
+    expect(
+      container
+        .querySelector(".conversation-activity-summary")
+        ?.getAttribute("aria-expanded"),
+    ).toBe("true");
+    expect(screen.getByText("private planning")).toBeTruthy();
+  });
+
   it("remembers tool-media disclosure across Conversation view toggles", () => {
     const transport = new FakeSourceTransport({
       fetchBlob: vi.fn(() => new Promise<Blob>(() => {})),

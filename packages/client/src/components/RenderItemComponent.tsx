@@ -366,6 +366,8 @@ function ConversationActivitySummary({
   const { t } = useI18n();
   const rowRef = useRef<HTMLDivElement>(null);
   const activityListRef = useRef<HTMLUListElement>(null);
+  const ignoreAdjustedTouchClickRef = useRef(false);
+  const adjustedTouchClickResetTimerRef = useRef<number | null>(null);
   const [autoHidePhase, setAutoHidePhase] = useState<
     "visible" | "fading" | "hidden"
   >(() =>
@@ -384,6 +386,43 @@ function ConversationActivitySummary({
   const [thinkingShownSinceMs, setThinkingShownSinceMs] = useState<
     number | null
   >(null);
+  const clearAdjustedTouchClick = useCallback(() => {
+    ignoreAdjustedTouchClickRef.current = false;
+    if (adjustedTouchClickResetTimerRef.current !== null) {
+      window.clearTimeout(adjustedTouchClickResetTimerRef.current);
+      adjustedTouchClickResetTimerRef.current = null;
+    }
+  }, []);
+  useEffect(() => clearAdjustedTouchClick, [clearAdjustedTouchClick]);
+  const handleSummaryPointerDown = (
+    event: React.PointerEvent<HTMLButtonElement>,
+  ) => {
+    clearAdjustedTouchClick();
+    if (event.pointerType !== "touch") return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    ignoreAdjustedTouchClickRef.current =
+      event.clientX < rect.left ||
+      event.clientX >= rect.right ||
+      event.clientY < rect.top ||
+      event.clientY >= rect.bottom;
+  };
+  const handleSummaryPointerUp = () => {
+    if (!ignoreAdjustedTouchClickRef.current) return;
+    // Chrome dispatches the adjusted click synchronously after pointerup. Drop
+    // the guard on the next task so a cancelled/non-clicking gesture cannot
+    // suppress a later keyboard activation.
+    adjustedTouchClickResetTimerRef.current = window.setTimeout(
+      clearAdjustedTouchClick,
+      0,
+    );
+  };
+  const handleSummaryClick = () => {
+    if (ignoreAdjustedTouchClickRef.current) {
+      clearAdjustedTouchClick();
+      return;
+    }
+    onToggle?.(item.id);
+  };
   // The recent-activity list is newest-first and clips its oldest (bottom) rows
   // when they exceed the thinking height. Mark it so the stylesheet can fade
   // that bottom edge — but only while it actually overflows, so a short list
@@ -687,7 +726,10 @@ function ConversationActivitySummary({
           className={`conversation-activity-summary${
             item.active ? " is-active" : ""
           }${item.expanded ? " is-expanded" : ""}`}
-          onClick={() => onToggle?.(item.id)}
+          onClick={handleSummaryClick}
+          onPointerCancel={clearAdjustedTouchClick}
+          onPointerDown={handleSummaryPointerDown}
+          onPointerUp={handleSummaryPointerUp}
           aria-expanded={item.expanded}
           {...tooltipAttributes}
         >
