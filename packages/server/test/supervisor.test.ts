@@ -6937,6 +6937,10 @@ describe("Supervisor", () => {
       vi.useFakeTimers();
       try {
         let aborted = false;
+        let resolveAbort!: () => void;
+        const abortSignal = new Promise<void>((resolve) => {
+          resolveAbort = resolve;
+        });
         const refreshPromptCache = vi.fn(async () => ({
           mode: "no-context-pollution-nudge" as const,
           refreshed: true,
@@ -6972,9 +6976,7 @@ describe("Supervisor", () => {
                 type: "result",
                 session_id: "keepalive-no-viewer-session",
               };
-              while (!aborted) {
-                await new Promise((resolve) => setTimeout(resolve, 10));
-              }
+              await abortSignal;
             }
 
             return {
@@ -6982,6 +6984,7 @@ describe("Supervisor", () => {
               queue: new MessageQueue(),
               abort: () => {
                 aborted = true;
+                resolveAbort();
               },
               isProcessAlive: () => !aborted,
               refreshPromptCache,
@@ -7020,6 +7023,10 @@ describe("Supervisor", () => {
       vi.useFakeTimers();
       try {
         let aborted = false;
+        let resolveAbort!: () => void;
+        const abortSignal = new Promise<void>((resolve) => {
+          resolveAbort = resolve;
+        });
         const refreshPromptCache = vi.fn(async () => ({
           mode: "no-context-pollution-nudge" as const,
           refreshed: true,
@@ -7055,9 +7062,7 @@ describe("Supervisor", () => {
                 type: "result",
                 session_id: "keepalive-viewer-session",
               };
-              while (!aborted) {
-                await new Promise((resolve) => setTimeout(resolve, 10));
-              }
+              await abortSignal;
             }
 
             return {
@@ -7065,6 +7070,7 @@ describe("Supervisor", () => {
               queue: new MessageQueue(),
               abort: () => {
                 aborted = true;
+                resolveAbort();
               },
               isProcessAlive: () => !aborted,
               refreshPromptCache,
@@ -7256,6 +7262,10 @@ describe("Supervisor", () => {
         .mockImplementation(() => undefined);
       try {
         let aborted = false;
+        let resolveAbort!: () => void;
+        const abortSignal = new Promise<void>((resolve) => {
+          resolveAbort = resolve;
+        });
 
         const realSdk: RealClaudeSDKInterface = {
           startSession: async () => {
@@ -7266,9 +7276,7 @@ describe("Supervisor", () => {
                 session_id: "silent-unknown-liveness-session",
               };
 
-              while (!aborted) {
-                await new Promise((resolve) => setTimeout(resolve, 10));
-              }
+              await abortSignal;
             }
 
             return {
@@ -7276,6 +7284,7 @@ describe("Supervisor", () => {
               queue: new MessageQueue(),
               abort: () => {
                 aborted = true;
+                resolveAbort();
               },
             };
           },

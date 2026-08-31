@@ -275,14 +275,19 @@ describe.skipIf(process.platform === "win32")("ManagedSshTarget", () => {
       remoteRoot,
       sshCommand: fakeSshPath,
       nodeCommand: process.execPath,
-      spawnEnvironment: { ...process.env, YA_FAKE_SSH_DROP_AFTER_MS: "150" },
       terminationGraceMs: 50,
     });
     const dropped = droppedTarget.launchRunner({ manifest, cwd: remoteRoot });
-    let stdout = "";
+    const droppedFrames: Record<string, unknown>[] = [];
+    let droppedBuffer = "";
     dropped.output.setEncoding("utf8");
     dropped.output.on("data", (chunk: string) => {
-      stdout += chunk;
+      droppedBuffer += chunk;
+      const lines = droppedBuffer.split("\n");
+      droppedBuffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (line) droppedFrames.push(JSON.parse(line));
+      }
     });
     dropped.input.write(
       `${JSON.stringify({ type: "hello", protocolVersion: 2, leaseId: "dropped-lease" })}\n`,
@@ -290,12 +295,12 @@ describe.skipIf(process.platform === "win32")("ManagedSshTarget", () => {
     dropped.input.write(
       `${JSON.stringify({ type: "launch", leaseId: "dropped-lease" })}\n`,
     );
-    const deadline = Date.now() + 1_000;
-    while (!stdout.includes("launchAccepted") && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-    expect(stdout).toContain("launchAccepted");
+    await waitForFrame(
+      droppedFrames,
+      (frame) => frame.type === "launchAccepted",
+    );
     dropped.markLaunchAccepted();
+    dropped.signalControllerLoss("SIGHUP");
     expect(await dropped.terminal).toMatchObject({
       classification: "uncertain-after-acceptance",
     });
@@ -493,7 +498,6 @@ describe.skipIf(process.platform === "win32")("ManagedSshTarget", () => {
       remoteRoot,
       sshCommand: fakeSshPath,
       nodeCommand: process.execPath,
-      spawnEnvironment: { ...process.env, YA_FAKE_SSH_DROP_AFTER_MS: "150" },
       terminationGraceMs: 50,
     });
     const dropped = droppedTarget.launchRunner({
@@ -501,10 +505,16 @@ describe.skipIf(process.platform === "win32")("ManagedSshTarget", () => {
       cwd,
       workspaceLease: { workspaceDirectory, leaseId: "uncertain-runner" },
     });
-    let stdout = "";
+    const droppedFrames: Record<string, unknown>[] = [];
+    let droppedBuffer = "";
     dropped.output.setEncoding("utf8");
     dropped.output.on("data", (chunk: string) => {
-      stdout += chunk;
+      droppedBuffer += chunk;
+      const lines = droppedBuffer.split("\n");
+      droppedBuffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (line) droppedFrames.push(JSON.parse(line));
+      }
     });
     dropped.input.write(
       `${JSON.stringify({ type: "hello", protocolVersion: 2, leaseId: "uncertain-runner" })}\n`,
@@ -512,12 +522,12 @@ describe.skipIf(process.platform === "win32")("ManagedSshTarget", () => {
     dropped.input.write(
       `${JSON.stringify({ type: "launch", leaseId: "uncertain-runner" })}\n`,
     );
-    const deadline = Date.now() + 1_000;
-    while (!stdout.includes("launchAccepted") && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-    expect(stdout).toContain("launchAccepted");
+    await waitForFrame(
+      droppedFrames,
+      (frame) => frame.type === "launchAccepted",
+    );
     dropped.markLaunchAccepted();
+    dropped.signalControllerLoss("SIGHUP");
     await expect(dropped.terminal).resolves.toMatchObject({
       classification: "uncertain-after-acceptance",
     });
