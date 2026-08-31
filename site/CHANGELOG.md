@@ -4,7 +4,7 @@ All notable changes to the Yep Anywhere website and remote relay client will be 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [site-v1.10.0] - 2026-08-31
 
 ### Changed
 - State directly that every Claude Code and Codex session appears in Yep
