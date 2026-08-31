@@ -7,6 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-31
+
+### Added
+- Add a full Source Control workspace with working-tree diffs, commit and blame
+  browsing, file and commit search, inline review comments, accumulated review
+  drafts, and guarded Git actions.
+- Add a richer project file workflow: link project paths from turns and command
+  output, browse related files and revisions, inspect cumulative diffs, comment
+  inline, and keep image and document previews in the managed viewer.
+- Add live public file shares alongside read-only session sharing, with
+  authenticated creation and bounded relay/storage behavior.
+- Add a condensed conversation view, full-pane composer editing, persistent
+  Follow and scroll-return state, and stable copy/select-all actions for
+  rendered content.
+- Show provider child and subagent sessions beneath their canonical parents,
+  with bounded nesting and direct navigation from idle and active session lists.
+- Add richer Codex surfaces for edit patches, goals, image views, status and
+  usage commands, permission modes, reasoning summaries, and active-turn
+  settings.
+- Add provider-aware skill invocation, provider subscription-usage reporting,
+  and an isolated opt-in Claude Gateway provider.
+- Add project-write session sandboxing with authenticated controls and a
+  public-network-only outbound boundary where the host supports it.
+- Add an experimental multi-host relay monitor, provider process metrics, and
+  consented remote browser diagnostics.
+- Add authenticated glossary hints and project-path aliases across rendered
+  Markdown, file content, and recent-project navigation.
+
+### Changed
+- Refresh provider compatibility through Codex CLI 0.151.0, Claude Code
+  2.1.251 / Agent SDK 0.3.251, pi 0.84.2, and Grok Build 1.0.4.
+- Keep eligible provider runtimes alive across server reloads, coordinate
+  provider installation updates through leases, and bound detached or idle
+  process lifetimes.
+- Make long-session and cached-session navigation substantially faster through
+  bounded transcript windows, retained compact DOM, source-versioned caches,
+  and single-flight session inventory work.
+- Improve rich-content rendering for sanitized embedded HTML, bracketed LaTeX,
+  Codex code-mode output, images, rendered documents, and semantic copy.
+- Make Source Control, file viewing, activity previews, and composer controls
+  more responsive and usable across desktop and narrow mobile layouts.
+- Move session and provider discovery toward durable summaries and generation
+  vectors instead of repeated full transcript or project scans.
+
+### Fixed
+- Preserve active and detached sessions through reconnects, reloads, stale
+  pagination cursors, provider reactivation, and mobile wake transitions.
+- Prevent killed, archived, or stale provider processes from being resumed or
+  from replaying completed work; verify shutdown before unregistering them.
+- Repair Codex transcript identity, image rematerialization, live output,
+  steering, effort and permission-mode updates, and Windows unread activity.
+- Keep file viewers, revisions, selections, review drafts, and dirty diff state
+  stable while live session and Source Control data refreshes.
+- Restore relay login and cached-page behavior across disconnects, and harden
+  public-share transport and storage boundaries.
+- Fix mobile IME delivery, adjusted touch targets, gallery navigation, sidebar
+  actions, horizontal scrolling, and notification-permission recovery.
+- Stabilize provider discovery, worktree watchers, path handling, shell quoting,
+  and test behavior across Linux, macOS, and Windows.
+- Bound background polling, watchers, cached transcript work, and diagnostic
+  collection so idle sessions and closed tabs release server resources.
+
 ## [0.7.0] - 2026-07-25
 
 ### Added
