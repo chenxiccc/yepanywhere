@@ -636,13 +636,17 @@ describe("MessageList reverse search", () => {
     );
     await screen.findByText("Older result");
     fireEvent.keyDown(window, { key: "Enter" });
-    await waitFor(() => {
-      expect(
-        rendered.container.querySelector('[data-render-id="user-history"]'),
-      ).not.toBeNull();
+    const hydratedHistoricalRow = await waitFor(() => {
+      const row = rendered.container.querySelector<HTMLElement>(
+        '[data-render-id="user-history"]',
+      );
+      expect(row).not.toBeNull();
+      return row!;
     });
     expect(
-      screen.queryByRole("button", { name: "userPromptShowStartingHere" }),
+      within(hydratedHistoricalRow).queryByRole("button", {
+        name: "userPromptShowStartingHere",
+      }),
     ).toBeNull();
 
     rendered.rerender(renderList([historicalMessage, recentMessage]));
