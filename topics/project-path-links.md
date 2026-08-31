@@ -382,11 +382,13 @@ request.
 
 ## Recent basename aliases
 
-The authenticated web client remembers the target of each linked full path in
-the loaded transcript under its basename. A later bare occurrence of that
-basename links to the most recently preceding target. A later full-path link
-with the same basename changes only subsequent occurrences; recompiling after
-new transcript rows arrive must not retarget an earlier occurrence.
+This YA-specific convenience is configurable in Appearance and defaults off.
+When **Link Recent File Basenames** is enabled, the authenticated web client
+remembers the target of each linked full path in the loaded transcript under
+its basename. A later bare occurrence of that basename links to the most
+recently preceding target. A later full-path link with the same basename
+changes only subsequent occurrences; recompiling after new transcript rows
+arrive must not retarget an earlier occurrence.
 
 Only confirmed project-file links seed the table. A basename-expanded link does
 not feed itself back into the table, and a bare project-root link likewise does

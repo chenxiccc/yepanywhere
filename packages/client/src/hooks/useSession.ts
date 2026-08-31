@@ -66,6 +66,8 @@ import { getStreamingEnabled } from "./useStreamingEnabled";
 export type ProcessState = "idle" | "in-turn" | "waiting-input";
 
 interface RuntimeSnapshotToken {
+  projectId: string;
+  sessionId: string;
   generation: number;
   lifecycleObservationRevision: number;
 }
@@ -580,6 +582,8 @@ export function useSession(
   // latest-started-wins.
   const lifecycleObservationRevisionRef = useRef(0);
   const runtimeSnapshotGenerationRef = useRef(0);
+  const runtimeSnapshotIdentityRef = useRef({ projectId, sessionId });
+  runtimeSnapshotIdentityRef.current = { projectId, sessionId };
   const noteLifecycleObservation = useCallback(() => {
     lifecycleObservationRevisionRef.current += 1;
   }, []);
@@ -992,13 +996,17 @@ export function useSession(
   const beginRuntimeSnapshot = useCallback((): RuntimeSnapshotToken => {
     runtimeSnapshotGenerationRef.current += 1;
     return {
+      projectId,
+      sessionId,
       generation: runtimeSnapshotGenerationRef.current,
       lifecycleObservationRevision: lifecycleObservationRevisionRef.current,
     };
-  }, []);
+  }, [projectId, sessionId]);
 
   const isRuntimeSnapshotCurrent = useCallback(
     (token: RuntimeSnapshotToken): boolean =>
+      token.projectId === runtimeSnapshotIdentityRef.current.projectId &&
+      token.sessionId === runtimeSnapshotIdentityRef.current.sessionId &&
       token.generation === runtimeSnapshotGenerationRef.current &&
       token.lifecycleObservationRevision ===
         lifecycleObservationRevisionRef.current,
@@ -1705,6 +1713,7 @@ export function useSession(
         // boundary, with a trailing pass for providers that finish persistence
         // just after reporting idle.
         if (event.activity === "idle") {
+          setPendingInputRequest(null);
           throttledFetch();
           throttledFetch();
         }
@@ -1712,27 +1721,28 @@ export function useSession(
 
       // If activity bus says waiting-input but we don't have the request,
       // fetch it via REST as a backup
-      if (event.activity === "waiting-input" && event.pendingInputType) {
-        setPendingInputRequest((current) => {
-          if (current) return current; // Already have it, don't fetch
-
-          // Fetch pending request in background (can't return promise from setState)
-          api.getSessionMetadata(projectId, sessionId).then((result) => {
-            reportProviderRuntimeStatus(
-              sessionId,
-              result.providerRuntimeStatus,
-            );
-            if (result.pendingInputRequest) {
-              setPendingInputRequest(result.pendingInputRequest);
-            }
-            setDeferredMessages(result.deferredMessages ?? []);
-          });
-
-          return current; // Return unchanged for now, will update when fetch completes
+      if (
+        event.activity === "waiting-input" &&
+        event.pendingInputType &&
+        !pendingInputRequest
+      ) {
+        const snapshotToken = beginRuntimeSnapshot();
+        void api.getSessionMetadata(projectId, sessionId).then((result) => {
+          if (!isRuntimeSnapshotCurrent(snapshotToken)) {
+            return;
+          }
+          reportProviderRuntimeStatus(sessionId, result.providerRuntimeStatus);
+          setDeferredMessages(result.deferredMessages ?? []);
+          if (result.pendingInputRequest) {
+            setPendingInputRequest(result.pendingInputRequest);
+          }
         });
       }
     },
     [
+      beginRuntimeSnapshot,
+      isRuntimeSnapshotCurrent,
+      pendingInputRequest,
       projectId,
       reportProviderRuntimeStatus,
       noteLifecycleObservation,

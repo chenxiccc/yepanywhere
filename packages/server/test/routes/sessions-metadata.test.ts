@@ -1663,7 +1663,7 @@ describe("Sessions metadata route", () => {
     }
   });
 
-  it("reclassifies a session without moving the provider transcript", async () => {
+  it("reclassifies when the previous working project has vanished", async () => {
     const tempDir = await mkdtemp(join(tmpdir(), "ya-reclassify-"));
     const workingProjectPath = join(tempDir, "working-project");
     await mkdir(workingProjectPath, { recursive: true });
@@ -1681,10 +1681,16 @@ describe("Sessions metadata route", () => {
       name: "working-project",
       sessionDir: join(workingProjectPath, ".claude-sessions"),
     };
+    const vanishedWorkingProjectId = encodeProjectId(
+      join(tempDir, "vanished-working-project"),
+    );
     let metadata: {
       workingProjectId?: UrlProjectId;
       transcriptProjectId?: UrlProjectId;
-    } = {};
+    } = {
+      workingProjectId: vanishedWorkingProjectId,
+      transcriptProjectId: transcriptProject.id,
+    };
     const setWorkingProject = vi.fn(
       async (
         _sessionId: string,
@@ -1773,7 +1779,7 @@ describe("Sessions metadata route", () => {
         transcriptProject.id,
       );
       expect(sessionProjectChanged).toHaveBeenCalledWith(
-        transcriptProject.id,
+        vanishedWorkingProjectId,
         workingProject.id,
       );
       expect(emit).toHaveBeenCalledWith(
@@ -2401,7 +2407,7 @@ describe("Sessions metadata route", () => {
     expect(json.messages).toEqual([]);
   });
 
-  it("prefers persisted provider over conflicting client resume provider", async () => {
+  it("prefers an explicit resume provider over persisted metadata", async () => {
     const project = createProject();
     const resumeSession = vi.fn(async () => ({
       id: "proc-1",
@@ -2421,6 +2427,7 @@ describe("Sessions metadata route", () => {
         () =>
           ({
             getSessionSummary: vi.fn(async () => null),
+            getSession: vi.fn(async () => null),
             getSessionFilePath: vi.fn(
               async () => "/home/user/.claude/projects/enc/sess-1.jsonl",
             ),
@@ -2457,7 +2464,7 @@ describe("Sessions metadata route", () => {
       project.path,
       expect.objectContaining({ text: "continue" }),
       undefined,
-      expect.objectContaining({ providerName: "codex" }),
+      expect.objectContaining({ providerName: "claude" }),
       { requireProviderSessionId: true },
     );
   });

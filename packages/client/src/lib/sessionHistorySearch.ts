@@ -27,6 +27,7 @@ export interface SessionHistorySearchPageInput {
   messages: Message[];
   provider?: string;
   query: string;
+  recentProjectPathLinksEnabled?: boolean;
   scope: SessionIsearchScope;
   thinkingItemsVisible: boolean;
   transcriptDisplayObjects?: readonly TranscriptDisplayObject[];
@@ -165,11 +166,16 @@ export function searchSessionHistoryPage({
   messages,
   provider,
   query,
+  recentProjectPathLinksEnabled = false,
   scope,
   thinkingItemsVisible,
   transcriptDisplayObjects = [],
 }: SessionHistorySearchPageInput): SessionHistorySearchPageResult {
-  const compiledItems = compileWebTranscriptProjection(messages);
+  const compiledItems = compileWebTranscriptProjection(
+    messages,
+    undefined,
+    recentProjectPathLinksEnabled,
+  );
   const providerProjected =
     provider === "claude-gateway"
       ? compiledItems.filter(

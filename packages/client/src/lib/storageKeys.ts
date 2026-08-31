@@ -111,6 +111,7 @@ export const UI_KEYS = {
   inlineMediaExpandedByDefault: "yep-anywhere-inline-images-enabled",
   compactMultiImageGalleries:
     "yep-anywhere-compact-multi-image-galleries-enabled",
+  recentProjectPathLinks: "yep-anywhere-recent-project-path-links-enabled",
   schemaValidation: "yep-anywhere-schema-validation",
   emulatorMaxFps: "yep-anywhere-emulator-max-fps",
   emulatorMaxWidth: "yep-anywhere-emulator-max-width",

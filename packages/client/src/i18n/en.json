@@ -230,6 +230,8 @@
   "appearanceInlineImagesDescription": "Start linked image and video previews expanded in transcripts and markdown. Disable to keep media links compact until individually expanded.",
   "appearanceImageGalleriesTitle": "Compact Multi-Image Galleries",
   "appearanceImageGalleriesDescription": "Enable a compact gallery for assistant turns with two or more images. It opens automatically when inline media starts expanded, or from the Gallery action beside the image links.",
+  "appearanceRecentProjectPathLinksTitle": "Link Recent File Basenames",
+  "appearanceRecentProjectPathLinksDescription": "Turn a bare filename into a file link when an earlier loaded transcript item linked a full path with the same basename.",
   "appearanceQuoteReplyButtonsTitle": "> Reply Buttons",
   "appearanceQuoteReplyButtonsDescription": "Choose between one block-level reply button, per-paragraph buttons on hover, or per-paragraph buttons always shown.",
   "appearanceQuoteReplyButtonsBlock": "Block only",

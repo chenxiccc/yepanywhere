@@ -78,6 +78,48 @@ describe("Process", () => {
       );
     });
 
+    it("rejects provider session id waiters on explicit termination", async () => {
+      let releaseIterator: (() => void) | undefined;
+      const iteratorBlocked = new Promise<void>((resolve) => {
+        releaseIterator = resolve;
+      });
+      const pendingIterator: AsyncIterator<SDKMessage> = {
+        next: async () => {
+          await iteratorBlocked;
+          return { done: true, value: undefined };
+        },
+      };
+      const abortFn = vi.fn(() => {
+        releaseIterator?.();
+      });
+      const warnLog = vi
+        .spyOn(getLogger(), "warn")
+        .mockImplementation(() => undefined);
+      const process = new Process(pendingIterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "pending-session",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        abortFn,
+      });
+      const providerSessionId = process.waitForProviderSessionId(10_000);
+
+      process.terminate("explicit test termination");
+
+      await expect(providerSessionId).rejects.toThrow(
+        "Process terminated before reporting a provider session id: explicit test termination",
+      );
+      expect(abortFn).toHaveBeenCalledOnce();
+      expect(warnLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: "process_terminated",
+          reason: "explicit test termination",
+        }),
+        expect.any(String),
+      );
+    });
+
     it("rejects new input once reload-safe detach begins", async () => {
       let releaseAbort: (() => void) | undefined;
       const abortPending = new Promise<void>((resolve) => {
@@ -271,10 +313,7 @@ describe("Process", () => {
         apiErrorStatus: 529,
       };
       const abortFn = vi.fn();
-      const iterator = createMockIterator([
-        { type: "system", subtype: "init", session_id: "sess-1" },
-        apiError,
-      ]);
+      const iterator = createMockIterator([apiError]);
       const process = new Process(iterator, {
         projectPath: "/test",
         projectId: "proj-1" as UrlProjectId,
@@ -283,6 +322,10 @@ describe("Process", () => {
         idleTimeoutMs: 100,
         abortFn,
       });
+      const providerSessionId = process.waitForProviderSessionId(10_000);
+      const providerSessionIdRejection = expect(
+        providerSessionId,
+      ).rejects.toThrow("API Error: 529 Overloaded");
 
       const events: ProcessEvent[] = [];
       process.subscribe((event) => {
@@ -292,6 +335,8 @@ describe("Process", () => {
       await vi.waitFor(() => {
         expect(process.isTerminated).toBe(true);
       });
+
+      await providerSessionIdRejection;
 
       const messageEventIndex = events.findIndex(
         (event) =>

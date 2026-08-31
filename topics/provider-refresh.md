@@ -185,24 +185,24 @@ Current source refresh, 2026-08-29:
   making a misalignment block's reason visible. Offering Codex's continuation
   steer remains a separate interaction design.
 - `ThreadItem` adds a `functionCallOutput` variant with no call id, the live
-  counterpart of the standalone persisted outputs seen in 0.150.0. YA still
-  declines to invent an orphaned tool result, so both forms remain unrendered;
-  showing them as their own visible block is captured in
-  `gaps/codex-orphaned-tool-results-hidden.md`.
+  counterpart of the standalone persisted outputs seen in 0.150.0. YA declines
+  to invent an orphaned tool-result relationship and instead renders both forms
+  as standalone system output.
 - Core MCP results now always convert to content items, so a text-only MCP tool
   result persists as a single `input_text` item instead of a serialized JSON
   string. The durable schema's item union accepted only `input_text` and
   `input_image`; it now also accepts `input_audio` and `encrypted_content`,
-  which the same upstream path can produce. Rendering such an array as a JSON
-  envelope predates 0.151 and is captured in
-  `gaps/codex-mcp-text-results-render-as-json.md`.
+  which the same upstream path can produce. YA flattens text-only arrays for
+  display while retaining structured content and media safeguards.
 - The experimental request list adds `thread/turns/list`, `thread/items/list`,
   `thread/revert`, and `turn/settings/update`. Full-history hydration is now
   documented as deprecated for paginated threads; YA already sends
   `excludeTurns` under the experimental capability and reads rollouts itself,
-  so no resume or fork change is required. Mid-turn settings publication is a
-  product decision rather than compatibility work and is captured in
-  `gaps/codex-mid-turn-settings-update.md`.
+  so no resume or fork change is required. YA publishes model and effort
+  changes to an active turn through `turn/settings/update`, retaining them for
+  the next turn when the active target is unavailable. A setting selected after
+  `turn/start` is sent but before its response waits for that response's turn id
+  rather than being silently skipped.
 - The current account's no-token `model/list` returns the same eight
   account-visible models and consumed metadata as 0.150.1, with Sol default and
   `priority` its only service tier. The generated `Model` type is unchanged
@@ -213,9 +213,12 @@ Current source refresh, 2026-08-29:
   and content-item shapes are grounded in the tagged source rather than a local
   sample. Re-run the census once a 0.151.0 session has written one.
 
+The current observable contracts are [provider output](provider-output-contract.md)
+and [provider runtime status](provider-runtime-status.md).
+
 Status: Codex 0.151.0 app-server protocol, error taxonomy, error-detail
-surfacing, and persisted tool-output schema compatibility is refreshed. The
-model catalog required no change.
+surfacing, persisted and standalone tool output, MCP text display, and active
+turn settings are refreshed. The model catalog required no change.
 
 Current no-op refresh, 2026-08-27:
 

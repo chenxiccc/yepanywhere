@@ -76,6 +76,7 @@ export const BROWSER_SETTINGS_BACKUP_KEYS = [
   UI_KEYS.stableToolPreviewRendering,
   UI_KEYS.inlineMediaExpandedByDefault,
   UI_KEYS.compactMultiImageGalleries,
+  UI_KEYS.recentProjectPathLinks,
   UI_KEYS.schemaValidation,
   UI_KEYS.emulatorMaxFps,
   UI_KEYS.emulatorMaxWidth,

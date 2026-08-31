@@ -31,6 +31,7 @@ import { useWiderConversationActivityPreviews } from "../hooks/useWiderConversat
 import { useMessageListIsearch } from "../hooks/useMessageListIsearch";
 import { useMessageListSelectionQuote } from "../hooks/useMessageListSelectionQuote";
 import { useRelativeNow } from "../hooks/useRelativeNow";
+import { useRecentProjectPathLinks } from "../hooks/useRecentProjectPathLinks";
 import { useTranscriptRenderWindow } from "../hooks/useTranscriptRenderWindow";
 import { useI18n } from "../i18n";
 import {
@@ -1466,18 +1467,28 @@ export const MessageList = memo(function MessageList({
   onFollowForkSummary,
   bangCommandHandlers,
 }: Props) {
+  const { recentProjectPathLinksEnabled } = useRecentProjectPathLinks();
   const transcriptRenderStartedAtMs = isBrowserDebugPerformanceRecording()
     ? highResolutionNowMs()
     : null;
   const firstMessageId = messages[0] ? getMessageId(messages[0]) : null;
+  const [conversationViewEnabled, setConversationViewEnabled] = useState(
+    getConversationViewPreference,
+  );
+  const effectiveConversationViewEnabled =
+    conversationViewEnabledOverride ?? conversationViewEnabled;
+  const historySearchStateKey = JSON.stringify([
+    conversationViewStateKey,
+    effectiveConversationViewEnabled,
+  ]);
   const [storedHistorySearchWindow, setHistorySearchWindow] = useState<{
     cursor: string;
     messages: Message[];
-    stateKey: string | undefined;
+    stateKey: string;
     transcriptDisplayObjects: readonly TranscriptDisplayObject[];
   } | null>(null);
   const historySearchWindow =
-    storedHistorySearchWindow?.stateKey === conversationViewStateKey
+    storedHistorySearchWindow?.stateKey === historySearchStateKey
       ? storedHistorySearchWindow
       : null;
   const clearHistorySearchWindow = useCallback(() => {
@@ -1501,12 +1512,26 @@ export const MessageList = memo(function MessageList({
       setHistorySearchWindow({
         cursor,
         messages: page.messages,
-        stateKey: conversationViewStateKey,
+        stateKey: historySearchStateKey,
         transcriptDisplayObjects: pageDisplayObjects,
       });
     },
-    [conversationViewStateKey],
+    [historySearchStateKey],
   );
+  useLayoutEffect(() => {
+    if (
+      inert ||
+      (storedHistorySearchWindow &&
+        storedHistorySearchWindow.stateKey !== historySearchStateKey)
+    ) {
+      clearHistorySearchWindow();
+    }
+  }, [
+    clearHistorySearchWindow,
+    historySearchStateKey,
+    inert,
+    storedHistorySearchWindow,
+  ]);
   const transcriptSnapshot = useMemo(
     () => ({
       activeWindowTrimRevision,
@@ -1590,11 +1615,6 @@ export const MessageList = memo(function MessageList({
   });
   const [olderPageLoadCompletionRevision, setOlderPageLoadCompletionRevision] =
     useState(0);
-  const [conversationViewEnabled, setConversationViewEnabled] = useState(
-    getConversationViewPreference,
-  );
-  const effectiveConversationViewEnabled =
-    conversationViewEnabledOverride ?? conversationViewEnabled;
   const previousConversationViewEnabledRef = useRef(
     effectiveConversationViewEnabled,
   );
@@ -1872,6 +1892,7 @@ export const MessageList = memo(function MessageList({
       activeToolApproval,
       transcriptDisplayObjects,
       previousRenderItems: previousRenderItemsRef.current,
+      recentProjectPathLinksEnabled,
     });
     let nextRenderItems = loadedRenderItems;
     if (historySearchWindow) {
@@ -1886,6 +1907,7 @@ export const MessageList = memo(function MessageList({
         provider,
         transcriptDisplayObjects: historySearchWindow.transcriptDisplayObjects,
         previousRenderItems: previousRenderItemsRef.current,
+        recentProjectPathLinksEnabled,
       });
       if (historicalRenderItems.length > 0) {
         const gapItems: RenderItem[] =
@@ -1928,6 +1950,7 @@ export const MessageList = memo(function MessageList({
     markdownAugments,
     activeToolApproval,
     transcriptDisplayObjects,
+    recentProjectPathLinksEnabled,
     t,
   ]);
   useEffect(() => {
@@ -1935,13 +1958,16 @@ export const MessageList = memo(function MessageList({
   }, [renderItems]);
   const historySearchSourceMessageIds = useMemo(() => {
     if (!historySearchWindow) return EMPTY_RENDER_ID_SET;
+    const loadedMessageIds = new Set(
+      renderedTranscriptMessages.map((message) => getMessageId(message)),
+    );
     const ids = new Set<string>();
     for (const message of historySearchWindow.messages) {
       const id = getMessageId(message);
-      if (id) ids.add(id);
+      if (id && !loadedMessageIds.has(id)) ids.add(id);
     }
     return ids;
-  }, [historySearchWindow]);
+  }, [historySearchWindow, renderedTranscriptMessages]);
   const historySearchRenderIds = useMemo(() => {
     if (historySearchSourceMessageIds.size === 0) return EMPTY_RENDER_ID_SET;
     return new Set(
@@ -2182,6 +2208,7 @@ export const MessageList = memo(function MessageList({
     active: searchActive,
     scope: searchScope,
     visibleTurnGroups,
+    cancelSearchTargetPreparation,
     getNavigatorAnchors,
     searchState: userTurnNavSearchState,
     searchPanel,
@@ -2200,12 +2227,13 @@ export const MessageList = memo(function MessageList({
     displayRenderItems,
     hasOlderMessages,
     historySearchCursor: olderMessagesCursor,
-    historySearchContextKey: conversationViewStateKey,
+    historySearchContextKey: historySearchStateKey,
     hydratedHistoryCursor: historySearchWindow?.cursor ?? null,
     inert,
     onHydrateHistorySearchPage: hydrateHistorySearchPage,
     onReadOlderSearchPage,
     provider,
+    recentProjectPathLinksEnabled,
     thinkingItemsVisible,
     turnGroups,
   });
@@ -3360,11 +3388,16 @@ export const MessageList = memo(function MessageList({
 
   const scrollToCurrent = useCallback(() => {
     setNewOutputBelowVisible(false);
+    cancelSearchTargetPreparation();
     clearHistorySearchWindow();
     forceScrollToCurrent(FOLLOW_CATCH_UP_DELAYS_MS, {
       allowThinkingDeltas: true,
     });
-  }, [clearHistorySearchWindow, forceScrollToCurrent]);
+  }, [
+    cancelSearchTargetPreparation,
+    clearHistorySearchWindow,
+    forceScrollToCurrent,
+  ]);
 
   const navigateToAdjacentHiddenUserTurn = useCallback(
     (direction: "previous" | "next", requestOlderWhenMissing = true) => {

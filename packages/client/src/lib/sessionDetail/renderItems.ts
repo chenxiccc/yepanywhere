@@ -15,6 +15,7 @@ export interface SessionDetailRenderItemInput {
   activeToolApproval?: ActiveToolApproval;
   transcriptDisplayObjects?: readonly TranscriptDisplayObject[];
   previousRenderItems?: readonly RenderItem[];
+  recentProjectPathLinksEnabled?: boolean;
 }
 
 export interface RenderTurnGroup {
@@ -52,11 +53,16 @@ export function buildSessionDetailRenderItems({
   activeToolApproval,
   transcriptDisplayObjects = [],
   previousRenderItems = [],
+  recentProjectPathLinksEnabled = false,
 }: SessionDetailRenderItemInput): RenderItem[] {
-  const preprocessed = getCachedWebTranscriptProjection(messages, {
-    markdown: markdownAugments,
-    activeToolApproval,
-  });
+  const preprocessed = getCachedWebTranscriptProjection(
+    messages,
+    {
+      markdown: markdownAugments,
+      activeToolApproval,
+    },
+    recentProjectPathLinksEnabled,
+  );
   // The Responses adapter needs the signed block for later tool turns, but its
   // empty-summary sentinel is provider activity rather than transcript prose.
   const providerProjected =

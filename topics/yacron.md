@@ -22,11 +22,11 @@ Related:
 ## Maintainer review — 2026-08-30
 
 Review disposition: positive on the core product idea — durable one-shot and
-cron-like agent prompts are useful — but revision is requested before
-implementation. The current proposal over-centers the CLI and under-designs
-the primary YA UI.
+cron-like agent prompts are useful. The service/API and CLI direction is
+approved; the required first-version YA management UI still needs a concrete
+design before implementation.
 
-### Make the service API primary
+### Keep one authoritative API and ship its CLI in v1
 
 The versioned service control API should be the authoritative activation
 interface. A successful mutating API call creates or revises the durable
@@ -34,20 +34,20 @@ schedule; returning its id is the durability acknowledgment. Persistence,
 caller identity, authorization, capability checks, target validation, and
 dispatch semantics all belong behind that boundary.
 
-YA's UI, an eventual agent tool, and any other integration should be clients of
-the same API. The `yacron` CLI is a possible later ergonomic optimization for
-agents, not the defining interface and not a prerequisite for the first useful
-implementation. If a thin CLI is eventually worth shipping, it must translate
-arguments into the public API without owning separate scheduling or policy
-logic. The current “CLI is the activation interface” section is therefore not
-approved as written and should be replaced in the next proposal revision.
+YA's UI, the agent-facing `yacron` CLI, and any other integration are clients of
+the same API. The CLI is required in the first version: it is how the system
+exposes the Agent API to shell-capable agents. It translates arguments into the
+public service API without owning separate scheduling or policy logic. A
+successful CLI mutation is therefore an activation act backed by the same
+durability acknowledgment as a direct API or UI mutation.
 
 ### Compare and design the first-party-shaped UI
 
-The UI needs a concrete design before implementation, including desktop and
-phone flows. The current thin-client inventory and optional sidebar alarm do
-not establish the information architecture, creation flow, schedule editor,
-or relationship between an occurrence and its resulting session.
+The first version also requires complete human CRUD, history, and run
+visibility in YA, including desktop and phone flows. The current thin-client
+inventory and optional sidebar alarm do not yet establish the information
+architecture, creation flow, schedule editor, or relationship between an
+occurrence and its resulting session.
 
 As of this review, the closest first-party surfaces establish a stronger
 baseline:
@@ -187,10 +187,11 @@ YA targets use canonical YA ids, with provider-native resume ids private to the
 provider service. A standalone direct target instead stores and reports its
 explicitly namespaced provider-native identity.
 
-## CLI is the activation interface
+## CLI is the agent activation interface
 
-The agent-facing binary is available on PATH when yacron tooling is enabled and
-the session is eligible to use it. Its conceptual surface is:
+The first-version agent-facing binary is available on PATH when yacron tooling
+is enabled and the session is eligible to use it. Every command calls the
+selected owner's versioned service API. Its conceptual surface is:
 
 ```text
 yacron schedule --at <timestamp> --prompt <instruction> --session current
@@ -487,12 +488,16 @@ cooperative classification hint, not an authentication capability.
 When enabled, YA also adds `yacron` to PATH for eligible unsandboxed sessions
 and may inject a short instruction fragment explaining how to schedule,
 inspect, and revise entries. Tool advertisement and the discoverable UI are
-configurable and default-off under YA's vanilla-defaults contract. Explicitly
-invoking an installed binary remains the activation boundary.
+separate: yacron itself is opt-in, but its required management UI is always
+available once enabled so every entry remains visible and controllable. PATH
+and injected agent instructions remain configurable and default-off under YA's
+vanilla-defaults contract. Agent access remains inert until enabled; after that,
+a successful mutation through the CLI, UI, or direct API activates the entry.
 
-## YA UI
+## YA management UI
 
-The optional YA surface is a thin service client. It provides:
+The first-version YA management surface is a required service client. It
+provides:
 
 - entry list/detail, create/edit, pause/resume, retry, cancel, and delete;
 - next fire, last run, blocker/failure, history, and config-source views; and
@@ -550,19 +555,22 @@ YA server may be absent.
 
 ## First implementation sequence
 
-1. Build the shared service-owned store, fenced single-owner lease, schedule-
-   level subscriptions, due-time occurrence ids, one next-deadline timer, and
-   CLI CRUD/history.
-2. Ship the standalone concurrent fresh-harness adapter or choose the integrated
+1. Build the versioned service API, shared service-owned store, fenced
+   single-owner lease, schedule-level subscriptions, due-time occurrence ids,
+   one next-deadline timer, and the agent-facing CLI CRUD/history client.
+2. Add YA's Scheduled list/detail, manual and agent-assisted creation, edit,
+   pause/resume, Run now, delete, bounded history, failure state, and links to
+   resulting ordinary sessions. Keep the sidebar alarm separately optional.
+3. Ship the standalone concurrent fresh-harness adapter or choose the integrated
    path; advertise and reject target capabilities exactly.
-3. For integration, first promote the provider host to a durable profile-scoped
+4. For integration, first promote the provider host to a durable profile-scoped
    service and move accepted patient/deferred input plus project admission under
    its durable ownership.
-4. Add current/existing-session delivery and fresh exclusive FIFO admission;
+5. Add current/existing-session delivery and fresh exclusive FIFO admission;
    then let Project Queue use the same provider-owned request and publish
    `AGENT_PROJECT_ROOT` beside the existing session marker.
-5. Enforce the initial sandbox denial at the service boundary, then add the
-   default-off PATH/instruction integration and optional YA editor/settings UI.
-6. Add the separately enabled sidebar indicator; evaluate scoped sandbox
+6. Enforce the initial sandbox denial at the service boundary, then add the
+   default-off PATH/instruction integration.
+7. Add the separately enabled sidebar indicator; evaluate scoped sandbox
    capabilities and other deferred extensions only after the baseline is
    dependable.

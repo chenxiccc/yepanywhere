@@ -13,7 +13,7 @@ const webProjectionDiagnostics: MessageProjectionDiagnostics = {
   },
 };
 
-export function compileWebTranscriptProjection(
+function compileWebTranscriptProjectionBase(
   messages: Message[],
   augments?: TranscriptProjectionAugments,
 ): RenderItem[] {
@@ -21,18 +21,38 @@ export function compileWebTranscriptProjection(
     typeof window !== "undefined" && window.__STREAMING_DEBUG__
       ? webProjectionDiagnostics
       : undefined;
+  return compileTranscriptProjection(messages, augments, diagnostics);
+}
+
+function compileWebTranscriptProjectionWithRecentLinks(
+  messages: Message[],
+  augments?: TranscriptProjectionAugments,
+): RenderItem[] {
   return applyRecentProjectPathLinks(
-    compileTranscriptProjection(messages, augments, diagnostics),
+    compileWebTranscriptProjectionBase(messages, augments),
   );
+}
+
+export function compileWebTranscriptProjection(
+  messages: Message[],
+  augments?: TranscriptProjectionAugments,
+  recentProjectPathLinksEnabled = false,
+): RenderItem[] {
+  return recentProjectPathLinksEnabled
+    ? compileWebTranscriptProjectionWithRecentLinks(messages, augments)
+    : compileWebTranscriptProjectionBase(messages, augments);
 }
 
 export function getCachedWebTranscriptProjection(
   messages: Message[],
   augments?: TranscriptProjectionAugments,
+  recentProjectPathLinksEnabled = false,
 ): RenderItem[] {
   return getCachedTranscriptProjection(
     messages,
     augments,
-    compileWebTranscriptProjection,
+    recentProjectPathLinksEnabled
+      ? compileWebTranscriptProjectionWithRecentLinks
+      : compileWebTranscriptProjectionBase,
   );
 }

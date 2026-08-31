@@ -128,6 +128,7 @@ import { useWiderConversationActivityPreviews } from "../../hooks/useWiderConver
 import { useSelectionActionPreferences } from "../../hooks/useSelectionActionPreferences";
 import { useGlossaryHints } from "../../hooks/useGlossaryHints";
 import { useProjectCodeNamePreferences } from "../../hooks/useProjectCodeNamePreferences";
+import { useRecentProjectPathLinks } from "../../hooks/useRecentProjectPathLinks";
 import { useVersion } from "../../hooks/useVersion";
 
 const OUTPUT_INLINE_MATH_SAMPLE = "$E=mc^2$";
@@ -280,6 +281,8 @@ export function AppearanceSettings() {
     setCompactMultiImageGalleries,
     setInlineMediaExpandedByDefault,
   } = useInlineMedia();
+  const { recentProjectPathLinksEnabled, setRecentProjectPathLinksEnabled } =
+    useRecentProjectPathLinks();
   const { quoteReplyButtonMode, setQuoteReplyButtonMode } =
     useQuoteReplyButtonMode();
   const {
@@ -378,6 +381,7 @@ export function AppearanceSettings() {
     undoEntry(settingsIconStyle, setSettingsIconStyle),
     undoEntry(inlineMediaExpandedByDefault, setInlineMediaExpandedByDefault),
     undoEntry(compactMultiImageGalleries, setCompactMultiImageGalleries),
+    undoEntry(recentProjectPathLinksEnabled, setRecentProjectPathLinksEnabled),
     undoEntry(quoteReplyButtonMode, setQuoteReplyButtonMode),
     undoEntry(selectionQuoteActionEnabled, setSelectionQuoteActionEnabled),
     undoEntry(
@@ -1024,6 +1028,22 @@ export function AppearanceSettings() {
               aria-label={t("appearanceImageGalleriesTitle")}
               checked={compactMultiImageGalleries}
               onChange={(e) => setCompactMultiImageGalleries(e.target.checked)}
+            />
+            <span className="toggle-slider" />
+          </label>
+        </SettingsItem>
+        <SettingsItem
+          label={t("appearanceRecentProjectPathLinksTitle")}
+          description={t("appearanceRecentProjectPathLinksDescription")}
+        >
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              aria-label={t("appearanceRecentProjectPathLinksTitle")}
+              checked={recentProjectPathLinksEnabled}
+              onChange={(event) =>
+                setRecentProjectPathLinksEnabled(event.target.checked)
+              }
             />
             <span className="toggle-slider" />
           </label>

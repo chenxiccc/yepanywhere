@@ -2,10 +2,12 @@
 
 import type { ProjectPathLinkTarget } from "@yep-anywhere/shared";
 import { describe, expect, it } from "vitest";
+import type { Message } from "../types";
 import type { RenderItem, TextItem, ToolCallItem } from "../types/renderItems";
 import { annotateProjectPathLinksHtml } from "./projectPathLinks";
 import { applyRecentProjectPathLinks } from "./recentProjectPathLinks";
 import { canReuseRenderItem } from "./stableRenderItems";
+import { compileWebTranscriptProjection } from "./webTranscriptProjection";
 
 function commandItem(
   id: string,
@@ -38,6 +40,47 @@ function projectedTextLink(
 }
 
 describe("applyRecentProjectPathLinks", () => {
+  it("keeps basename relinking off unless explicitly enabled", () => {
+    const messages: Message[] = [
+      {
+        id: "full-path",
+        type: "user",
+        content: "Open src/settings.json",
+        _projectPathLinks: [
+          { text: "src/settings.json", filePath: "src/settings.json" },
+        ],
+      },
+      {
+        id: "basename",
+        type: "user",
+        content: "Then check settings.json",
+      },
+    ];
+
+    const defaultProjection = compileWebTranscriptProjection(messages);
+    const enabledProjection = compileWebTranscriptProjection(
+      messages,
+      undefined,
+      true,
+    );
+    const defaultBasenameItem = defaultProjection.find(
+      (item) => item.id === "basename",
+    );
+
+    expect(defaultBasenameItem?.type).toBe("user_prompt");
+    if (defaultBasenameItem?.type !== "user_prompt") {
+      throw new Error("Expected basename message to compile as a user prompt");
+    }
+    expect(defaultBasenameItem.projectPathLinks).toBeUndefined();
+    expect(
+      enabledProjection.find((item) => item.id === "basename"),
+    ).toMatchObject({
+      projectPathLinks: [
+        { text: "settings.json", filePath: "src/settings.json" },
+      ],
+    });
+  });
+
   it("uses only the most recent full path from the preceding replay prefix", () => {
     const first = commandItem("first", "open src/one/settings.json", [
       { text: "src/one/settings.json", filePath: "src/one/settings.json" },

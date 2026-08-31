@@ -207,6 +207,24 @@ describe("AppearanceSettings", () => {
     ).toBe("true");
   });
 
+  it("keeps recent basename file links default-off in Appearance", () => {
+    renderAppearanceSettings();
+    const toggle = screen.getByRole<HTMLInputElement>("checkbox", {
+      name: "Link Recent File Basenames",
+    });
+
+    expect(toggle.checked).toBe(false);
+    expect(
+      screen.getByText(
+        "Turn a bare filename into a file link when an earlier loaded transcript item linked a full path with the same basename.",
+      ),
+    ).toBeTruthy();
+
+    fireEvent.click(toggle);
+    expect(toggle.checked).toBe(true);
+    expect(localStorage.getItem(UI_KEYS.recentProjectPathLinks)).toBe("true");
+  });
+
   it("defaults project code names and their activity pulse off", () => {
     const { container } = renderAppearanceSettings();
     const codeNameRow = screen

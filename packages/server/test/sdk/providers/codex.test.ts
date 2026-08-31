@@ -929,7 +929,7 @@ describe("CodexProvider app-server lifecycle", () => {
     const codexPath = createFakeCodexCommand(
       tempDir,
       "fake-codex-settings",
-      buildFakeCodexPermissionAppServer(logPath, 2),
+      buildFakeCodexPermissionAppServer(logPath, 2, "applied", 100),
     );
     const testProvider = new CodexProvider({ codexPath });
     const session = await testProvider.startSession({
@@ -944,8 +944,9 @@ describe("CodexProvider app-server lifecycle", () => {
       expect(session.effortUpdatesActiveTurn).toBe(true);
       expect(session.setModel).toBeTypeOf("function");
 
-      await session.setEffort?.("high");
-      await session.setModel?.("gpt-5.4");
+      const effortUpdate = session.setEffort?.("high");
+      const modelUpdate = session.setModel?.("gpt-5.4");
+      await Promise.all([effortUpdate, modelUpdate]);
       await firstTurn;
 
       session.queue.push({ text: "retained settings turn" });
@@ -2694,6 +2695,7 @@ function buildFakeCodexPermissionAppServer(
   logPath: string,
   liveSettingsUpdates = 0,
   liveSettingsStatus: "applied" | "targetUnavailable" = "applied",
+  turnStartResponseDelayMs = 0,
 ): string {
   return `#!/usr/bin/env node
 import { appendFileSync } from "node:fs";
@@ -2703,6 +2705,7 @@ let buffer = "";
 let turnSequence = 0;
 const liveSettingsUpdates = ${JSON.stringify(liveSettingsUpdates)};
 const liveSettingsStatus = ${JSON.stringify(liveSettingsStatus)};
+const turnStartResponseDelayMs = ${JSON.stringify(turnStartResponseDelayMs)};
 let observedSettingsUpdates = 0;
 let effectiveApprovalPolicy = "on-request";
 const configuredWorkspaceWritePolicy = {
@@ -2791,16 +2794,19 @@ function handleMessage(message) {
       break;
     case "turn/start": {
       turnSequence += 1;
-      respond(message.id, {
-        turn: {
-          id: \`turn-\${turnSequence}\`,
-          status:
-            turnSequence === 1 && liveSettingsUpdates > 0
-              ? "inProgress"
-              : "completed",
-          error: null,
-        },
-      });
+      const turn = {
+        id: \`turn-\${turnSequence}\`,
+        status:
+          turnSequence === 1 && liveSettingsUpdates > 0
+            ? "inProgress"
+            : "completed",
+        error: null,
+      };
+      if (turnStartResponseDelayMs > 0) {
+        setTimeout(() => respond(message.id, { turn }), turnStartResponseDelayMs);
+      } else {
+        respond(message.id, { turn });
+      }
       break;
     }
     case "turn/settings/update": {

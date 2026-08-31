@@ -2787,14 +2787,17 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const identity = await resolveExistingSessionIdentity({
       sessionId,
       requestProjectId: projectId,
-      metadata,
+      metadata: metadata
+        ? { ...metadata, workingProjectId: undefined }
+        : undefined,
       scanner: deps.scanner,
       providerDeps: providerResolutionDeps(deps),
     });
     if (!identity) {
       return c.json({ error: "Session not found" }, 404);
     }
-    const previousWorkingProjectId = identity.workingProjectId;
+    const previousWorkingProjectId =
+      metadata?.workingProjectId ?? identity.workingProjectId;
     const transcriptProjectId = identity.transcriptProjectId;
 
     const storedWorkingProjectId =
@@ -4178,7 +4181,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const identity = await resolveExistingSessionIdentity({
       sessionId,
       requestProjectId: projectId,
-      preferredProvider: metadataProvider ?? body.provider,
+      preferredProvider: body.provider,
       requestFallbackProvider: requestProject.provider,
       metadata: persistedMetadata,
       scanner: deps.scanner,
@@ -4292,7 +4295,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     const globalInstructions = getGlobalInstructions();
 
-    const providerName = metadataProvider ?? body.provider ?? identity.provider;
+    const providerName = body.provider ?? metadataProvider ?? identity.provider;
     const previousProcess = deps.supervisor.getProcessForSession?.(sessionId);
     const resumeDiagnostics = {
       requestedMode: resumeMode,

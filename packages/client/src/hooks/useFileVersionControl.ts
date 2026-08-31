@@ -65,7 +65,6 @@ function useFileProjectionManifest(
     () => null,
   );
   const current = retained?.statusKey === statusKey ? retained.value : null;
-  const visible = current ?? (statusKey ? (retained?.value ?? null) : null);
   const statusKeyRef = useRef(statusKey);
   statusKeyRef.current = statusKey;
 
@@ -108,6 +107,8 @@ function useFileProjectionManifest(
       );
     },
   });
+  const visible =
+    current ?? (statusKey && !query.error ? (retained?.value ?? null) : null);
 
   return {
     manifest: visible,

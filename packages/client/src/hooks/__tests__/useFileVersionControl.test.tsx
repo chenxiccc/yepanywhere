@@ -319,6 +319,50 @@ describe("useFileVersionControl", () => {
     });
   });
 
+  it("discards the prior projection when its replacement fails", async () => {
+    const sourceKey = LOCAL_CLIENT_SUMMARY_SOURCE_KEY;
+    const hook = renderHook(() => useSubject("src/worktree.ts"));
+    await settle();
+
+    let rejectRefresh!: (error: Error) => void;
+    mocks.getGitFileProjections.mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        rejectRefresh = reject;
+      }),
+    );
+    act(() => {
+      writeRouteRetention(
+        {
+          sourceKey,
+          routeId: "git-status:data",
+          projectId: "project-a",
+        },
+        {
+          ...STATUS,
+          files: [{ ...STATUS.files[0]!, linesAdded: 2 }],
+        },
+        { ttlMs: 60_000 },
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(hook.result.current).toMatchObject({
+      loading: true,
+      worktreeFile: { path: "src/worktree.ts", linesAdded: 1 },
+    });
+
+    rejectRefresh(new Error("projection unavailable"));
+    await settle();
+
+    expect(hook.result.current).toMatchObject({
+      loading: false,
+      worktreeFile: null,
+      cumulativeFile: null,
+    });
+  });
+
   it("does not replace a current projection with a late refresh", async () => {
     const sourceKey = LOCAL_CLIENT_SUMMARY_SOURCE_KEY;
     const hook = renderHook(() => useSubject("src/worktree.ts"));

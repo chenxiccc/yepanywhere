@@ -127,7 +127,7 @@ describe("transcript projection module boundary", () => {
     expect(source).toContain("compileTranscriptProjection");
     expect(source).toContain("compileWebTranscriptProjection");
     expect(source).toMatch(
-      /getCachedTranscriptProjection\(\s*messages,\s*augments,\s*compileWebTranscriptProjection,?\s*\)/u,
+      /getCachedTranscriptProjection\(\s*messages,\s*augments,\s*recentProjectPathLinksEnabled\s*\?\s*compileWebTranscriptProjectionWithRecentLinks\s*:\s*compileWebTranscriptProjectionBase,?\s*\)/u,
     );
 
     const productionFiles = collectTypeScriptFiles(

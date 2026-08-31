@@ -70,6 +70,7 @@ interface UseMessageListIsearchOptions {
     beforeMessageId: string,
   ) => Promise<GetSessionResult>;
   provider?: string;
+  recentProjectPathLinksEnabled: boolean;
   thinkingItemsVisible: boolean;
   turnGroups: readonly RenderTurnGroup[];
 }
@@ -78,6 +79,7 @@ interface UseMessageListIsearchResult {
   active: boolean;
   scope: SessionIsearchScope;
   visibleTurnGroups: readonly RenderTurnGroup[];
+  cancelSearchTargetPreparation: () => void;
   getNavigatorAnchors: () => UserTurnNavAnchor[];
   searchState: UserTurnNavSearchState | null;
   searchPanel: ReactNode;
@@ -144,6 +146,7 @@ export function useMessageListIsearch({
   onHydrateHistorySearchPage,
   onReadOlderSearchPage,
   provider,
+  recentProjectPathLinksEnabled,
   thinkingItemsVisible,
   turnGroups,
 }: UseMessageListIsearchOptions): UseMessageListIsearchResult {
@@ -155,6 +158,7 @@ export function useMessageListIsearch({
   const selectedSearchTargetIdRef = useRef<string | null>(null);
   const selectedSearchAnchorIdRef = useRef<string | null>(null);
   const historySearchKeyRef = useRef("");
+  const historySearchHydrationGenerationRef = useRef(0);
   const appliedHistorySearchKeyRef = useRef("");
   const historySearchWorkerRef = useRef<Worker | null>(null);
   const historySearchWorkerRequestIdRef = useRef(0);
@@ -184,6 +188,10 @@ export function useMessageListIsearch({
   const [hydratingSearchId, setHydratingSearchId] = useState<string | null>(
     null,
   );
+  const cancelSearchTargetPreparation = useCallback(() => {
+    historySearchHydrationGenerationRef.current += 1;
+    setHydratingSearchId(null);
+  }, []);
 
   const hasUserSearchableTurn = useMemo(
     () => hasSearchableUserTurn(displayRenderItems),
@@ -281,6 +289,7 @@ export function useMessageListIsearch({
   );
 
   useEffect(() => {
+    cancelSearchTargetPreparation();
     if (!searchReady) return;
     if (appliedHistorySearchKeyRef.current !== historySearchKey) {
       appliedHistorySearchKeyRef.current = historySearchKey;
@@ -314,6 +323,7 @@ export function useMessageListIsearch({
       return previous;
     });
   }, [
+    cancelSearchTargetPreparation,
     disposeHistorySearchWorker,
     hasOlderMessages,
     historySearchCursor,
@@ -323,9 +333,15 @@ export function useMessageListIsearch({
 
   useEffect(() => {
     if (userTurnSearch.active && !inert) return;
+    cancelSearchTargetPreparation();
     appliedHistorySearchKeyRef.current = "";
     disposeHistorySearchWorker();
-  }, [disposeHistorySearchWorker, inert, userTurnSearch.active]);
+  }, [
+    cancelSearchTargetPreparation,
+    disposeHistorySearchWorker,
+    inert,
+    userTurnSearch.active,
+  ]);
 
   useEffect(
     () => () => {
@@ -425,6 +441,7 @@ export function useMessageListIsearch({
         messages: page.messages,
         provider,
         query: userTurnSearch.query,
+        recentProjectPathLinksEnabled,
         scope: userTurnSearch.scope,
         thinkingItemsVisible,
         transcriptDisplayObjects,
@@ -457,7 +474,7 @@ export function useMessageListIsearch({
           loading: false,
           matches:
             combined.length > HISTORY_SEARCH_RESULT_LIMIT
-              ? combined.slice(0, HISTORY_SEARCH_RESULT_LIMIT)
+              ? combined.slice(-HISTORY_SEARCH_RESULT_LIMIT)
               : combined,
           pagesScanned: previous.pagesScanned + 1,
         };
@@ -476,6 +493,7 @@ export function useMessageListIsearch({
     historySearchKey,
     onReadOlderSearchPage,
     provider,
+    recentProjectPathLinksEnabled,
     runHistorySearchPage,
     searchReady,
     thinkingItemsVisible,
@@ -618,6 +636,7 @@ export function useMessageListIsearch({
   const moveSearchSelection = useCallback(
     (direction: "previous" | "next") => {
       committedSearchTargetIdRef.current = null;
+      cancelSearchTargetPreparation();
       setUserTurnSearch((previous) => {
         if (!previous.active || userTurnSearchMatches.length === 0) {
           return previous;
@@ -639,7 +658,7 @@ export function useMessageListIsearch({
         return { ...previous, selectedId: nextSelectedId };
       });
     },
-    [userTurnSearchMatches],
+    [cancelSearchTargetPreparation, userTurnSearchMatches],
   );
   const stopSearchArrowRepeat = useCallback(() => {
     if (searchArrowRepeatTimeoutRef.current !== null) {
@@ -688,15 +707,19 @@ export function useMessageListIsearch({
     },
     [moveSearchSelection, startSearchArrowRepeat],
   );
-  const selectSearchMatch = useCallback((id: string, targetId?: string) => {
-    committedSearchTargetIdRef.current = targetId ?? id;
-    setUserTurnSearch((previous) =>
-      previous.active ? { ...previous, selectedId: id } : previous,
-    );
-    requestAnimationFrame(() => {
-      searchInputRef.current?.focus({ preventScroll: true });
-    });
-  }, []);
+  const selectSearchMatch = useCallback(
+    (id: string, targetId?: string) => {
+      cancelSearchTargetPreparation();
+      committedSearchTargetIdRef.current = targetId ?? id;
+      setUserTurnSearch((previous) =>
+        previous.active ? { ...previous, selectedId: id } : previous,
+      );
+      requestAnimationFrame(() => {
+        searchInputRef.current?.focus({ preventScroll: true });
+      });
+    },
+    [cancelSearchTargetPreparation],
+  );
   const prepareSearchTarget = useCallback(
     (id: string): string | null | Promise<string | null> => {
       const anchor = activeSearchAnchors.find(
@@ -722,15 +745,24 @@ export function useMessageListIsearch({
       }
 
       const requestKey = historySearchKey;
+      const requestGeneration = historySearchHydrationGenerationRef.current;
       setHydratingSearchId(id);
       return onReadOlderSearchPage(olderMatch.pageCursor)
         .then((page) => {
-          if (historySearchKeyRef.current !== requestKey) return null;
+          if (
+            historySearchKeyRef.current !== requestKey ||
+            historySearchHydrationGenerationRef.current !== requestGeneration
+          ) {
+            return null;
+          }
           onHydrateHistorySearchPage(olderMatch.pageCursor, page);
           return targetId;
         })
         .catch(() => {
-          if (historySearchKeyRef.current === requestKey) {
+          if (
+            historySearchKeyRef.current === requestKey &&
+            historySearchHydrationGenerationRef.current === requestGeneration
+          ) {
             setOlderSearchState((previous) =>
               previous.key === requestKey
                 ? { ...previous, error: true }
@@ -740,7 +772,10 @@ export function useMessageListIsearch({
           return null;
         })
         .finally(() => {
-          if (historySearchKeyRef.current === requestKey) {
+          if (
+            historySearchKeyRef.current === requestKey &&
+            historySearchHydrationGenerationRef.current === requestGeneration
+          ) {
             setHydratingSearchId(null);
           }
         });
@@ -768,7 +803,7 @@ export function useMessageListIsearch({
         : null;
       searchOriginalScrollTopRef.current = null;
       searchRestoreFocusRef.current = null;
-      setHydratingSearchId(null);
+      cancelSearchTargetPreparation();
       disposeHistorySearchWorker();
       setOlderSearchState(createOlderSearchState("", null, false));
 
@@ -795,7 +830,7 @@ export function useMessageListIsearch({
         };
       });
     },
-    [containerRef, disposeHistorySearchWorker],
+    [cancelSearchTargetPreparation, containerRef, disposeHistorySearchWorker],
   );
   const openSearch = useCallback(
     (scope: SessionIsearchScope) => {
@@ -1014,6 +1049,7 @@ export function useMessageListIsearch({
     active: userTurnSearch.active,
     scope: userTurnSearch.scope,
     visibleTurnGroups,
+    cancelSearchTargetPreparation,
     getNavigatorAnchors,
     searchState,
     searchPanel: portaledSearchPanel,

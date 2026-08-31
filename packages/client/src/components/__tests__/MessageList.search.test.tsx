@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -110,6 +111,34 @@ function installSearchGeometry(rowOffsets: Record<string, number>) {
   observer.observe(messageList, { childList: true, subtree: true });
 
   return { scrollTo, stop: () => observer.disconnect() };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
+
+function historyPage(
+  messages: ReturnType<typeof userMessage>[],
+  nextCursor: string | null,
+) {
+  return {
+    session: {},
+    messages,
+    ownership: "unowned",
+    pagination: {
+      hasOlderMessages: nextCursor !== null,
+      totalMessageCount: messages.length,
+      returnedMessageCount: messages.length,
+      ...(nextCursor ? { truncatedBeforeMessageId: nextCursor } : {}),
+      totalCompactions: 0,
+    },
+  } as never;
 }
 
 describe("MessageList reverse search", () => {
@@ -399,6 +428,293 @@ describe("MessageList reverse search", () => {
       expect(container.querySelector('[data-render-id="user-old"]')).toBeNull();
     });
     stop();
+  });
+
+  it("keeps the latest historical selection when hydrations settle out of order", async () => {
+    const pageA = historyPage(
+      [userMessage("user-history-a", "history A needle")],
+      "history-b-boundary",
+    );
+    const pageB = historyPage(
+      [userMessage("user-history-b", "history B needle")],
+      null,
+    );
+    const hydrationA = deferred<typeof pageA>();
+    const hydrationB = deferred<typeof pageB>();
+    let pageAReads = 0;
+    let pageBReads = 0;
+    const readOlderPage = vi.fn((cursor: string) => {
+      if (cursor === "loaded-boundary") {
+        pageAReads += 1;
+        return pageAReads === 1 ? Promise.resolve(pageA) : hydrationA.promise;
+      }
+      pageBReads += 1;
+      return pageBReads === 1 ? Promise.resolve(pageB) : hydrationB.promise;
+    });
+    const { container } = render(
+      <MessageList
+        messages={[userMessage("user-recent", "recent request")]}
+        hasOlderMessages={true}
+        olderMessagesCursor="loaded-boundary"
+        onReadOlderSearchPage={readOlderPage}
+      />,
+    );
+
+    fireEvent.keyDown(window, { key: "r", ctrlKey: true });
+    const searchInput = await screen.findByRole("textbox", {
+      name: "Reverse search user turns",
+    });
+    fireEvent.change(searchInput, { target: { value: "needle" } });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Search older" }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+
+    fireEvent.keyDown(searchInput, { key: "Enter" });
+    await waitFor(() => expect(pageAReads).toBe(2));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    fireEvent.keyDown(window, { key: "r", code: "KeyR", ctrlKey: true });
+    await waitFor(() => expect(screen.getByText("1/2")).toBeTruthy());
+    fireEvent.keyDown(searchInput, { key: "Enter" });
+    await waitFor(() => expect(pageBReads).toBe(2));
+
+    act(() => hydrationB.resolve(pageB));
+    await waitFor(() => {
+      expect(
+        container.querySelector('[data-render-id="user-history-b"]'),
+      ).not.toBeNull();
+    });
+    act(() => hydrationA.resolve(pageA));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(
+      container.querySelector('[data-render-id="user-history-a"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector('[data-render-id="user-history-b"]'),
+    ).not.toBeNull();
+  });
+
+  it("does not remount historical hydration after following current output", async () => {
+    const page = historyPage(
+      [userMessage("user-history", "historical follow needle")],
+      null,
+    );
+    const hydration = deferred<typeof page>();
+    let reads = 0;
+    const readOlderPage = vi.fn(() => {
+      reads += 1;
+      return reads === 1 ? Promise.resolve(page) : hydration.promise;
+    });
+    const { container } = render(
+      <MessageList
+        messages={[userMessage("user-recent", "recent request")]}
+        hasOlderMessages={true}
+        olderMessagesCursor="loaded-boundary"
+        onReadOlderSearchPage={readOlderPage}
+      />,
+    );
+
+    fireEvent.keyDown(window, { key: "r", ctrlKey: true });
+    const searchInput = await screen.findByRole("textbox", {
+      name: "Reverse search user turns",
+    });
+    fireEvent.change(searchInput, { target: { value: "follow needle" } });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Search older" }),
+    );
+    await screen.findByText("Older result");
+    fireEvent.keyDown(searchInput, { key: "Enter" });
+    await waitFor(() => expect(reads).toBe(2));
+
+    fireEvent.keyDown(window, { key: "End", ctrlKey: true });
+    act(() => hydration.resolve(page));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(
+      container.querySelector('[data-render-id="user-history"]'),
+    ).toBeNull();
+  });
+
+  it("does not resurrect a hydrated page after park or view changes", async () => {
+    const page = historyPage(
+      [userMessage("user-history", "historical lifetime needle")],
+      null,
+    );
+    const readOlderPage = vi.fn(async () => page);
+    const renderList = (
+      inert = false,
+      conversationViewEnabledOverride = false,
+    ) => (
+      <MessageList
+        messages={[userMessage("user-recent", "recent request")]}
+        hasOlderMessages={true}
+        olderMessagesCursor="loaded-boundary"
+        onReadOlderSearchPage={readOlderPage}
+        inert={inert}
+        conversationViewEnabledOverride={conversationViewEnabledOverride}
+      />
+    );
+    const rendered = render(renderList());
+    const hydrateSelectedPage = async () => {
+      fireEvent.keyDown(window, { key: "r", ctrlKey: true });
+      fireEvent.change(
+        await screen.findByRole("textbox", {
+          name: "Reverse search user turns",
+        }),
+        { target: { value: "lifetime needle" } },
+      );
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Search older" }),
+      );
+      await screen.findByText("Older result");
+      fireEvent.keyDown(window, { key: "Enter" });
+      await waitFor(() => {
+        expect(
+          rendered.container.querySelector('[data-render-id="user-history"]'),
+        ).not.toBeNull();
+      });
+      await waitFor(() => {
+        expect(
+          screen.queryByRole("textbox", {
+            name: "Reverse search user turns",
+          }),
+        ).toBeNull();
+      });
+    };
+
+    await hydrateSelectedPage();
+    rendered.rerender(renderList(true));
+    rendered.rerender(renderList(false));
+    expect(
+      rendered.container.querySelector('[data-render-id="user-history"]'),
+    ).toBeNull();
+
+    await hydrateSelectedPage();
+    rendered.rerender(renderList(false, true));
+    rendered.rerender(renderList(false, false));
+    expect(
+      rendered.container.querySelector('[data-render-id="user-history"]'),
+    ).toBeNull();
+  });
+
+  it("restores prompt actions when pagination canonically loads a historical row", async () => {
+    const historicalMessage = userMessage(
+      "user-history",
+      "historical canonical needle",
+    );
+    const page = historyPage([historicalMessage], null);
+    const readOlderPage = vi.fn(async () => page);
+    const onTrimBeforeUserMessage = vi.fn();
+    const recentMessage = userMessage("user-recent", "recent request");
+    const renderList = (messages: ReturnType<typeof userMessage>[]) => (
+      <MessageList
+        messages={messages}
+        hasOlderMessages={true}
+        olderMessagesCursor="loaded-boundary"
+        onReadOlderSearchPage={readOlderPage}
+        onTrimBeforeUserMessage={onTrimBeforeUserMessage}
+      />
+    );
+    const rendered = render(renderList([recentMessage]));
+
+    fireEvent.keyDown(window, { key: "r", ctrlKey: true });
+    fireEvent.change(
+      await screen.findByRole("textbox", {
+        name: "Reverse search user turns",
+      }),
+      { target: { value: "canonical needle" } },
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Search older" }),
+    );
+    await screen.findByText("Older result");
+    fireEvent.keyDown(window, { key: "Enter" });
+    await waitFor(() => {
+      expect(
+        rendered.container.querySelector('[data-render-id="user-history"]'),
+      ).not.toBeNull();
+    });
+    expect(
+      screen.queryByRole("button", { name: "userPromptShowStartingHere" }),
+    ).toBeNull();
+
+    rendered.rerender(renderList([historicalMessage, recentMessage]));
+
+    const historicalRow = rendered.container.querySelector<HTMLElement>(
+      '[data-render-id="user-history"]',
+    );
+    expect(historicalRow).not.toBeNull();
+    const trim = within(historicalRow!).getByRole("button", {
+      name: "userPromptShowStartingHere",
+    });
+    fireEvent.click(trim);
+    expect(onTrimBeforeUserMessage).toHaveBeenCalledWith("user-history");
+  });
+
+  it("keeps the closest 512 matches across three older pages", async () => {
+    const pages = new Map([
+      [
+        "closest-boundary",
+        historyPage(
+          Array.from({ length: 200 }, (_, index) =>
+            userMessage(`closest-${index}`, `closest ${index} needle`),
+          ),
+          "middle-boundary",
+        ),
+      ],
+      [
+        "middle-boundary",
+        historyPage(
+          Array.from({ length: 200 }, (_, index) =>
+            userMessage(`middle-${index}`, `middle ${index} needle`),
+          ),
+          "oldest-boundary",
+        ),
+      ],
+      [
+        "oldest-boundary",
+        historyPage(
+          Array.from({ length: 200 }, (_, index) =>
+            userMessage(`oldest-${index}`, `oldest ${index} needle`),
+          ),
+          null,
+        ),
+      ],
+    ]);
+    const readOlderPage = vi.fn(async (cursor: string) => pages.get(cursor)!);
+
+    render(
+      <MessageList
+        messages={[userMessage("user-recent", "recent request")]}
+        hasOlderMessages={true}
+        olderMessagesCursor="closest-boundary"
+        onReadOlderSearchPage={readOlderPage}
+      />,
+    );
+
+    fireEvent.keyDown(window, { key: "r", ctrlKey: true });
+    fireEvent.change(
+      await screen.findByRole("textbox", {
+        name: "Reverse search user turns",
+      }),
+      { target: { value: "needle" } },
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Search older" }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+
+    expect(await screen.findByText("512/512")).toBeTruthy();
+    expect(screen.getByText("closest 199 needle")).toBeTruthy();
+    expect(screen.queryByText("oldest 0 needle")).toBeNull();
   });
 
   it("does not create the history worker before an explicit older search", async () => {

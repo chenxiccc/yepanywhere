@@ -929,6 +929,115 @@ describe("useSession completion reconciliation", () => {
     expect(result.current.processState).toBe("idle");
   });
 
+  it("does not apply a runtime snapshot to a different rendered session", async () => {
+    let resolveMetadata:
+      | ((value: {
+          session: Record<string, never>;
+          ownership: { owner: "self"; processId: string };
+          processState: "in-turn";
+          pendingInputRequest: null;
+        }) => void)
+      | undefined;
+    apiMocks.getSessionMetadata.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveMetadata = resolve;
+        }),
+    );
+    const { result, rerender } = renderHook(
+      ({ sessionId }) => useSession(PROJECT_ID, sessionId, undefined),
+      { initialProps: { sessionId: "sess-a" } },
+    );
+
+    let wakeReconciliation: void | Promise<void>;
+    act(() => {
+      wakeReconciliation = fileActivityOptions?.onReconnect?.();
+    });
+
+    rerender({ sessionId: "sess-b" });
+
+    await act(async () => {
+      resolveMetadata?.({
+        session: {},
+        ownership: { owner: "self", processId: "proc-a" },
+        processState: "in-turn",
+        pendingInputRequest: null,
+      });
+      await wakeReconciliation;
+    });
+
+    expect(result.current.status).toEqual({ owner: "none" });
+    expect(result.current.processState).toBe("idle");
+  });
+
+  it("keeps authoritative idle over a pending-input fallback snapshot", async () => {
+    let resolveMetadata:
+      | ((value: {
+          session: Record<string, never>;
+          ownership: { owner: "self"; processId: string };
+          processState: "waiting-input";
+          pendingInputRequest: {
+            id: string;
+            sessionId: string;
+            type: "tool-approval";
+            prompt: string;
+            timestamp: string;
+          };
+        }) => void)
+      | undefined;
+    apiMocks.getSessionMetadata.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveMetadata = resolve;
+        }),
+    );
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      fileActivityOptions?.onProcessStateChange?.({
+        type: "process-state-changed",
+        sessionId: "sess-1",
+        projectId: PROJECT_ID,
+        activity: "waiting-input",
+        pendingInputType: "tool-approval",
+        timestamp: "2026-08-29T10:40:00.202Z",
+      });
+    });
+    act(() => {
+      fileActivityOptions?.onProcessStateChange?.({
+        type: "process-state-changed",
+        sessionId: "sess-1",
+        projectId: PROJECT_ID,
+        activity: "idle",
+        timestamp: "2026-08-29T10:40:00.203Z",
+      });
+    });
+
+    await act(async () => {
+      resolveMetadata?.({
+        session: {},
+        ownership: { owner: "self", processId: "proc-1" },
+        processState: "waiting-input",
+        pendingInputRequest: {
+          id: "request-1",
+          sessionId: "sess-1",
+          type: "tool-approval",
+          prompt: "Allow the command?",
+          timestamp: "2026-08-29T10:40:00.200Z",
+        },
+      });
+      await Promise.resolve();
+    });
+
+    expect(result.current.processState).toBe("idle");
+    expect(result.current.pendingInputRequest).toBeNull();
+  });
+
   it("keeps newer live activity over an older failed stream check", async () => {
     let rejectMetadata: ((reason?: unknown) => void) | undefined;
     apiMocks.getSessionMetadata.mockImplementation(
