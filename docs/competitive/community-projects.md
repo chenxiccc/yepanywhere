@@ -38,6 +38,53 @@ Tech: Node.js, WebSocket, node-pty
 
 ---
 
+### ssh-to-go
+
+**GitHub:** https://github.com/awkto/ssh-to-go
+**Status:** Active (v1.30.2, 42 stars, AGPL-3.0; checked 2026-08-30)
+
+Provider-neutral terminal session manager aimed directly at the "keep Claude
+Code or Codex running and check it from anywhere" use case:
+
+- A central single Go binary discovers and manages tmux sessions across SSH
+  hosts; targets need SSH and tmux but no installed agent or daemon
+- Cross-host dashboard with status, search, favorites, create, rename, kill,
+  duplicate, offload/recreate, and idle auto-sleep
+- Browser terminal via xterm.js and WebSocket, an early native Android terminal,
+  and a CLI that can hand a session off to local `ssh ... tmux attach`
+- Multiple clients can attach to one session simultaneously
+- Command-execution API for detached jobs with bounded output, explicit
+  timeouts, and polling
+- Optional MCP server can create sessions, send keys, capture panes, and wait
+  for a pane to become idle or match a pattern
+
+Tech: Go, SSH, tmux, xterm.js, Kotlin/Termux-derived Android terminal
+
+**Note:** The direct overlap with yepanywhere is the product promise—durable
+sessions and a multi-session dashboard available away from the desk—not the
+integration layer. ssh-to-go is terminal-first and therefore works with almost
+any interactive program, but it sees terminal bytes and panes rather than
+provider events. It does not natively provide YA's structured tool approvals,
+semantic transcript and replay, context tracking, or attention-oriented inbox.
+Conversely, its multi-host SSH dashboard, native-terminal handoff,
+offload/auto-sleep lifecycle, and MCP pane-control contract are worth studying.
+
+Its server has password and API-token authentication but serves plain HTTP and
+WebSocket itself; the default loopback listener leaves TLS and remote exposure
+to the operator rather than providing YA's E2E-encrypted public relay. Its
+post-reboot "recreate" restores the recorded working directory and launch
+command, not the original process state.
+
+For YA, it is useful evidence for closing the existing
+[provider-neutral remote executor](../../gaps/provider-neutral-remote-executors.md)
+and
+[remote-session project view](../../gaps/remote-session-project-views-use-local-files.md)
+gaps. It is not a reason to replace YA's structured provider adapters with a raw
+terminal relay; that trade would discard much of the supervision UX that makes
+YA distinct.
+
+---
+
 ### Obsidian Claude Anywhere
 **GitHub:** https://github.com/derek-larson14/obsidian-claude-anywhere
 **Status:** Active (v1.0.9, 36 commits)
@@ -323,7 +370,8 @@ Tech: Swift, SwiftUI, macOS native
 6. **Post-hoc analysis tools** — claude-devtools reads raw JSONL logs rather than wrapping or driving sessions, showing demand for session debugging/inspection
 7. **SDK-native integration emerging** — Claude Code UI uses the Agent SDK directly rather than spawning CLI processes, suggesting the SDK is becoming stable enough for third-party use
 8. **Electron reverse engineering** — codex-web-ui patches the proprietary Codex app at runtime rather than using any official API, and discovered that OpenAI shipped a fully-compiled SSH remote execution engine that was never wired up
+9. **Terminal control is becoming agent-addressable** — ssh-to-go exposes long-lived tmux panes through MCP primitives for creating sessions, sending keys, reading output, and waiting for the TUI to settle
 
 ## Last Updated
 
-2026-02-22
+2026-08-30

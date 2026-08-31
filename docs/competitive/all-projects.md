@@ -40,6 +40,7 @@ Everything in the AI coding agent supervisor/wrapper space, in one table. For de
 | **Obsidian Claude Anywhere** | Obsidian plugin with embedded relay and full terminal access | [derek-larson14/obsidian-claude-anywhere](https://github.com/derek-larson14/obsidian-claude-anywhere) | — | derek-larson14 | 65 |
 | **Termly CLI** | Universal PTY wrapper for 20+ AI assistants with E2E encryption | [termly-dev/termly-cli](https://github.com/termly-dev/termly-cli) | — | termly-dev | 54 |
 | **Codex Web UI** | Runtime-patches Codex Desktop's Electron app to expose full UI over HTTP | [friuns2/codex-web-ui](https://github.com/friuns2/codex-web-ui) | MIT | friuns2 | 47 |
+| **ssh-to-go** | Self-hosted multi-host tmux dashboard and web terminal for persistent Claude, Codex, or any TUI session; also offers a CLI, early Android client, command API, and MCP pane control | [awkto/ssh-to-go](https://github.com/awkto/ssh-to-go) | AGPL-3.0 | awkto | 42 |
 | **claude-code-supervisor** | Auto-review agent that iterates on Claude Code output; multi-provider | [guyskk/claude-code-supervisor](https://github.com/guyskk/claude-code-supervisor) | MIT | guyskk | 40 |
 | **claude-code-app** | Mobile app for Claude Code (Flutter/Dart — true cross-platform native) | [9cat/claude-code-app](https://github.com/9cat/claude-code-app) | MIT | 9cat | 38 |
 | **clauder** | Native iOS remote control for Claude Code (Swift) | [ZohaibAhmed/clauder](https://github.com/ZohaibAhmed/clauder) | MIT | ZohaibAhmed | 27 |
@@ -97,4 +98,4 @@ Already listed above: emdash, claudecodeui.
 
 ## Last Updated
 
-2026-03-19
+2026-08-30
