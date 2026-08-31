@@ -489,7 +489,10 @@ describe("Process", () => {
           projectId,
           sessionId: "sess-1",
           provider: "codex",
-          idleTimeoutMs: 100,
+          // Keep the recovered process alive while the durable fixture is
+          // written; loaded CI can take longer than the production-irrelevant
+          // 100 ms timeout used by neighboring transition tests.
+          idleTimeoutMs: 60_000,
           queue,
           sessionQueuePersistenceService: service,
         });
