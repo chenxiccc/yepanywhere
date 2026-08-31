@@ -11,8 +11,11 @@ if (!script) {
 const env = { ...process.env };
 const pnpmOnlyConfigKeys = new Set([
   "npm_config__jsr_registry",
+  "npm_config_audit_config",
   "npm_config_npm_globalconfig",
+  "npm_config_overrides",
   "npm_config_recursive",
+  "npm_config_supported_architectures",
   "npm_config_verify_deps_before_run",
   "pnpm_config_verify_deps_before_run",
 ]);
