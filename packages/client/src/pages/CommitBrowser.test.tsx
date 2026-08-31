@@ -1792,8 +1792,10 @@ describe("CommitBrowser", () => {
     await waitFor(() =>
       expect(getGitBlame).toHaveBeenCalledWith("p1", "src/x.ts", SHA),
     );
-    expect(document.querySelector("[data-blame-row]")).not.toBeNull();
-    expect(document.querySelector(".commit-files-column")).not.toBeNull();
+    await waitFor(() => {
+      expect(document.querySelector("[data-blame-row]")).not.toBeNull();
+      expect(document.querySelector(".commit-files-column")).not.toBeNull();
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "sourceToggleBlame" }));
     await waitFor(() =>
@@ -1819,7 +1821,9 @@ describe("CommitBrowser", () => {
     await waitFor(() =>
       expect(getGitBlame).toHaveBeenCalledWith("p1", "src/x.ts", SHA),
     );
-    expect(document.querySelector("[data-blame-row]")).not.toBeNull();
+    await waitFor(() =>
+      expect(document.querySelector("[data-blame-row]")).not.toBeNull(),
+    );
   });
 
   it("re-clicks the selected file to advance to the next diff hunk", async () => {
