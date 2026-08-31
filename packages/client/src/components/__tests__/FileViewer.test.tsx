@@ -620,14 +620,19 @@ describe("FileViewer", () => {
     );
     expect(sourceLines[1]?.dataset.yaSourceStart).toBe("4");
     expect(sourceLines[1]?.dataset.yaSourceEnd).toBe("7");
+    const viewerBody =
+      container.querySelector<HTMLElement>(".file-viewer-body");
+    await waitFor(() =>
+      expect(viewerBody?.getAttribute("data-markdown-copy-source")).toBe(
+        "true",
+      ),
+    );
     const selectedRange = document.createRange();
     selectedRange.setStart(sourceLines[1]?.firstChild as Node, 0);
     selectedRange.setEnd(sourceLines[2]?.firstChild as Node, "three".length);
     const sourceSelection = document.getSelection();
     sourceSelection?.removeAllRanges();
     sourceSelection?.addRange(selectedRange);
-    const viewerBody =
-      container.querySelector<HTMLElement>(".file-viewer-body");
     expect(extractMarkdownSnippetsFromSelection(viewerBody!)).toMatchObject([
       {
         markdown: "two\nthree",

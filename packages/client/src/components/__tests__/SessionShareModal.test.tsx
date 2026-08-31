@@ -479,6 +479,11 @@ describe("SessionShareModal", () => {
         "viewer-token-1",
       );
     });
+    expect(
+      await screen.findByText(
+        "Token viewer-t will see a snapshot from now on.",
+      ),
+    ).toBeTruthy();
 
     fireEvent.click(
       screen.getByRole("button", {
@@ -788,7 +793,7 @@ describe("SessionShareModal", () => {
     await waitFor(() => {
       expect(api.revokePublicShare).toHaveBeenCalledWith("share-1");
     });
-    expect(screen.getByText("No matching public links.")).toBeTruthy();
+    expect(await screen.findByText("No matching public links.")).toBeTruthy();
   });
 
   it("hides selective freeze controls without the indexed capability", async () => {
