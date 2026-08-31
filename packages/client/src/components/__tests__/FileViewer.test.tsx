@@ -1009,7 +1009,13 @@ describe("FileViewer", () => {
       </I18nProvider>,
     );
 
-    await screen.findByText("Selected text");
+    const selectedText = await screen.findByText("Selected text");
+    const viewerBody = selectedText.closest<HTMLElement>(".file-viewer-body");
+    await waitFor(() =>
+      expect(viewerBody?.getAttribute("data-markdown-copy-source")).toBe(
+        "true",
+      ),
+    );
     const quoteButtons = screen.getAllByRole("button", {
       name: /Quote this paragraph/,
     });
