@@ -2165,6 +2165,12 @@ describe("CodexSessionReader - OSS Support", () => {
         payload: { type: "agent_message", message: "appended" },
       })}\n`,
     );
+    const appendedMtime = new Date(Math.ceil(firstStats.mtimeMs) + 1_000);
+    await utimes(sessionPath, firstStats.atime, appendedMtime);
+    const appendedStats = await stat(sessionPath);
+    const expectedAppendedVersion = new Date(
+      getCodexRolloutActivityTimeMs(sessionPath, appendedStats),
+    ).toISOString();
     releaseSummary();
 
     const beforeAppendPass = await firstRead;
@@ -2179,8 +2185,8 @@ describe("CodexSessionReader - OSS Support", () => {
       "test-project" as UrlProjectId,
     );
     expect(afterAppendPass?.data.session.entries).toHaveLength(3);
-    expect(afterAppendPass?.transcriptSnapshotUpdatedAt).not.toBe(
-      expectedFirstVersion,
+    expect(afterAppendPass?.transcriptSnapshotUpdatedAt).toBe(
+      expectedAppendedVersion,
     );
   });
 

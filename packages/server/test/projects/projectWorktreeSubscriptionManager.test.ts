@@ -263,12 +263,28 @@ describe("ProjectWorktreeSubscriptionManager", () => {
     // but cumulative registrations do, and the churn window catches them.
     for (let round = 0; round < 8; round += 1) {
       if (manager.diagnostics().circuitOpen) break;
+      const watchedBeforeRemoval = manager.diagnostics().watchedDirectories;
       await rm(churnDir, { recursive: true, force: true });
       watchListeners.get(projectPath)?.("rename", "churn");
       await vi.advanceTimersByTimeAsync(150);
+      await vi.waitFor(() =>
+        expect(manager.diagnostics().watchedDirectories).toBeLessThan(
+          watchedBeforeRemoval,
+        ),
+      );
+
+      const registrationsBeforeCreate =
+        manager.diagnostics().cumulativeRegistrations;
       await mkdir(churnDir, { recursive: true });
       watchListeners.get(projectPath)?.("rename", "churn");
       await vi.advanceTimersByTimeAsync(150);
+      await vi.waitFor(() => {
+        const diagnostics = manager.diagnostics();
+        expect(
+          diagnostics.circuitOpen ||
+            diagnostics.cumulativeRegistrations > registrationsBeforeCreate,
+        ).toBe(true);
+      });
     }
 
     await vi.waitFor(() =>

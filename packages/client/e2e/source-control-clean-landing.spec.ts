@@ -325,6 +325,8 @@ test("unfocused cold load keeps the static workbench mounted", async ({
   page,
   baseURL,
 }) => {
+  liveWorktreeMonitoringActive = true;
+  await setLiveWorktreeMonitoring(baseURL, true);
   await page.setViewportSize({ width: 1000, height: 600 });
   await installPageAttention(page, {
     visibility: "visible",
