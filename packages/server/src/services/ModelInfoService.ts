@@ -101,19 +101,34 @@ export class ModelInfoService {
 
   /**
    * Get context window for a model (sync).
-   * Precedence: durable observation → ephemeral ingested → shared heuristic.
+   *
+   * When the static heuristic confidently identifies a model as 1M (via [1m]
+   * suffix, known model regexes, or explicit mapping), that answer takes
+   * precedence over SDK observations. The Claude Code SDK defaults to 200K for
+   * unrecognized models, which would incorrectly downgrade custom models routed
+   * through ANTHROPIC_BASE_URL that actually have 1M windows.
+   *
+   * For non-1M models, the original precedence applies: durable observation →
+   * ephemeral ingested → shared heuristic.
    */
   getContextWindow(model: string | undefined, provider?: ProviderName): number {
+    // Short-circuit: if the heuristic says 1M, trust it. The SDK may report
+    // 200K for unknown models, so observed values are not authoritative here.
+    const heuristic = getModelContextWindow(model, provider);
+    // 1M mirrors shared CLAUDE_EXTENDED_CONTEXT_WINDOW; kept as a local
+    // literal so this branch avoids the shared barrel seam.
+    if (heuristic === 1_000_000) {
+      return heuristic;
+    }
+
     if (model && provider) {
-      // An actual observed window beats any heuristic; check the durable then
-      // ephemeral caches before falling back to getModelContextWindow.
       const key = `${provider}:${model}`;
       const obs = this.observed.get(key);
       if (obs !== undefined) return obs.contextWindow;
       const ingested = this.ingested.get(key);
       if (ingested !== undefined) return ingested;
     }
-    return getModelContextWindow(model, provider);
+    return heuristic;
   }
 
   /**
